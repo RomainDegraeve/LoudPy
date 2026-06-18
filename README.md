@@ -51,8 +51,7 @@ The `LoudPy_exemples/` folder contains ready-to-run scripts:
 
 ## Publication
 
-LoudPy will be presented at Acousticum 2026 —
-[paper link](https://conforg.fr/bin/v2/pdfdoc?dir=fa2026&ref=226&pwd=AGGBVU) (ref. 226).
+LoudPy will be presented at Acousticum 2026 — (ref. 226).
 
 ## Contributing
 
