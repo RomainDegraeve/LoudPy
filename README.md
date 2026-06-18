@@ -3,6 +3,9 @@
 LoudPy is an open-source Python solver dedicated to loudspeaker finite element simulation,
 released under the [GPL-3.0 license](https://www.gnu.org/licenses/gpl-3.0.html).
 
+![description](/Users/romaindegraeve/Desktop/Field_Response_8970Hz_Symmetric_Clean.png)
+
+
 ## Overview
 
 Designing a loudspeaker with FEM today means choosing between complex general-purpose tools that
