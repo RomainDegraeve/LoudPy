@@ -35,7 +35,9 @@ class DomainSpecMeca(DomainSpec):
 @dataclass(eq=False)
 class DomainSpecMecaRayleigh(DomainSpec):
     physics : ClassVar[type] = SubdomainMeca_Rayleigh
-    E : Optional[float] = None 
+    E : Optional[float] = None
+    nu : Optional[float] = None
+    rho : Optional[float] = None
     alpha_ray : Optional[float]= None
     beta_ray : Optional[float]= None
     size : float = 0.002
@@ -43,7 +45,9 @@ class DomainSpecMecaRayleigh(DomainSpec):
 @dataclass(eq=False)
 class DomainSpecMecaHysteretic(DomainSpec):
     physics : ClassVar[type] = SubdomainMeca_Hysteretic
-    E : Optional[float] = None 
+    E : Optional[float] = None
+    nu : Optional[float] = None
+    rho : Optional[float] = None
     eta : Optional[float]= None
     size : float = 0.002
 

@@ -6,7 +6,7 @@ class Problem:
     def __init__(self, 
                  geo_path: str, 
                  msh_path: str, 
-                 mat_path: str, 
+                 mat_path: str = "", 
                  subdomains_key: str = "sub", 
                  orientations_key: Optional[dict] = None,  
                  directions_key: Optional[dict] = None):
