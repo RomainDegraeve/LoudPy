@@ -79,7 +79,7 @@ def compute_H_T6_pml(coords, use_r, r0, tr, sgn_r,
             r_gp += N_vec[i] * coords[i, 0]
             z_gp += N_vec[i] * coords[i, 1]
 
-        # DO NOT ignore r_tilde!
+    
         sr, sz, r_tilde = _eval_stretch(r_gp, z_gp,  
                                         use_r, r0, tr, sgn_r,
                                         use_z, z0, tz, sgn_z,
