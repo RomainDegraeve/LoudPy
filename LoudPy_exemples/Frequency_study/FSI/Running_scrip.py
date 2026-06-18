@@ -41,24 +41,29 @@ pml = DomainSpecPML("PML", "Air")
 problem.add_sub_domain(pml)
 
 
+REMESH_EVERY = 30
+study = None
+
 for k, f in enumerate(f_array):
-   
+
+    if k % REMESH_EVERY == 0:
+        lam = c / f
+        pml.size, pml.f_pml, pml.t = lam/8, f, lam
+        problem.set_mesh_sizes({"coil": 0.0015, "subacou": min(lam/6, 0.1)})
+        problem.mesh(show_mesh_gui=False)
+        study = FreqStudy(problem)
+        study.assemble_domains()
+        print(f"  → remeshed at k={k}, f={f:.1f} Hz")
+
     lam = c / f
-    pml.size, pml.f_pml, pml.t = lam/8, f, lam
-    problem.set_mesh_sizes({"coil": 0.0015,"subacou": min(lam/6, 0.1),})
-    problem.mesh(show_mesh_gui=False)
+    study.solve_fsi(freq=f, force=force)
 
-    # One study per frequency 
-    study = FreqStudy(problem)
-    study.assemble_domains()
-    study.solve_fsi(freq = f, force = force) # records into _results
-
-    fpath = out_path+f"snap_{k:04d}_f{f:.2f}Hz.h5"
-    study.save(fpath, case="membrane_fsi_sweep", index=k, lam=lam)
-
-   
-    print(f"[{k+1}/{len(f_array)}]  f = {f:8.2f} Hz  →  {fpath}")
-
-
-
-
+    is_last_in_block = (k + 1) % REMESH_EVERY == 0 or k == len(f_array) - 1
+    if is_last_in_block:
+        block_start = (k // REMESH_EVERY) * REMESH_EVERY
+        f_start = f_array[block_start]
+        fpath = out_path + f"snap_{block_start:04d}_{k:04d}_f{f_start:.0f}-{f:.0f}Hz.h5"
+        study.save(fpath, case="membrane_fsi_sweep", index=k, lam=lam)
+        print(f"[{k+1}/{len(f_array)}]  saved block [{block_start}→{k}] → {fpath}")
+    else:
+        print(f"[{k+1}/{len(f_array)}]  f = {f:8.2f} Hz")

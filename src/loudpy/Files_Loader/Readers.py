@@ -274,10 +274,15 @@ class FreqReader(BaseReader):
             ))
         return out
 
-    def load(self) -> FreqSnapshot:
+    def load(self, idx: int | None = None) -> FreqSnapshot:
         snaps = self.snapshots()
+        if idx is not None:
+            return snaps[idx]
         if len(snaps) != 1:
-            raise RuntimeError(f"Expected 1 snapshot, got {len(snaps)}")
+            raise RuntimeError(
+                f"Expected 1 snapshot, got {len(snaps)}. "
+                f"Use r.load(idx=0) to pick one, or r.snapshots() for all."
+            )
         return snaps[0]
 
     def load_with_meshes(self) -> tuple[FreqSnapshot, Mesh, Mesh]:
