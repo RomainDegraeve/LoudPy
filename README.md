@@ -10,12 +10,12 @@ commercial software dedicated to loudspeaker simulation. It is built entirely on
 no external FEM library required.
 
 It targets **2D axisymmetric geometries**: the geometry is imported from a STEP file, converted to
-BREP format, and named physical entities are assigned to subdomains and boundaries to define
+BREP format, and named physical entities are assigned via the **Gmsh API**.to subdomains and boundaries to define
 material properties, coupling interfaces, and boundary conditions. Meshing is handled via the
 **Gmsh Python API**.
 
 Results are exported to **HDF5** (`.h5`) files. Fields and node coordinates are stored as NumPy
-arrays and can be reloaded with the built-in `FreqReader`, `EigenReader`, and `TimeReader` classes.
+arrays and can be reloaded with the built-in classes.
 
 This project was developed by Romain Degraeve as part of the
 [IMDEA Master's programme in Acoustics](https://iags.univ-lemans.fr/en/education-programs/master-s-degrees-in-acoustics/parcours-en-anglais/imdea.html#Generalinformation1-1)
@@ -29,7 +29,7 @@ This project was developed by Romain Degraeve as part of the
 | Frequency-domain FSI | `FreqStudy` | Coupled structural–acoustic harmonic solver |
 | Frequency-domain meca only | `FreqStudy` | Mechanical-only harmonic solver |
 | Complex eigenvalue | `EigenStudy` | Complex eigenfrequency analysis (mechanical domain) |
-| Nonlinear time-domain | `TimeStudy` | Nonlinear transient solver (single-tone & multi-tone) |
+| Nonlinear time-domain | `TimeStudy` | Geometrical Nonlinear solver (single-tone & multi-tone) |
 
 ### Physics
 - **Structural domain** — 2D axisymmetric linear elasticity with T6 elements
