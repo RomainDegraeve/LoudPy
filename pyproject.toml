@@ -1,0 +1,33 @@
+[project]
+name = "loudpy"
+version = "0.0.5"
+description = "Python API for Fluid-solid interaction FEM simulations"
+authors = [
+    {name = "Romain Degraeve", email = "rom2graeve@gmail.com"},
+    
+]
+dependencies = ["numpy>=2.4.4", "numba>=0.65.0", "scipy>=1.17.1", "gmsh>=4.15.2", "h5py>=3.16.0", "matplotlib>=3.10.9", "pyvista>=0.48.4"]
+requires-python = ">=3.13"
+readme = "README.md"
+license = {text = "GPL-3.0+"}
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+
+[tool.pdm]
+distribution = true
+
+[dependency-groups]
+dev = [
+    "matplotlib>=3.10.8",
+    "ruff>=0.15.11",
+    "black>=26.3.1",
+]
+test = [
+    "pytest>=9.0.3",
+]
+
+[tool.pdm.build]
+package-dir = "src"
