@@ -1,10 +1,10 @@
 
-![description](examples/Field_Response_8970Hz_Symmetric_Clean.png)
+![description](LoudPy_exemples/Field_Response_8970Hz_Symmetric_Clean.png)
 
 # LoudPy
 
 LoudPy is an open-source Python API dedicated to loudspeaker finite element simulation,
-released under the [GPL-3.0 license](https://www.gnu.org/licenses/gpl-3.0.html).
+released under the [GPL-3.0 license](https://www.gnu.org/licenses/gpl-3.0.html#license-text).
 
 
 ## Overview
@@ -16,10 +16,12 @@ alternative built specifically for loudspeaker/transducer engineers and research
 Starting from a CAD file of your loudspeaker, LoudPy lets you:
 - run **harmonic frequency-domain simulations** (structural, acoustic, or fully coupled FSI)
 - extract **eigenfrequencies** and mode shapes of the mechanical structure
-- simulate **nonlinear transient behaviour** under single-tone or multi-tone excitation
-- post-process and plot results directly as NumPy arrays
+- simulate **nonlinear behaviour** 
+- post-process results directly as NumPy arrays and plot them
 
-It is built entirely on **NumPy and SciPy** — no external FEM library required.
+The finite element formulations are entirely custom — this project does not depend on any 
+external FEM library. Numerical computations rely exclusively on **NumPy**, **SciPy**, and 
+**Numba**, while meshing is handled by **Gmsh**.
 
 This project was developed by Romain Degraeve as part of the
 [IMDEA Master's programme in Acoustics](https://iags.univ-lemans.fr/en/education-programs/master-s-degrees-in-acoustics/parcours-en-anglais/imdea.html#Generalinformation1-1)
