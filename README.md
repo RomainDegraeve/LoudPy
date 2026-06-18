@@ -1,39 +1,59 @@
 # LoudPy
 
-
-LoudPy is an open-source Python API for finite element modelling of axisymmetric loudspeakers, 
-released under the [GPL-3.0 license](https://www.gnu.org/licenses/gpl-3.0.html).
+LoudPy is an open-source Python FEM solver dedicated to loudspeaker design, released under the
+[GPL-3.0 license](https://www.gnu.org/licenses/gpl-3.0.html).
 
 ## Overview
 
-LoudPy provides a coupled FEM solver dedicated to loudspeaker design, featuring harmonic 
-frequency-domain, time-domain nonlinear, and complex eigenvalue solvers.
+LoudPy bridges the gap between non-user-friendly general-purpose open-source FEM solvers and costly
+commercial software dedicated to loudspeaker simulation. It is built entirely on NumPy and SciPy —
+no external FEM library required.
 
-It aims to bridge the gap between non-user-friendly general-purpose open-source FEM solvers 
-and costly user-friendly commercial FEM software dedicated to loudspeaker design.
+It targets **2D axisymmetric geometries**: the geometry is imported from a STEP file, converted to
+BREP format, and named physical entities are assigned to subdomains and boundaries to define
+material properties, coupling interfaces, and boundary conditions. Meshing is handled via the
+**Gmsh Python API**.
 
-It handles 2D axisymmetric geometries and solves the fully coupled electro-mechanical-acoustic 
-problem. Geometry is imported from STEP files, which are converted into BREP format. Named 
-entities are then assigned to subdomains and boundaries to define material properties, coupling 
-interfaces, and boundary conditions.
+Results are exported to **HDF5** (`.h5`) files. Fields and node coordinates are stored as NumPy
+arrays and can be reloaded with the built-in `FreqReader`, `EigenReader`, and `TimeReader` classes.
 
-The results are exported in .H5 format, solve field and coordinates are directly solved as numpy arrays.
-
-This project was developed by Romain Degraeve as part of the 
+This project was developed by Romain Degraeve as part of the
 [IMDEA Master's programme in Acoustics](https://iags.univ-lemans.fr/en/education-programs/master-s-degrees-in-acoustics/parcours-en-anglais/imdea.html#Generalinformation1-1)
 (International Master Degree in Acoustics).
 
-### Key features
+## Key Features
 
-- 2D axisymmetric FEM for structural and acoustic domains (frequency-domain harmonic solver)
-- Complex eigenfrequency analysis for mechanical domain
-- Nonlinear time-domain solver for mechanical domain
-- Rayleigh and hysteretic damping models (both support non-proportional formulations)
-- Perfectly Matched Layer (PML) for acoustic radiation
-- Mesh generation via the Gmsh Python API
-- Built on NumPy and SciPy only — no external FEM library
+### Solvers
+| Study | Class | Description |
+|---|---|---|
+| Frequency-domain FSI | `FreqStudy` | Coupled structural–acoustic harmonic solver |
+| Frequency-domain meca only | `FreqStudy` | Mechanical-only harmonic solver |
+| Complex eigenvalue | `EigenStudy` | Complex eigenfrequency analysis (mechanical domain) |
+| Nonlinear time-domain | `TimeStudy` | Nonlinear transient solver (single-tone & multi-tone) |
 
-The `examples/` folder contains a few application examples of LoudPy.
+### Physics
+- **Structural domain** — 2D axisymmetric linear elasticity with T6 elements
+- **Acoustic domain** — pressure-based formulation with T6 elements
+- **Fluid-structure coupling** — `InterfaceAcouMeca` coupling term assembled automatically
+- **Damping models** — Rayleigh (`α`, `β`) and hysteretic (`η`), both supporting non-proportional formulations
+- **Radiation** — Perfectly Matched Layer (PML) for free-field acoustic radiation
+
+### Material library
+Built-in material bank (`materials.json`) includes: `Polypropylene`, `Paper`, `Copper`, `Rubber`,
+`Kapton`, `PhenolicCloth`, `Air`, `SolidGlue`. Custom materials can be added by extending the JSON file.
+
+### Post-processing
+- `FreqReader` / `EigenReader` / `TimeReader` — context-managed HDF5 readers
+- `extract_subdomain(snap, name, field)` — field values restricted to a named subdomain
+- `extract_interface(snap, name, field)` — field values along a coupling interface
+- Built-in plotting: SPL sweeps, field maps, deformed interface, mechanical sweeps
+
+### Examples
+The `LoudPy_exemples/` folder covers:
+- `Frequency_study/FSI` — coupled loudspeaker FSI sweep
+- `Frequency_study/Meca` — mechanical-only frequency sweep
+- `Eigen_study` — complex eigenfrequency analysis
+- `Time_study/Single_tone` and `Time_study/Multitone` — nonlinear time-domain simulations
 
 ## Contributing
 
