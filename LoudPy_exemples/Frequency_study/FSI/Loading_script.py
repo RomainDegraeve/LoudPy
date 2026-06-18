@@ -12,7 +12,6 @@ out_dir     = Path("LoudPy_exemples/Frequency_study/FSI/Results/Figures")
 
 files = sorted(results_dir.glob("snap_*.h5"))
 
-
 # ── inspect one file ──────────────────────────────────────────────────────────
 with FreqReader(files[0]) as r:
     r.inspect()
