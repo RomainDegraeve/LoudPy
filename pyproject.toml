@@ -1,6 +1,6 @@
 [project]
 name = "loudpy"
-version = "0.0.5"
+version = "0.0.6"
 description = "Python API for Fluid-solid interaction FEM simulations"
 authors = [
     {name = "Romain Degraeve", email = "rom2graeve@gmail.com"},
