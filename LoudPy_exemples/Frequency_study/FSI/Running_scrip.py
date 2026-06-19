@@ -103,7 +103,7 @@ for k, f in enumerate(f_array):
 
         # Acoustic element size: λ/6 gives 6 elements per wavelength.
         # The cap at 0.1 m prevents over-refinement at very low frequencies.
-        problem.set_mesh_sizes({"coil": 0.0015, "subacou": min(lam / 6, 0.1)})
+        problem.set_mesh_sizes({"coil": 0.0015, "subacou": min(lam / 6, 0.005)})
         problem.mesh(show_mesh_gui=False)
 
         study = FreqStudy(problem)
