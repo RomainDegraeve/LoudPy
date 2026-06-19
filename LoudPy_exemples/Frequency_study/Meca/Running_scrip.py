@@ -30,23 +30,23 @@ problem.add_sub_domain(
 )
 
 
-
 problem.add_interface(InterfaceSpecClamped("interface_constrained"))
 problem.add_interface(InterfaceSpecForced("interface_forced"))
 problem.add_interface(InterfaceSpecAcouMeca ("interface_acou_meca_front"))
 problem.add_interface(InterfaceSpecAcouMeca ("interface_acou_meca_rear"))
 
 problem.mesh(show_mesh_gui=False)
-
-for k, f in enumerate(f_array):
-   
     # One study per frequency 
-    study = FreqStudy(problem)
-    study.assemble_meca()
+study = FreqStudy(problem)
+study.assemble_meca()
+
+
+for f in (f_array):
+   
     study.solve_meca(freq = f, force = force)
    
-    study.save( out_path+f"snap_{k:04d}_f{f:.2f}Hz.h5", case="membrane_fsi_sweep", index=k)
-    print(f"[{k+1}/{len(f_array)}]  f = {f:8.2f} Hz")
+study.save(out_path+f"snap_f_{f_array.min()}-{f_array.max()}Hz.h5", case="membrane_fsi_sweep")
+
 
 
 
