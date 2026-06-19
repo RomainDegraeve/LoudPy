@@ -1,12 +1,11 @@
 
 ![description](LoudPy_exemples/Field_Response_8970Hz_Symmetric_Clean.png)
 
-# LoudPy
+# LoudPy Beta
 
-LoudPy is an open-source Python API dedicated to loudspeaker finite element simulation,
-released under the [GPL-3.0 license](https://www.gnu.org/licenses/gpl-3.0.html#license-text).
+LoudPy is an open-source Python API dedicated to loudspeaker finite element simulation, released under the [GPL-3.0 license](https://www.gnu.org/licenses/gpl-3.0.html).
 
-
+> ⚠️ **Beta version** — The API is still under active development. Proper documentation will be provided soon.
 ## Overview
 
 Designing a loudspeaker with FEM means choosing between complex general-purpose tools that
