@@ -182,7 +182,7 @@ def plot_uva_fft(t: np.ndarray,
         ax.grid(True, which="both", alpha=0.2)
 
     win_type = "Rectangular" if excitation_freqs is not None else "Hanning"
-    axs[0].set_title(title or f"FFT Analysis — {win_type} window")
+    axs[0].set_title(title or f"FFT Analysis - {win_type} window")
     axs[2].set_xlabel("Frequency [Hz]")
     fig.tight_layout()
 
