@@ -38,26 +38,6 @@ class StudySaver:
 
     # ── internal scatter helpers ───────────────────────────────────────────
 
-    @property
-    def _n_nodes(self) -> int:
-        return len(self._topo.tags)
-
-    def _rows(self, unique_tags: np.ndarray) -> np.ndarray:
-        return self._topo.dof_rows(unique_tags)
-
-    def _scatter_vector(self, raw: np.ndarray,
-                        rows: np.ndarray, dpn: int) -> np.ndarray:
-        """(n_dofs,) → (n_nodes,) or (n_nodes, dpn)."""
-        raw = np.asarray(raw)
-        n   = len(rows)
-        if dpn == 1:
-            out = np.zeros(self._n_nodes, dtype=raw.dtype)
-            out[rows] = raw[:n]
-        else:
-            out = np.zeros((self._n_nodes, dpn), dtype=raw.dtype)
-            out[rows] = raw[:dpn * n].reshape(n, dpn)
-        return out
-
     def _scatter_fields(self, fields: dict, dmaps: dict) -> dict:
         """
         Scatter each field onto its own domain's node-indexed array.
