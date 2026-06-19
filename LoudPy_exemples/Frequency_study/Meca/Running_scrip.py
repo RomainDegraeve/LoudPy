@@ -45,7 +45,7 @@ for f in (f_array):
    
     study.solve_meca(freq = f, force = force)
    
-study.save(out_path+f"snap_f_{f_array.min()}-{f_array.max()}Hz.h5", case="membrane_fsi_sweep")
+study.save(out_path+f"snap_f_{int(f_array.min())}-{int(f_array.max())}Hz.h5", case="membrane_fsi_sweep")
 
 
 
