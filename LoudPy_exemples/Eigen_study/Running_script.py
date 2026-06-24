@@ -43,20 +43,17 @@ problem.add_sub_domain(
     DomainSpecMecaRayleigh("dustcap",    material="Polypropylene", size=0.0005),
 )
 
-# Boundary conditions:
-#   Clamped  — zero displacement on the basket attachment ring
-#   Forced   — excitation surface (voice coil drive point)
-#   AcouMeca — fluid-structure interface (declared but passive in a pure modal
-#               analysis because no acoustic domain is included here)
 problem.add_interface(
     InterfaceSpecClamped("interface_constrained"),
     InterfaceSpecForced("interface_forced"),
     InterfaceSpecAcouMeca("interface_acou_meca_front"),
 )
 
+
+
 # ── Meshing ────────────────────────────────────────────────────────────────────
 # Set show_mesh_gui=True to preview the mesh in GMSH before solving.
-problem.mesh(show_mesh_gui=False, write_mesh_file=True)
+problem.mesh(show_mesh_gui=False)
 
 # ── Modal solve ────────────────────────────────────────────────────────────────
 # ARPACK shift-invert finds n_modes eigenvalues near f_target [Hz].
