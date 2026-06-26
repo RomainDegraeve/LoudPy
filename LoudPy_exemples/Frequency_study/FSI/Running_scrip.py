@@ -52,7 +52,7 @@ force = 0.1     # applied force amplitude [N]
 
 # Integer-valued frequencies avoid duplicate FFT bins when comparing with
 # time-domain results (where bin spacing is 1/T_block).
-f_array = np.unique(np.logspace(np.log10(20), np.log10(20000), 320).astype(int))
+f_array = np.unique(np.logspace(np.log10(10000), np.log10(20000), 320).astype(int))
 
 # Number of consecutive frequencies that share the same mesh.
 # Smaller values keep the mesh better-resolved but increase setup overhead.
@@ -104,7 +104,7 @@ for k, f in enumerate(f_array):
         # Acoustic element size: λ/6 gives 6 elements per wavelength.
         # The cap at 0.1 m prevents over-refinement at very low frequencies.
         problem.set_mesh_sizes({"coil": 0.0015, "subacou": min(lam / 6, 0.005)})
-        problem.mesh(show_mesh_gui=False)
+        problem.mesh(show_mesh_gui=True)
 
         study = FreqStudy(problem)
         study.assemble_domains()

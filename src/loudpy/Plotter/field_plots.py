@@ -233,7 +233,7 @@ def plot_interface_deformed(x: np.ndarray, y: np.ndarray,
 # ── PyVista animation ──────────────────────────────────────────────────────────
 
 def animate_field(coords: np.ndarray, tris: np.ndarray,
-                  U_xyz: np.ndarray, time: np.ndarray, *,
+                  U_xy: np.ndarray, time: np.ndarray, *,
                   scale_factor: float = 1.0,
                   start_time: float = 0.0,
                   fps: int = 30,
@@ -271,7 +271,7 @@ def animate_field(coords: np.ndarray, tris: np.ndarray,
     print(f"[animate_field] {n_frames} frames, stride={stride}, "
           f"t=[{t_sub[0]:.4f}, {t_sub[-1]:.4f}] s")
 
-    U_sel  = np.real(U_xyz[sel])               # (n_frames, n_nodes, 2)
+    U_sel  = np.real(U_xy[sel])               # (n_frames, n_nodes, 2)
     U_mag  = np.linalg.norm(U_sel, axis=2)     # (n_frames, n_nodes)
     vmax   = float(U_mag.max()) or 1.0
 
