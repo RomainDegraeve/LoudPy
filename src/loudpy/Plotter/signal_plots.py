@@ -5,6 +5,8 @@ No Snapshot, Mesh, Reader or study objects are imported here.
 """
 from __future__ import annotations
 
+from typing import NamedTuple
+
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -116,6 +118,30 @@ def plot_uva_time(t: np.ndarray,
 
 # ── FFT of UVA ────────────────────────────────────────────────────────────────
 
+class UvaSpectra(NamedTuple):
+    """Result of :func:`plot_uva_fft`.
+
+    Supports both attribute access (``res.fig``) and tuple indexing/unpacking
+    (``res[0]``).  The first five fields are always present; the rest are filled
+    only when ``excitation_freqs`` is given, and are ``None`` otherwise.
+    """
+    fig:        plt.Figure               # the 3-panel spectrum figure
+    freqs:      np.ndarray               # (n_freq,) frequency axis [Hz]
+    u_mag:      np.ndarray               # (n_freq,) displacement magnitude spectrum
+    v_mag:      np.ndarray               # (n_freq,) velocity magnitude spectrum
+    a_mag:      np.ndarray               # (n_freq,) acceleration magnitude spectrum
+    noise_mask: np.ndarray | None = None  # (n_freq,) True on non-excitation bins
+    u_complex:  np.ndarray | None = None  # raw complex rfft of displacement
+    v_complex:  np.ndarray | None = None  # raw complex rfft of velocity
+    a_complex:  np.ndarray | None = None  # raw complex rfft of acceleration
+    n_samples:  int | None        = None  # samples in the steady-state block
+    ss_start:   int | None        = None  # index where the steady-state block starts
+    t_block:    np.ndarray | None = None  # (n_samples,) time axis of the block [s]
+    u_block:    np.ndarray | None = None  # (n_samples,) steady-state displacement
+    v_block:    np.ndarray | None = None  # (n_samples,) steady-state velocity
+    a_block:    np.ndarray | None = None  # (n_samples,) steady-state acceleration
+
+
 def plot_uva_fft(t: np.ndarray,
                  u: np.ndarray, v: np.ndarray, a: np.ndarray, *,
                  t_start: float | None = None,
@@ -133,10 +159,11 @@ def plot_uva_fft(t: np.ndarray,
 
     Returns
     -------
-    excitation_freqs is None  → fig, freqs, u_lin, v_lin, a_lin
-    excitation_freqs provided → fig, freqs, u_lin, v_lin, a_lin,
-                                mask_remnant, U_c, V_c, A_c, N_ss, idx_ss,
-                                t_ss, u_ss, v_ss, a_ss
+    UvaSpectra
+        A NamedTuple — use attribute access (``res.fig``) or tuple indexing.
+        Always has .fig, .freqs, .u_mag, .v_mag, .a_mag.  When excitation_freqs
+        is given it also carries .noise_mask, .u_complex/.v_complex/.a_complex,
+        .n_samples, .ss_start, .t_block and .u_block/.v_block/.a_block.
     """
     dt = t[1] - t[0]
     if t_start is None:
@@ -188,10 +215,10 @@ def plot_uva_fft(t: np.ndarray,
 
     t_ss = t[idx_ss: idx_ss + Nu]
     if excitation_freqs is not None:
-        return (fig, fu, u_lin, v_lin, a_lin, mask_remnant,
-                U_c, V_c, A_c, Nu, idx_ss, t_ss,
-                u[idx_ss:], v[idx_ss:], a[idx_ss:])
-    return fig, fu, u_lin, v_lin, a_lin
+        return UvaSpectra(fig, fu, u_lin, v_lin, a_lin, mask_remnant,
+                          U_c, V_c, A_c, Nu, idx_ss, t_ss,
+                          u[idx_ss:], v[idx_ss:], a[idx_ss:])
+    return UvaSpectra(fig, fu, u_lin, v_lin, a_lin)
 
 
 # ── mechanical sweep (U/V/A vs frequency, in dB) ─────────────────────────────

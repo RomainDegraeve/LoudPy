@@ -1,6 +1,6 @@
 from loudpy.ObjectsGeo import L3_Edges
 
-class InterfaceConstrainted(L3_Edges): 
+class InterfaceConstrained(L3_Edges):
     def __init__(self, mesh_obj: L3_Edges, direction : float):
         super().__init__(
             node_tags=mesh_obj.node_tags,

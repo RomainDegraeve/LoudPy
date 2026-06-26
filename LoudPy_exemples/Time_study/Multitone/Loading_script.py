@@ -69,7 +69,7 @@ result = plot_uva_fft(time, u_probe, v_probe, a_probe,
                       t_start=t_ramp,
                       excitation_freqs=freqs_tones,
                       title="Cone tip — FFT")
-fig_fft = result[0]
+fig_fft = result.fig
 fig_fft.savefig(out_dir / "uva_fft.pdf", bbox_inches="tight")
 
 # ── Field snapshot at the end of the ramp ──────────────────────────────────────────

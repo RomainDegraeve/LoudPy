@@ -252,7 +252,7 @@ def animate_field(coords: np.ndarray, tris: np.ndarray,
     ----------
     coords  : (n_nodes, 2)
     tris    : (n_tris, 3)
-    U_xyz   : (n_timesteps, n_nodes, 2)  — node-indexed displacement (real)
+    U_xy    : (n_timesteps, n_nodes, 2)  — node-indexed displacement (ux, uy), real
     time    : (n_timesteps,)
     """
     try:

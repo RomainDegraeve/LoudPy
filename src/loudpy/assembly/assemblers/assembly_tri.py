@@ -112,13 +112,13 @@ class MecaAssembler(Assembler):
     # ------------------------------------------------------------------
     def _blocked_dofs(self, interfaces):
         """Collect blocked global DOF indices from constrained interfaces."""
-        from loudpy.Interfaces.InterfaceConstrainted import (
-            InterfaceConstrainted,
+        from loudpy.Interfaces.InterfaceConstrained import (
+            InterfaceConstrained,
         )  # local import to avoid cycles
 
         blocked = set()
         for iface in interfaces:
-            if not isinstance(iface, InterfaceConstrainted):
+            if not isinstance(iface, InterfaceConstrained):
                 continue
             comps = iface.direction
             for tag in iface.node_tags:
@@ -426,11 +426,11 @@ class MecaAssemblerNL(_SparseAssemblerBase):
     # Dirichlet BCs  (same logic as linear MecaAssembler)
     # ------------------------------------------------------------------
     def _blocked_dofs(self, interfaces):
-        from loudpy.Interfaces.InterfaceConstrainted import InterfaceConstrainted
+        from loudpy.Interfaces.InterfaceConstrained import InterfaceConstrained
 
         blocked = set()
         for iface in interfaces:
-            if not isinstance(iface, InterfaceConstrainted):
+            if not isinstance(iface, InterfaceConstrained):
                 continue
             comps = iface.direction
             for tag in iface.node_tags:

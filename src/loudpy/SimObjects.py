@@ -6,7 +6,7 @@ from loudpy.SubDomains import (
     SubDomainAcou, SubDomainAcou_PML,
 )
 from loudpy.Interfaces import (
-    InterfaceAcouMeca, InterfaceConstrainted, InterfaceForced,
+    InterfaceAcouMeca, InterfaceConstrained, InterfaceForced,
 )
 
 # ── Domain specs ─────────────────────────────────────────────────────────────
@@ -79,7 +79,7 @@ class InterfaceSpecAcouMeca(InterfaceSpec):
 
 @dataclass(eq=False)
 class InterfaceSpecClamped(InterfaceSpec):
-    physics : ClassVar[type] = InterfaceConstrainted
+    physics : ClassVar[type] = InterfaceConstrained
 
 @dataclass(eq=False)
 class InterfaceSpecForced(InterfaceSpec):

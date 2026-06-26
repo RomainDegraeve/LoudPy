@@ -1,7 +1,7 @@
 """Public interface boundary condition classes."""
 
 from .InterfaceAcouMeca import InterfaceAcouMeca
-from .InterfaceConstrainted import InterfaceConstrainted
+from .InterfaceConstrained import InterfaceConstrained
 from .InterfaceForced import InterfaceForced
 
-__all__ = ["InterfaceAcouMeca", "InterfaceConstrainted", "InterfaceForced"]
+__all__ = ["InterfaceAcouMeca", "InterfaceConstrained", "InterfaceForced"]
