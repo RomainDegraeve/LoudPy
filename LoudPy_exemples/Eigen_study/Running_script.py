@@ -46,7 +46,7 @@ problem.add_sub_domain(
 problem.add_interface(
     InterfaceSpecClamped("interface_constrained"),
     InterfaceSpecForced("interface_forced"),
-    InterfaceSpecAcouMeca("interface_acou_meca_front"),
+    InterfaceSpecAcouMeca("interface_acou_meca"),
 )
 
 
@@ -59,7 +59,7 @@ problem.mesh(show_mesh_gui=False)
 # ARPACK shift-invert finds n_modes eigenvalues near f_target [Hz].
 # Increasing n_modes captures more resonances at the cost of memory and time.
 study = EigenStudy(problem)
-study.solve_meca_eigen_ARPAC(n_modes=45, f_target=1)
+study.solve_meca_eigen_ARPAC(n_modes=15, f_target=1)
 
 # ── Save ───────────────────────────────────────────────────────────────────────
 study.save(out_path)

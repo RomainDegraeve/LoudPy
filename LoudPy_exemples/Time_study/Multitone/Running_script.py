@@ -49,7 +49,7 @@ from loudpy import (
 geo_path = "LoudPy_exemples/Geometries/Loudspeaker/HPNEW-Sketch.geo"
 msh_path = "LoudPy_exemples/Geometries/Loudspeaker/HPNEW-Sketch.msh"
 mat_path = "src/loudpy/Materials_Bank/materials.json"
-out_path = "LoudPy_exemples/Time_study/Multitone/Results/time_study_large_signal.h5"
+out_path = "LoudPy_exemples/Time_study/Multitone/Results/time_study_large_signal_1N.h5"
 
 # ── Signal parameters ──────────────────────────────────────────────────────────
 f_min           = 20        # lowest excitation frequency [Hz]
@@ -57,7 +57,7 @@ f_max           = 1000      # highest excitation frequency [Hz]
 fs              = 10_000    # sampling rate [Hz]  (must be > 2 · f_max)
 t_block         = 1.0       # duration of one periodic block [s]
 n_tones_wanted  = 90        # target number of tones before de-duplication
-force_amplitude = 1e-4     # peak force [N] — small signal (large signal)
+force_amplitude = 1     # peak force [N] — small signal (large signal)
 seed            = 42        # random seed for reproducible phase randomisation
 
 # ── Step 1 — build a zero-leakage frequency grid ──────────────────────────────
@@ -155,8 +155,8 @@ study.solve_time_domain_rayleigh_nl(
     dt              = 1.0 / fs,         # time step [s]
     n_steps         = n_steps,
     nr_max_iter     = 10,               # Newton-Raphson: max iterations per step
-    nr_tol          = 1e-10,             # Newton-Raphson: convergence tolerance
-    rho_inf         = 0.7,             # generalised-α spectral radius
+    nr_tol          = 1e-6,             # Newton-Raphson: convergence tolerance
+    rho_inf         = 0.9,             # generalised-α spectral radius
 )
 
 # ── Save ───────────────────────────────────────────────────────────────────────

@@ -55,7 +55,7 @@ with EigenReader(in_path) as r:
     # Returns: coords_iface (n_iface_nodes, 2) node coordinates
     #          u_iface      (n_iface_nodes, 2) complex displacement
     coords_iface, u_iface = r.extract_interface(
-        snaps[k], interface="interface_acou_meca_front", field="u_meca")
+        snaps[k], interface="interface_acou_meca", field="u_meca")
 
 # ── Mode-shape grid — all modes ────────────────────────────────────────────────
 # Each panel shows the displacement magnitude |u| with the undeformed mesh

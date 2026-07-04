@@ -67,7 +67,7 @@ class FreqStudy(Problem, DofMapMixin):
 
 
 
-    def solve_meca(self, freq: float, force: bool, *, record: bool = True):
+    def solve_meca(self, freq: float, force: float, *, record: bool = True):
         omega  = 2 * np.pi * freq
         omega2 = omega ** 2
         self.omega = omega
