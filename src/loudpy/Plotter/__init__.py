@@ -4,6 +4,8 @@ from .field_plots import (
     plot_modes_grid,
     plot_interface_deformed,
     animate_field,
+    load_sweep_frames, 
+    animate_pressure_displacement,
     STYLE,
 )
 

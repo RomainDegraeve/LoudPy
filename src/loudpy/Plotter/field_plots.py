@@ -67,6 +67,238 @@ def plot_field(coords: np.ndarray, tris: np.ndarray, values: np.ndarray, *,
     if title: ax.set_title(title)
     return ax
 
+"""
+Animate the FSI frequency sweep: acoustic pressure field + deformed
+mechanical structure, one clip per snapshot file, stitched into an .mp4.
+
+Two layers per frame
+--------------------
+  * acoustic domain : instantaneous pressure  Re(p e^{j phi})  (diverging cmap)
+  * mechanical mesh : deformed by             Re(u e^{j phi})  colored by |u|
+
+With n_phase > 1 the membrane visibly oscillates at each frequency before
+the sweep moves on. Because the mesh is regenerated at every frequency
+(PML thickness and acoustic size depend on lambda), the PyVista meshes are
+rebuilt for every snapshot -- nothing is assumed constant across frames.
+
+Follows the same convention as the plotting module: the animation function
+takes plain numpy arrays; all file/reader handling lives in the loader.
+"""
+
+
+from pathlib import Path
+
+import numpy as np
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1) Loader — adapt the three FIELD/DOMAIN names here if yours differ
+# ─────────────────────────────────────────────────────────────────────────────
+
+P_FIELD = "p_acou"     # complex nodal pressure in the acoustic domain
+U_FIELD = "u_meca"     # complex nodal displacement (n_nodes, 2) in the meca domain
+
+def load_sweep_frames(run_dir: str | Path, pattern: str = "snap_*.h5",
+                      stride: int = 1) -> list[dict]:
+    """
+    Read every snapshot in every block file and return a list of dicts:
+        dict(freq, coords_a, tris_a, p, coords_m, tris_m, u)
+    stride : keep every Nth snapshot (applied across the whole sweep).
+    """
+    from loudpy.Files_Loader import FreqReader, Domain
+
+    files = sorted(Path(run_dir).glob(pattern))
+    if not files:
+        raise FileNotFoundError(f"No '{pattern}' in {run_dir}")
+
+    frames, k = [], 0
+    for fp in files:
+        with FreqReader(fp) as r:
+            for snap in r.snapshots():
+                if k % stride:
+                    k += 1
+                    continue
+                k += 1
+                mesh_a = r.mesh(snap.mesh_id, Domain.ACOU)
+                mesh_m = r.mesh(snap.mesh_id, Domain.MECA)
+                frames.append(dict(
+                    freq     = float(snap.f),
+                    coords_a = np.asarray(mesh_a.coords, float),
+                    tris_a   = np.asarray(mesh_a.tris, np.int64)[:, :3],
+                    p        = np.asarray(snap.fields["p_acou"]),
+                    coords_m = np.asarray(mesh_m.coords, float),
+                    tris_m   = np.asarray(mesh_m.tris, np.int64)[:, :3],
+                    u        = np.asarray(snap.fields["u_meca"]),
+                ))
+                print(f"loaded {fp.name}  f = {snap.f:.1f} Hz")
+
+    frames.sort(key=lambda d: d["freq"])
+    return frames
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+
+def animate_pressure_displacement(frames: list[dict], *,
+                                  n_phase: int = 8,
+                                  fps: int = 25,
+                                  deform_scale: float = 0.05,
+                                  max_deform: float | None = None,   # cap on displayed peak deformation [m]
+                                  spl_range: float = 60.0,           # dB below per-frame max
+                                  per_frame_norm: bool = True,
+                                  xlim: tuple | None = None,
+                                  ylim: tuple | None = None,
+                                  cmap_phase: str = "twilight",
+                                  cmap_spl: str = "magma",
+                                  cmap_u: str = "viridis",
+                                  window_size: tuple = (1920, 1080),
+                                  show_meca_rest: bool = True,
+                                  save_path: str | Path = "sweep_anim.mp4") -> None:
+    """
+    Mirrored axisymmetric animation:
+        left  half (r -> -r) : pressure phase   [rad]   (colorbar left)
+        right half           : pressure SPL     [dB]    (colorbar right)
+        both halves          : deformed meca mesh, |u|  (colorbar bottom)
+
+    Pressure layers are static per frequency (magnitude/phase); the
+    structure oscillates through n_phase sub-frames via Re(u e^{j phi}).
+
+    max_deform : caps the *displayed* peak deformation in metres.
+    xlim, ylim : visible window in metres (acoustic mesh is clipped to it,
+                 camera framed to it; use a square window_size if the box
+                 is square, otherwise white bands appear).
+    """
+    try:
+        import pyvista as pv
+        import imageio
+    except ImportError as e:
+        raise ImportError("pip install pyvista imageio imageio-ffmpeg") from e
+
+    def _pd(coords, tris, mirror=False, z=0.0):
+        pts = np.column_stack([coords, np.full(len(coords), z)])
+        if mirror:
+            pts[:, 0] *= -1.0
+        cells = np.column_stack(
+            [np.full(len(tris), 3, dtype=np.int64), tris]).ravel()
+        return pv.PolyData(pts, cells)
+
+    L = max(float(np.ptp(f["coords_a"], axis=0).max()) for f in frames)
+    disp_peak = deform_scale * L
+    if max_deform is not None:
+        disp_peak = min(disp_peak, max_deform)
+    z_off = 1e-3 * L                       # lift structure above pressure field
+
+    spl_gmax = max(
+        20 * np.log10(np.abs(f["p"]).max() / 20e-6 + 1e-30) for f in frames)
+
+    pv.global_theme.multi_samples = 8
+    plotter = pv.Plotter(off_screen=True, window_size=list(window_size))
+    plotter.set_background("white")
+
+    # visible window ---------------------------------------------------------
+    if xlim is None:
+        xlim = (-L, L)
+    if ylim is None:
+        ys = frames[0]["coords_a"][:, 1]
+        ylim = (float(ys.min()), float(ys.max()))
+    cx, cy  = 0.5 * (xlim[0] + xlim[1]), 0.5 * (ylim[0] + ylim[1])
+    aspect  = window_size[0] / window_size[1]
+    half_h  = 0.5 * (ylim[1] - ylim[0])
+    half_w  = 0.5 * (xlim[1] - xlim[0])
+    p_scale = max(half_h, half_w / aspect)
+    clip_box = (xlim[0], xlim[1], ylim[0], ylim[1], -1.0, 1.0)
+
+    phis = np.linspace(0.0, 2 * np.pi, n_phase, endpoint=False)
+    save_path = str(save_path)
+    total, done = len(frames) * n_phase, 0
+
+    bar_phase = dict(title="phase [rad]", color="black", vertical=True,
+                     position_x=0.03, position_y=0.30, width=0.05, height=0.45)
+    bar_spl   = dict(title="SPL [dB]",   color="black", vertical=True,
+                     position_x=0.90, position_y=0.30, width=0.05, height=0.45)
+    bar_u     = dict(title="|u| [m]",    color="black", vertical=False,
+                     position_x=0.30, position_y=0.03, width=0.40, height=0.06)
+
+    with imageio.get_writer(save_path, fps=fps, quality=9) as writer:
+        for f in frames:
+            p      = f["p"]
+            spl    = 20 * np.log10(np.abs(p) / 20e-6 + 1e-30)
+            phase  = np.angle(p)
+            u_mag  = np.linalg.norm(np.abs(f["u"]), axis=1)
+            u_amp  = float(np.abs(f["u"]).max()) or 1e-30
+            s_geom = disp_peak / u_amp
+
+            spl_top  = float(spl.max()) if per_frame_norm else spl_gmax
+            clim_spl = [spl_top - spl_range, spl_top]
+
+            acou_R = _pd(f["coords_a"], f["tris_a"])               # SPL side
+            acou_L = _pd(f["coords_a"], f["tris_a"], mirror=True)  # phase side
+            acou_R.point_data["spl"]   = spl
+            acou_L.point_data["phase"] = phase
+            acou_R = acou_R.clip_box(clip_box, invert=False)
+            acou_L = acou_L.clip_box(clip_box, invert=False)
+
+            meca_R = _pd(f["coords_m"], f["tris_m"], z=z_off)
+            meca_L = _pd(f["coords_m"], f["tris_m"], mirror=True, z=z_off)
+
+            for phi in phis:
+                du = np.real(f["u"] * np.exp(1j * phi)) * s_geom   # (n_m, 2)
+
+                plotter.clear()
+
+                plotter.add_mesh(acou_L, scalars="phase", cmap=cmap_phase,
+                                 clim=[-np.pi, np.pi], show_edges=False,
+                                 name="acouL", scalar_bar_args=bar_phase)
+                plotter.add_mesh(acou_R, scalars="spl", cmap=cmap_spl,
+                                 clim=clim_spl, show_edges=False,
+                                 name="acouR", scalar_bar_args=bar_spl)
+
+                if show_meca_rest:
+                    for m, nm in ((meca_R, "restR"), (meca_L, "restL")):
+                        plotter.add_mesh(m, color="grey", style="wireframe",
+                                         line_width=0.6, opacity=0.3,
+                                         lighting=False, name=nm)
+
+                for base, sign, nm, bar in (
+                        (meca_R, +1.0, "mecaR", bar_u),
+                        (meca_L, -1.0, "mecaL", None)):
+                    dm  = base.copy()
+                    pts = dm.points.copy()
+                    pts[:, 0] += sign * du[:, 0]    # mirror flips u_r
+                    pts[:, 1] += du[:, 1]
+                    pts[:, 2] += 0.5 * z_off        # deformed above rest wire
+                    dm.points = pts
+                    dm.point_data["|u|"] = u_mag
+                    plotter.add_mesh(dm, scalars="|u|", cmap=cmap_u,
+                                     show_edges=False, name=nm,
+                                     show_scalar_bar=bar is not None,
+                                     scalar_bar_args=bar or {})
+
+                plotter.add_text(
+                    f"f = {f['freq']:8.1f} Hz   SPLmax = {spl.max():5.1f} dB   "
+                    f"deform x{s_geom:.3g}",
+                    position="upper_edge", color="black",
+                    name="hud", font_size=13)
+
+                plotter.view_xy()
+                plotter.enable_parallel_projection()
+                plotter.camera.focal_point    = (cx, cy, 0.0)
+                plotter.camera.position       = (cx, cy, 1.0)
+                plotter.camera.parallel_scale = p_scale
+
+                plotter.render()
+                writer.append_data(plotter.screenshot())
+
+                done += 1
+                if done % 50 == 0:
+                    print(f"  {done}/{total} frames")
+
+    plotter.close()
+    print(f"→ {save_path}")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 3) Driver
+# ─────────────────────────────────────────────────────────────────────────────
+
 
 # ── multi-panel layout ─────────────────────────────────────────────────────────
 
