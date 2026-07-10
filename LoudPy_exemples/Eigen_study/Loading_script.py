@@ -55,7 +55,7 @@ with EigenReader(in_path) as r:
     # Returns: coords_iface (n_iface_nodes, 2) node coordinates
     #          u_iface      (n_iface_nodes, 2) complex displacement
     coords_iface, u_iface = r.extract_interface(
-        snaps[k], interface="interface_acou_meca", field="u_meca")
+        snaps[k], interface="interface_acou_meca_front", field="u_meca")
 
 # ── Mode-shape grid — all modes ────────────────────────────────────────────────
 # Each panel shows the displacement magnitude |u| with the undeformed mesh
@@ -63,14 +63,14 @@ with EigenReader(in_path) as r:
 # relative to the characteristic mesh size.
 fig = plot_modes_grid(
     mesh.coords, mesh.tris, shapes, freqs,
-    zetas=zetas, n_plot=42, ncols=4, deform_scale=0.05)
+    zetas=zetas, n_plot=15, ncols=4, deform_scale=0.05)
 fig.savefig(out_dir / "modes_grid.pdf", bbox_inches="tight")
 
 # ── Mode-shape grid — user-selected modes ─────────────────────────────────────
 # Pass mode_indices to choose any subset of modes by 0-based index.
 fig = plot_modes_grid(
     mesh.coords, mesh.tris, shapes, freqs,
-    zetas=zetas, mode_indices=[0, 2, 4, 16, 20], ncols=3)
+    zetas=zetas, mode_indices=[0, 2, ], ncols=3)
 fig.savefig(out_dir / "modes_selection.pdf", bbox_inches="tight")
 
 # ── Single mode — full mesh ────────────────────────────────────────────────────

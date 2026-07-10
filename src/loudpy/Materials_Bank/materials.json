@@ -39,8 +39,8 @@
         "E":         3e7,
         "nu":        0.45,
         "eta":       0.15,
-        "alpha_ray": 200,
-        "beta_ray":  1.3e-5
+        "alpha_ray": 45,
+        "beta_ray":   2.3e-5
     },
 
     "Kapton": {

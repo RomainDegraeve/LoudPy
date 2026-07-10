@@ -46,7 +46,7 @@ problem.add_sub_domain(
 problem.add_interface(
     InterfaceSpecClamped("interface_constrained"),
     InterfaceSpecForced("interface_forced"),
-    InterfaceSpecAcouMeca("interface_acou_meca"),
+    InterfaceSpecAcouMeca("interface_acou_meca_front"),
 )
 
 
