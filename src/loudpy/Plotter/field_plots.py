@@ -137,41 +137,53 @@ def load_sweep_frames(run_dir: str | Path, pattern: str = "snap_*.h5",
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-
 def animate_pressure_displacement(frames: list[dict], *,
                                   n_phase: int = 8,
+                                  n_cycles: int = 1,
                                   fps: int = 25,
+                                  show_grid: bool = True,
                                   deform_scale: float = 0.05,
-                                  max_deform: float | None = None,   # cap on displayed peak deformation [m]
-                                  spl_range: float = 60.0,           # dB below per-frame max
+                                  max_deform: float | None = None,
+                                  spl_range: float = 60.0,
                                   per_frame_norm: bool = True,
+                                  pressure_mode: str = "mag_phase",   # "mag_phase" | "real"
+                                  p_clim: tuple | None = None,        # (pmin, pmax) [Pa] for Re(p)
+                                  clip_margin: float | tuple = 3e-3,  # scalar or (l, r, b, t) [m]
                                   xlim: tuple | None = None,
                                   ylim: tuple | None = None,
                                   cmap_phase: str = "twilight",
                                   cmap_spl: str = "magma",
+                                  cmap_real: str = "RdBu_r",
                                   cmap_u: str = "viridis",
-                                  window_size: tuple = (1920, 1080),
+                                  window_size: tuple = (1088, 1088),
                                   show_meca_rest: bool = True,
                                   save_path: str | Path = "sweep_anim.mp4") -> None:
     """
-    Mirrored axisymmetric animation:
-        left  half (r -> -r) : pressure phase   [rad]   (colorbar left)
-        right half           : pressure SPL     [dB]    (colorbar right)
-        both halves          : deformed meca mesh, |u|  (colorbar bottom)
+    Mirrored axisymmetric animation.
 
-    Pressure layers are static per frequency (magnitude/phase); the
-    structure oscillates through n_phase sub-frames via Re(u e^{j phi}).
+    pressure_mode :
+        "mag_phase" : left = pressure phase [rad], right = SPL [dB] (static per f)
+        "real"      : both halves = Re(p e^{j phi}) [Pa], oscillating in sync
+                      with the structure (same phi).
+    In both cases the mechanical field oscillates as Re(u e^{j phi}).
 
-    max_deform : caps the *displayed* peak deformation in metres.
-    xlim, ylim : visible window in metres (acoustic mesh is clipped to it,
-                 camera framed to it; use a square window_size if the box
-                 is square, otherwise white bands appear).
+    n_cycles    : number of full 2pi periods rendered per frequency.
+    p_clim      : fixed colour range for Re(p); None -> symmetric auto range.
+    clip_margin : shave [m] off each side of the visible box.  Cells are kept
+                  or dropped whole (centroid test), so no interpolated nodal
+                  values ever appear at the boundary.
+    max_deform  : caps the displayed peak deformation in metres.
+    xlim, ylim  : visible window in metres.  Dimensions are rounded up to a
+                  multiple of 16 for ffmpeg.
     """
     try:
         import pyvista as pv
         import imageio
     except ImportError as e:
         raise ImportError("pip install pyvista imageio imageio-ffmpeg") from e
+
+    if pressure_mode not in ("mag_phase", "real"):
+        raise ValueError("pressure_mode must be 'mag_phase' or 'real'")
 
     def _pd(coords, tris, mirror=False, z=0.0):
         pts = np.column_stack([coords, np.full(len(coords), z)])
@@ -181,44 +193,80 @@ def animate_pressure_displacement(frames: list[dict], *,
             [np.full(len(tris), 3, dtype=np.int64), tris]).ravel()
         return pv.PolyData(pts, cells)
 
+    def _mask_tris(coords, tris, box):
+        """
+        Keep triangles whose centroid lies inside box = (x0, x1, y0, y1).
+        Returns (sub_coords, sub_tris, orig_ids) with exact node indices —
+        no interpolation, so scalars stay true nodal values.
+        """
+        c = coords[tris].mean(axis=1)                       # (n_tri, 2)
+        keep = ((c[:, 0] >= box[0]) & (c[:, 0] <= box[1]) &
+                (c[:, 1] >= box[2]) & (c[:, 1] <= box[3]))
+        t = tris[keep]
+        if len(t) == 0:
+            raise ValueError("clip_margin removed the entire mesh")
+        used = np.unique(t)
+        remap = np.full(len(coords), -1, dtype=np.int64)
+        remap[used] = np.arange(len(used))
+        return coords[used], remap[t], used
+
+    # ── amplitude scaling ─────────────────────────────────────────────────────
     L = max(float(np.ptp(f["coords_a"], axis=0).max()) for f in frames)
     disp_peak = deform_scale * L
     if max_deform is not None:
         disp_peak = min(disp_peak, max_deform)
-    z_off = 1e-3 * L                       # lift structure above pressure field
+    z_off = 1e-3 * L
 
     spl_gmax = max(
         20 * np.log10(np.abs(f["p"]).max() / 20e-6 + 1e-30) for f in frames)
+    p_gmax = max(float(np.abs(f["p"]).max()) for f in frames) or 1e-30
+
+    # ── window / camera ───────────────────────────────────────────────────────
+    window_size = tuple(int(np.ceil(w / 16)) * 16 for w in window_size)   # ffmpeg
 
     pv.global_theme.multi_samples = 8
     plotter = pv.Plotter(off_screen=True, window_size=list(window_size))
     plotter.set_background("white")
 
-    # visible window ---------------------------------------------------------
     if xlim is None:
         xlim = (-L, L)
     if ylim is None:
         ys = frames[0]["coords_a"][:, 1]
         ylim = (float(ys.min()), float(ys.max()))
+
     cx, cy  = 0.5 * (xlim[0] + xlim[1]), 0.5 * (ylim[0] + ylim[1])
     aspect  = window_size[0] / window_size[1]
     half_h  = 0.5 * (ylim[1] - ylim[0])
     half_w  = 0.5 * (xlim[1] - xlim[0])
-    p_scale = max(half_h, half_w / aspect)
-    clip_box = (xlim[0], xlim[1], ylim[0], ylim[1], -1.0, 1.0)
+    pad     = 1.30 if show_grid else 1.02      # room for ticks and labels
+    p_scale = pad * max(half_h, half_w / aspect)
 
-    phis = np.linspace(0.0, 2 * np.pi, n_phase, endpoint=False)
+    # ── clip box (centroid test, applied to the r >= 0 half) ─────────────────
+    if np.isscalar(clip_margin):
+        ml = mr = mb = mt = float(clip_margin)
+    else:
+        ml, mr, mb, mt = (float(v) for v in clip_margin)
+
+    # mesh is axisymmetric (r >= 0); mirror is exact, so mask once symmetrically
+    r_max = min(abs(xlim[0]) - ml, xlim[1] - mr)
+    box_a = (0.0, r_max, ylim[0] + mb, ylim[1] - mt)
+
+    phis = np.linspace(0.0, 2 * np.pi * n_cycles, n_phase * n_cycles,
+                       endpoint=False)
     save_path = str(save_path)
-    total, done = len(frames) * n_phase, 0
+    total, done = len(frames) * len(phis), 0
 
     bar_phase = dict(title="phase [rad]", color="black", vertical=True,
-                     position_x=0.03, position_y=0.30, width=0.05, height=0.45)
+                     position_x=0.02, position_y=0.30, width=0.04, height=0.45)
     bar_spl   = dict(title="SPL [dB]",   color="black", vertical=True,
-                     position_x=0.90, position_y=0.30, width=0.05, height=0.45)
+                     position_x=0.93, position_y=0.30, width=0.04, height=0.45)
+    bar_real  = dict(title="Re(p) [Pa]", color="black", vertical=True,
+                     position_x=0.93, position_y=0.30, width=0.04, height=0.45)
     bar_u     = dict(title="|u| [m]",    color="black", vertical=False,
-                     position_x=0.30, position_y=0.03, width=0.40, height=0.06)
+                     position_x=0.30, position_y=0.91, width=0.40, height=0.04)
 
-    with imageio.get_writer(save_path, fps=fps, quality=9) as writer:
+    with imageio.get_writer(save_path, fps=fps, quality=9,
+                            macro_block_size=1) as writer:
         for f in frames:
             p      = f["p"]
             spl    = 20 * np.log10(np.abs(p) / 20e-6 + 1e-30)
@@ -230,27 +278,47 @@ def animate_pressure_displacement(frames: list[dict], *,
             spl_top  = float(spl.max()) if per_frame_norm else spl_gmax
             clim_spl = [spl_top - spl_range, spl_top]
 
-            acou_R = _pd(f["coords_a"], f["tris_a"])               # SPL side
-            acou_L = _pd(f["coords_a"], f["tris_a"], mirror=True)  # phase side
-            acou_R.point_data["spl"]   = spl
-            acou_L.point_data["phase"] = phase
-            acou_R = acou_R.clip_box(clip_box, invert=False)
-            acou_L = acou_L.clip_box(clip_box, invert=False)
+            if p_clim is not None:
+                clim_real = [float(p_clim[0]), float(p_clim[1])]
+            else:
+                p_top = (float(np.abs(p).max()) or 1e-30) if per_frame_norm else p_gmax
+                clim_real = [-p_top, p_top]
+
+            # exact-node masking: identical for both halves (mirror is exact)
+            cA, tA, idxA = _mask_tris(f["coords_a"], f["tris_a"], box_a)
+            acou_R = _pd(cA, tA)                 # right half
+            acou_L = _pd(cA, tA, mirror=True)    # left half
+
+            if pressure_mode == "mag_phase":
+                acou_R.point_data["spl"]   = spl[idxA]
+                acou_L.point_data["phase"] = phase[idxA]
 
             meca_R = _pd(f["coords_m"], f["tris_m"], z=z_off)
             meca_L = _pd(f["coords_m"], f["tris_m"], mirror=True, z=z_off)
 
             for phi in phis:
-                du = np.real(f["u"] * np.exp(1j * phi)) * s_geom   # (n_m, 2)
+                e  = np.exp(1j * phi)
+                du = np.real(f["u"] * e) * s_geom      # (n_m, 2)
 
                 plotter.clear()
 
-                plotter.add_mesh(acou_L, scalars="phase", cmap=cmap_phase,
-                                 clim=[-np.pi, np.pi], show_edges=False,
-                                 name="acouL", scalar_bar_args=bar_phase)
-                plotter.add_mesh(acou_R, scalars="spl", cmap=cmap_spl,
-                                 clim=clim_spl, show_edges=False,
-                                 name="acouR", scalar_bar_args=bar_spl)
+                if pressure_mode == "mag_phase":
+                    plotter.add_mesh(acou_L, scalars="phase", cmap=cmap_phase,
+                                     clim=[-np.pi, np.pi], show_edges=False,
+                                     name="acouL", scalar_bar_args=bar_phase)
+                    plotter.add_mesh(acou_R, scalars="spl", cmap=cmap_spl,
+                                     clim=clim_spl, show_edges=False,
+                                     name="acouR", scalar_bar_args=bar_spl)
+                else:
+                    p_re = np.real(p * e)[idxA]       # exact nodal values
+                    acou_R.point_data["Re(p)"] = p_re
+                    acou_L.point_data["Re(p)"] = p_re
+                    plotter.add_mesh(acou_L, scalars="Re(p)", cmap=cmap_real,
+                                     clim=clim_real, show_edges=False,
+                                     name="acouL", show_scalar_bar=False)
+                    plotter.add_mesh(acou_R, scalars="Re(p)", cmap=cmap_real,
+                                     clim=clim_real, show_edges=False,
+                                     name="acouR", scalar_bar_args=bar_real)
 
                 if show_meca_rest:
                     for m, nm in ((meca_R, "restR"), (meca_L, "restL")):
@@ -263,9 +331,9 @@ def animate_pressure_displacement(frames: list[dict], *,
                         (meca_L, -1.0, "mecaL", None)):
                     dm  = base.copy()
                     pts = dm.points.copy()
-                    pts[:, 0] += sign * du[:, 0]    # mirror flips u_r
+                    pts[:, 0] += sign * du[:, 0]      # mirror flips u_r
                     pts[:, 1] += du[:, 1]
-                    pts[:, 2] += 0.5 * z_off        # deformed above rest wire
+                    pts[:, 2] += 0.5 * z_off
                     dm.points = pts
                     dm.point_data["|u|"] = u_mag
                     plotter.add_mesh(dm, scalars="|u|", cmap=cmap_u,
@@ -273,13 +341,28 @@ def animate_pressure_displacement(frames: list[dict], *,
                                      show_scalar_bar=bar is not None,
                                      scalar_bar_args=bar or {})
 
-                plotter.add_text(
-                    f"f = {f['freq']:8.1f} Hz   SPLmax = {spl.max():5.1f} dB   "
-                    f"deform x{s_geom:.3g}",
-                    position="upper_edge", color="black",
-                    name="hud", font_size=13)
+                hud = (f"f = {f['freq']:8.1f} Hz   SPLmax = {spl.max():5.1f} dB   "
+                       f"deform x{s_geom:.3g}")
+                if pressure_mode == "real":
+                    hud += f"   phi = {np.degrees(phi) % 360.0:5.1f} deg"
+                plotter.add_text(hud, position="upper_edge", color="black",
+                                 name="hud", font_size=13)
 
                 plotter.view_xy()
+
+                if show_grid:
+                    plotter.show_grid(
+                        bounds=(xlim[0], xlim[1], ylim[0], ylim[1], 0.0, 0.0),
+                        location="outer",
+                        xtitle="r [m]", ytitle="z [m]",
+                        show_zaxis=False,
+                        color="black", font_size=12, fmt="%.2f",
+                        grid="back", ticks="outside",
+                        n_xlabels=9, n_ylabels=9,
+                        padding=0.0,
+                        use_3d_text=False,
+                    )
+
                 plotter.enable_parallel_projection()
                 plotter.camera.focal_point    = (cx, cy, 0.0)
                 plotter.camera.position       = (cx, cy, 1.0)
@@ -294,8 +377,7 @@ def animate_pressure_displacement(frames: list[dict], *,
 
     plotter.close()
     print(f"→ {save_path}")
-
-# ─────────────────────────────────────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 # 3) Driver
 # ─────────────────────────────────────────────────────────────────────────────
 
