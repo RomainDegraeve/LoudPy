@@ -146,25 +146,42 @@ def plot_uva_fft(t: np.ndarray,
                  u: np.ndarray, v: np.ndarray, a: np.ndarray, *,
                  t_start: float | None = None,
                  excitation_freqs: np.ndarray | None = None,
+                 separate_tones: bool = True,      # split excitation vs remnant
+                 plot_vars: str | tuple = ("u", "v", "a"),
+                 line_style: str = "-",
+                 line_width: float = 1.0,
+                 color: str = "steelblue",
                  title: str = "") -> tuple:
     """
     FFT of displacement, velocity, acceleration.
 
     Parameters
     ----------
-    t, u, v, a        : (n_t,)
-    t_start           : float  start of steady-state window (default: t[n//4])
-    excitation_freqs  : array  if given, use rectangular window and highlight
-                               excitation peaks vs noise/nonlinearities
+    t, u, v, a       : (n_t,)
+    t_start          : start of steady-state window (default: t[n//4])
+    excitation_freqs : if given, use a rectangular window; the FFT bins at the
+                       excitation frequencies are identified exactly.
+    separate_tones   : when excitation_freqs is given, plot the excitation bins
+                       and the remnant (noise + nonlinearities) as two series.
+                       If False, plot a single continuous spectrum.
+                       Ignored when excitation_freqs is None.
+    plot_vars        : which panels to draw: any subset/order of ("u","v","a"),
+                       or a single string such as "a".
+    line_style       : matplotlib linestyle for the spectrum ("-", "--", ":").
+    line_width, color: line appearance.
 
     Returns
     -------
-    UvaSpectra
-        A NamedTuple — use attribute access (``res.fig``) or tuple indexing.
-        Always has .fig, .freqs, .u_mag, .v_mag, .a_mag.  When excitation_freqs
-        is given it also carries .noise_mask, .u_complex/.v_complex/.a_complex,
-        .n_samples, .ss_start, .t_block and .u_block/.v_block/.a_block.
+    UvaSpectra  (always .fig, .freqs, .u_mag, .v_mag, .a_mag)
     """
+    if isinstance(plot_vars, str):
+        plot_vars = (plot_vars,)
+    plot_vars = tuple(plot_vars)
+    if not set(plot_vars) <= {"u", "v", "a"}:
+        raise ValueError('plot_vars entries must be "u", "v" or "a"')
+    if len(plot_vars) == 0:
+        raise ValueError("plot_vars is empty")
+
     dt = t[1] - t[0]
     if t_start is None:
         t_start = t[len(t) // 4]
@@ -174,7 +191,7 @@ def plot_uva_fft(t: np.ndarray,
         s = sig[idx_ss:]
         N = len(s)
         if excitation_freqs is not None:
-            S_raw = np.fft.rfft(s)
+            S_raw = np.fft.rfft(s)                 # rectangular window
             S_mag = 2.0 / N * np.abs(S_raw)
         else:
             w     = np.hanning(N)
@@ -188,29 +205,57 @@ def plot_uva_fft(t: np.ndarray,
     fv, v_db, v_lin, V_c, Nv = _fft(v)
     fa, a_db, a_lin, A_c, Na = _fft(a)
 
-    fig, axs = plt.subplots(3, 1, figsize=(8, 7), sharex=True)
-    labels   = [r"Disp. [dB ref 1 m]", r"Vel.  [dB ref 1 m/s]", r"Acc.  [dB ref 1 m/s$^2$]"]
+    panels = {
+        "u": (fu, u_db, r"Disp. [dB ref 1 m]"),
+        "v": (fv, v_db, r"Vel. [dB ref 1 m/s]"),
+        "a": (fa, a_db, r"Acc. [dB ref 1 m/s$^2$]"),
+    }
 
+    n = len(plot_vars)
+    fig, axs = plt.subplots(n, 1, figsize=(8, 2.4 * n + 0.8), sharex=True,
+                            squeeze=False)
+    axs = axs[:, 0]
+
+    split = separate_tones and (excitation_freqs is not None)
     mask_remnant = None
-    for ax, (f_, db_), lbl in zip(axs, [(fu, u_db), (fv, v_db), (fa, a_db)], labels):
-        if excitation_freqs is not None:
-            idx_exc = np.unique([np.argmin(np.abs(f_ - fe)) for fe in excitation_freqs])
+
+    for k, key in enumerate(plot_vars):
+        ax = axs[k]
+        f_, db_, lbl = panels[key]
+
+        if split:
+            idx_exc = np.unique([int(np.argmin(np.abs(f_ - fe)))
+                                 for fe in excitation_freqs])
             mask_remnant = np.ones(len(f_), dtype=bool)
             mask_remnant[idx_exc] = False
             ax.semilogx(f_[mask_remnant], db_[mask_remnant],
-                        color="gray", alpha=0.35, lw=0.6, label="Noise / nonlinear")
-            ax.semilogx(f_[idx_exc], db_[idx_exc], "o", ms=0.5,
-                        color="steelblue", label="Excitation")
-            if ax is axs[0]:
+                        color="gray", alpha=0.35, lw=0.6, ls=line_style,
+                        label="Noise / nonlinear")
+            ax.semilogx(f_[idx_exc], db_[idx_exc], "o", ms=3.0,
+                        color=color, label="Excitation")
+            if k == 0:
                 ax.legend(loc="upper right", fontsize="x-small")
         else:
-            ax.semilogx(f_, db_, color="steelblue", alpha=0.8, lw=1.0)
+            if excitation_freqs is not None:
+                # still record the mask for the caller, but draw one series
+                idx_exc = np.unique([int(np.argmin(np.abs(f_ - fe)))
+                                     for fe in excitation_freqs])
+                mask_remnant = np.ones(len(f_), dtype=bool)
+                mask_remnant[idx_exc] = False
+            ax.semilogx(f_, db_, color=color, alpha=0.85,
+                        lw=line_width, ls=line_style)
+            ax.semilogx(f_[idx_exc], db_[idx_exc], "o", ms=3.0,
+                        color="red", label="Excitation")
+            ax.legend(loc="upper right", fontsize="x-small")
+
         ax.set_ylabel(lbl)
         ax.grid(True, which="both", alpha=0.2)
 
     win_type = "Rectangular" if excitation_freqs is not None else "Hanning"
-    axs[0].set_title(title or f"FFT Analysis - {win_type} window")
-    axs[2].set_xlabel("Frequency [Hz]")
+    axs[0].set_title(title if title else f"FFT Analysis — {win_type} window",
+                     pad=10.0)
+    axs[-1].set_xlabel("Frequency [Hz]")
+
     fig.tight_layout()
 
     t_ss = t[idx_ss: idx_ss + Nu]
@@ -219,7 +264,6 @@ def plot_uva_fft(t: np.ndarray,
                           U_c, V_c, A_c, Nu, idx_ss, t_ss,
                           u[idx_ss:], v[idx_ss:], a[idx_ss:])
     return UvaSpectra(fig, fu, u_lin, v_lin, a_lin)
-
 
 # ── mechanical sweep (U/V/A vs frequency, in dB) ─────────────────────────────
 
