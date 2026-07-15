@@ -15,5 +15,6 @@ from .signal_plots import (
     plot_uva_time,
     plot_uva_fft,
     plot_meca_sweep,
+    plot_impulse_response,
     UvaSpectra,
 )

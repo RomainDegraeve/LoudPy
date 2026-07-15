@@ -14,9 +14,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from loudpy.Files_Loader import FreqReader, Domain
+
 from loudpy.Plotter import (
-    plot_field, plot_meca_sweep, plot_interface_deformed, STYLE,
+    plot_field, plot_meca_sweep, plot_interface_deformed,
+    plot_impulse_response, STYLE,
 )
+
+
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 h5_path = Path("LoudPy_exemples/Frequency_study/Meca/Results/Files/snap_f_20-20000Hz.h5")
@@ -52,9 +56,29 @@ with FreqReader(h5_path) as r:
 
 freqs_sweep = np.array(freqs_sweep)
 
+
+
+# ── Impulse response from the mechanical sweep ────────────────────────────────
+# Uses the velocity FRF (v = jωu); swap for u_sweep / a_sweep as needed.
+fig_ir, t_ir, h_ir = plot_impulse_response(
+    freqs_sweep, np.array(u_sweep),
+    t_max=6000e-3,
+    title="Cone tip velocity impulse response")
+fig_ir.savefig(out_dir / "impulse_response.pdf", bbox_inches="tight")
+
+fig_ir_db, _, _ = plot_impulse_response(
+    freqs_sweep, np.array(u_sweep),
+    t_max=600e-3, db=True,
+    title="Cone tip velocity IR — decay")
+fig_ir_db.savefig(out_dir / "impulse_response_db.pdf", bbox_inches="tight")
+
+
+
+
+
 fig = plot_meca_sweep(freqs_sweep,
                       np.array(u_sweep), np.array(v_sweep), np.array(a_sweep),
-                      title="Cone tip — mechanical sweep")
+                      title="Cone tip mechanical sweep")
 fig.savefig(out_dir / "meca_sweep.pdf", bbox_inches="tight")
 
 # ── Field map at a specific frequency ─────────────────────────────────────────

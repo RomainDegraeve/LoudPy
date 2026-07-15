@@ -48,6 +48,105 @@ def plot_spl_sweep(freqs: np.ndarray, p_complex: np.ndarray, *,
     return fig
 
 
+
+# ── impulse response (IR from a complex frequency response) ──────────────────
+
+def plot_impulse_response(freqs: np.ndarray, H: np.ndarray, *,
+                          fs: float | None = None,
+                          n_fft: int | None = None,
+                          df: float = 1.0,
+                          taper: bool = True,
+                          t_max: float | None = None,
+                          db: bool = False,
+                          title: str = "") -> tuple[plt.Figure, np.ndarray, np.ndarray]:
+    """
+    Impulse response obtained by inverse-FFT of a one-sided frequency response.
+
+    The measured/simulated response is defined on an arbitrary (possibly
+    log-spaced) `freqs` grid, so it is first interpolated — magnitude and
+    unwrapped phase separately — onto a *uniform* grid 0 … fs/2 before the
+    irfft.  Bins outside the measured band are zeroed.
+
+    The uniform-grid resolution must be fine enough that the synthesised IR
+    fully decays within the reconstruction window ``T = 1/df``; otherwise the
+    still-ringing resonances fold back onto themselves (circular / time-domain
+    aliasing) and the IR looks like a waveform that never decays.  The grid is
+    therefore sized from a *target frequency resolution* ``df`` (default 1 Hz →
+    ~1 s window), not from the number of input points.
+
+    Parameters
+    ----------
+    freqs : (n_freq,)  frequency axis [Hz], increasing
+    H     : (n_freq,)  complex frequency response (e.g. p, u, v or a)
+    fs    : sampling rate of the synthesised IR [Hz]; default 2*freqs[-1]
+    df    : target frequency resolution of the uniform grid [Hz]; the window
+            length is T = 1/df.  Make it a few times smaller than the narrowest
+            resonance bandwidth so the IR rings down inside the window.
+    n_fft : explicit FFT length (overrides ``df``).  The uniform one-sided grid
+            has n_fft//2+1 bins; default: next power of two >= fs/df.
+    taper : raised-cosine roll-off at the band edges to suppress the Gibbs
+            ringing caused by the hard 0 / band-edge truncation.
+    t_max : if given, truncate the displayed IR to [0, t_max] s
+    db    : plot 20*log10|h| (normalised) instead of the linear waveform
+
+    Returns
+    -------
+    (fig, t, h) : figure, time axis [s], real impulse response
+    """
+    freqs = np.asarray(freqs, dtype=float)
+    H     = np.asarray(H,     dtype=complex)
+
+    if fs is None:
+        fs = 2.0 * freqs[-1]
+    if n_fft is None:
+        n_fft = int(2 ** np.ceil(np.log2(max(fs / df, 256))))
+
+    # Interpolate magnitude and *unwrapped* phase separately — interpolating
+    # real/imag directly mangles a response whose phase rotates between samples.
+    f_uni   = np.fft.rfftfreq(n_fft, d=1.0 / fs)
+    mag_i   = np.interp(f_uni, freqs, np.abs(H),              left=0.0, right=0.0)
+    phase_i = np.interp(f_uni, freqs, np.unwrap(np.angle(H)))
+    in_band = (f_uni >= freqs[0]) & (f_uni <= freqs[-1])
+
+    H_uni = np.zeros_like(f_uni, dtype=complex)
+    H_uni[in_band] = (mag_i * np.exp(1j * phase_i))[in_band]
+
+    if taper:
+        # raised-cosine roll-off over the first/last ~5 % of the in-band region
+        idx = np.flatnonzero(in_band)
+        nb  = idx.size
+        e   = max(1, nb // 20)
+        w   = np.ones(nb)
+        edge = 0.5 * (1.0 - np.cos(np.pi * np.arange(e) / e))
+        w[:e]  = edge
+        w[-e:] = edge[::-1]
+        H_uni[idx] *= w
+
+    h = np.fft.irfft(H_uni, n=n_fft)
+    t = np.arange(n_fft) / fs
+
+    if t_max is not None:
+        keep = t <= t_max
+        t, h = t[keep], h[keep]
+
+    fig, ax = plt.subplots(figsize=(10, 4))
+    if db:
+        env = np.abs(h)
+        y   = 20.0 * np.log10(np.maximum(env / max(env.max(), 1e-30), 1e-6))
+        ax.plot(t * 1e3, y, lw=1.0, color="firebrick")
+        ax.set_ylabel("Normalised IR [dB]")
+        ax.set_ylim(-120, 5)
+    else:
+        ax.plot(t * 1e3, h, lw=1.0, color="firebrick")
+        ax.set_ylabel("Impulse response [a.u.]")
+
+    ax.set_xlabel("Time [ms]")
+    ax.set_title(title or "Impulse response")
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    return fig, t, h
+
+
 # ── directivity ───────────────────────────────────────────────────────────────
 
 def plot_directivity(theta: np.ndarray, p: np.ndarray, *,
