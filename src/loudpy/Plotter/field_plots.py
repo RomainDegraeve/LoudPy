@@ -46,6 +46,7 @@ def plot_field(coords: np.ndarray, tris: np.ndarray, values: np.ndarray, *,
                vmin=None, vmax=None,
                xlim=None, ylim=None,
                label: str = "", title: str = "",
+               xlabel: str = "x [m]", ylabel: str = "y [m]",
                ax=None) -> plt.Axes:
     """
     Draw a scalar field on a triangular mesh.
@@ -65,6 +66,8 @@ def plot_field(coords: np.ndarray, tris: np.ndarray, values: np.ndarray, *,
     if ylim: ax.set_ylim(*ylim)
     ax.set_aspect("equal")
     if title: ax.set_title(title)
+    if xlabel: ax.set_xlabel(xlabel)
+    if ylabel: ax.set_ylabel(ylabel)
     return ax
 
 """
@@ -420,10 +423,11 @@ def plot_fields_grid(panels: list[dict], *,
                    ylim   = p.get("ylim"),
                    label  = p.get("label",  ""),
                    title  = p.get("title",  ""),
+                   xlabel = p.get("xlabel", "x [m]"),
+                   ylabel = p.get("ylabel", "y [m]"),
                    ax     = ax)
 
-    for i in range(n, nrows * ncols):
-        axes[i // ncols][i % ncols].axis("off")
+
 
     fig.tight_layout()
     return fig

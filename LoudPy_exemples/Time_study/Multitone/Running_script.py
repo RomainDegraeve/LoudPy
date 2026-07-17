@@ -49,15 +49,15 @@ from loudpy import (
 geo_path = "LoudPy_exemples/Geometries/Loudspeaker/HPNEW-Sketch.geo"
 msh_path = "LoudPy_exemples/Geometries/Loudspeaker/HPNEW-Sketch.msh"
 mat_path = "src/loudpy/Materials_Bank/materials.json"
-out_path = "LoudPy_exemples/Time_study/Multitone/Results/time_study_large_signal_1N.h5"
+out_path = "LoudPy_exemples/Time_study/Multitone/Results/time_study_small_signal_0_1N.h5"
 
 # ── Signal parameters ──────────────────────────────────────────────────────────
 f_min           = 20        # lowest excitation frequency [Hz]
 f_max           = 1000      # highest excitation frequency [Hz]
-fs              = 10_000    # sampling rate [Hz]  (must be > 2 · f_max)
+fs              = 12_000    # sampling rate [Hz]  (must be > 2 · f_max)
 t_block         = 1.0       # duration of one periodic block [s]
 n_tones_wanted  = 90        # target number of tones before de-duplication
-force_amplitude = 1     # peak force [N] — small signal (large signal)
+force_amplitude = 0.1     # peak force [N] — small signal (large signal)
 seed            = 42        # random seed for reproducible phase randomisation
 
 # ── Step 1 — build a zero-leakage frequency grid ──────────────────────────────
@@ -126,17 +126,22 @@ problem.add_sub_domain(
     DomainSpecMecaRayleigh("membranne",  material="Paper",         size=0.0005),
     DomainSpecMecaRayleigh("coil",       material="Copper",        size=0.0005),
     DomainSpecMecaRayleigh("surround",   material="Rubber",        size=0.0005),
-    DomainSpecMecaRayleigh("spider",     material="PhenolicCloth", size=0.0005),
+    #DomainSpecMecaRayleigh("spider",     material="PhenolicCloth", size=0.0005),
     DomainSpecMecaRayleigh("former",     material="Kapton",        size=0.0005),
-    DomainSpecMecaRayleigh("glue",       material="SolidGlue",     size=0.0005),
+    #DomainSpecMecaRayleigh("glue",       material="SolidGlue",     size=0.0005),
     DomainSpecMecaRayleigh("dustcap",    material="Polypropylene", size=0.0005),
 )
 
 problem.add_interface(
-    InterfaceSpecClamped("interface_constrained"),
+    InterfaceSpecClamped("interface_constrained_rz_2"),
+    InterfaceSpecClamped("interface_constrained_r_"),
     InterfaceSpecForced("interface_forced"),
-    InterfaceSpecAcouMeca("interface_acou_meca"),
+    InterfaceSpecAcouMeca("interface_acou_meca_front"),
 )
+
+
+
+
 
 problem.mesh(show_mesh_gui=False)
 

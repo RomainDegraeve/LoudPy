@@ -61,6 +61,9 @@ problem.add_interface(
     InterfaceSpecAcouMeca("interface_acou_meca_rear"),
 )
 
+
+
+
 # ── Mesh ───────────────────────────────────────────────────────────────────────
 problem.mesh(show_mesh_gui=False)
 
