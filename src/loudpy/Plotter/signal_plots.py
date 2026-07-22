@@ -9,6 +9,7 @@ from typing import NamedTuple
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.colors import BoundaryNorm
 
 # ── global style (applied at import) ──────────────────────────────────────────
 plt.rc("lines",  linewidth=2)
@@ -36,7 +37,7 @@ def plot_spl_sweep(freqs: np.ndarray, p_complex: np.ndarray, *,
     fig, (a1, a2) = plt.subplots(2, 1, figsize=(8, 6), sharex=True)
     a1.semilogx(freqs, spl,'o',markersize = 0.5, color="C0")
     a1.set_ylabel(r"SPL  [dB re 20\,$\mu$Pa]")
-    a1.set_title(title or "SPL & Phase Frequency Response")
+    a1.set_title(title or "SPL and Phase Frequency Response")
     a1.grid(True, which="both", ls="--", lw=0.5, alpha=0.7)
 
     a2.semilogx(freqs, phase, 'o',markersize = 0.5, color="C1")
@@ -47,6 +48,152 @@ def plot_spl_sweep(freqs: np.ndarray, p_complex: np.ndarray, *,
     fig.tight_layout()
     return fig
 
+
+
+# ── SPL / phase frequency response, several probes on one figure ─────────────
+
+def plot_spl_sweep_multi(freqs: np.ndarray, curves: dict, *,
+                         p_ref: float = 20e-6, title: str = "",
+                         wrap_phase: bool = True) -> plt.Figure:
+    """
+    SPL and phase vs frequency for several probes.
+
+    Parameters
+    ----------
+    freqs      : (n_freq,)  frequency axis [Hz]
+    curves     : {label: p_complex (n_freq,)}  one entry per probe
+    wrap_phase : True  -> phase wrapped to [-180, 180] deg (np.angle, no unwrap)
+                 False -> continuous unwrapped phase
+    """
+    fig, (a1, a2) = plt.subplots(2, 1, figsize=(9, 7), sharex=True)
+
+    for i, (label, p) in enumerate(curves.items()):
+        p     = np.asarray(p)
+        spl   = 20 * np.log10(np.maximum(np.abs(p), 1e-30) / p_ref)
+        # np.angle already returns (-pi, pi] -> degrees gives (-180, 180]
+        phase = np.angle(p) if wrap_phase else np.unwrap(np.angle(p))
+        phase = np.degrees(phase)
+
+        color = f"C{i % 10}"
+        a1.semilogx(freqs, spl,   lw=1.2, color=color, label=label)
+        a2.semilogx(freqs, phase, lw=1.2, color=color, label=label)
+
+    a1.set_ylabel(r"SPL  [dB re 20\,$\mu$Pa]")
+    a1.set_title(title or "SPL and Phase Frequency Response")
+    a1.grid(True, which="both", ls="--", lw=0.5, alpha=0.7)
+    a1.legend(fontsize=10, ncol=2)
+
+    a2.set_ylabel(r"Phase  [$^\circ$]")
+    a2.set_xlabel("Frequency  [Hz]")
+    a2.grid(True, which="both", ls="--", lw=0.5, alpha=0.7)
+    if wrap_phase:
+        a2.set_ylim(-180, 180)
+        a2.set_yticks([-180, -90, 0, 90, 180])
+
+    fig.tight_layout()
+    return fig
+
+
+# ── directivity map: frequency x angle -> SPL ────────────────────────────────
+
+def plot_spl_angle_map(freqs: np.ndarray, angles_deg: np.ndarray,
+                       p_complex: np.ndarray, *,
+                       p_ref: float = 20e-6, title: str = "",
+                       cmap: str = "viridis",
+                       normalize: bool = False,
+                       vmin=None, vmax=None,
+                       dynamic_range: float | None = None,
+                       levels=None,
+                       color_levels=None,
+                       contour_color: str = "k",
+                       contour_labels: bool = True) -> plt.Figure:
+    """
+    2-D directivity map: frequency (x, log) vs angle (y) coloured by SPL.
+
+    Parameters
+    ----------
+    freqs         : (n_freq,)          frequency axis [Hz]
+    angles_deg    : (n_angle,)         angle from the z axis [deg]
+    p_complex     : (n_angle, n_freq)  complex pressure at each angle/frequency
+    normalize     : if True, subtract the on-axis (smallest |angle|) SPL at each
+                    frequency -> relative directivity in dB (0 dB on axis)
+    vmin, vmax    : colour limits [dB]. By default vmin is the smallest value in
+                    the data and vmax the largest — or exactly 0 dB when
+                    `normalize` is True.
+    dynamic_range : optional override; if given (and vmin is None), vmin is
+                    clamped to `vmax - dynamic_range` instead of the data floor.
+    levels        : contour LINES. int -> that many lines evenly spaced over
+                    [vmin, vmax]; sequence -> explicit dB values
+                    (e.g. [-18, -12, -6, -3]). None -> no lines.
+    color_levels  : COLOUR steps, independent of `levels`. int -> that many
+                    discrete colour bands over [vmin, vmax]; sequence -> explicit
+                    band boundaries. None -> smooth continuous colour map.
+    contour_color : colour of the contour lines.
+    contour_labels: annotate each contour line with its dB value.
+    """
+    freqs      = np.asarray(freqs)
+    angles_deg = np.asarray(angles_deg)
+    p_complex  = np.asarray(p_complex)
+
+    if p_complex.shape != (angles_deg.size, freqs.size):
+        raise ValueError(
+            f"p_complex must have shape (n_angle, n_freq) = "
+            f"({angles_deg.size}, {freqs.size}), got {p_complex.shape}."
+        )
+
+    spl = 20 * np.log10(np.maximum(np.abs(p_complex), 1e-30) / p_ref)
+
+    if normalize:
+        on_axis = spl[int(np.argmin(np.abs(angles_deg))), :]   # per-frequency ref
+        spl     = spl - on_axis[None, :]
+        cbar_lbl = r"Relative SPL  [dB re on-axis]"
+    else:
+        cbar_lbl = r"SPL  [dB re 20 $\mu$Pa]"
+
+    # Full data range by default; 0 dB is the natural ceiling once normalised.
+    if vmax is None:
+        vmax = 0.0 if normalize else float(np.nanmax(spl))
+    if vmin is None:
+        vmin = (vmax - dynamic_range) if dynamic_range is not None \
+               else float(np.nanmin(spl))
+
+    fig, ax = plt.subplots(figsize=(9, 5))
+
+    if levels is None:
+        # Smooth, continuous colour map.
+        mesh = ax.pcolormesh(freqs, angles_deg, spl, cmap=cmap,
+                             shading="gouraud", vmin=vmin, vmax=vmax,
+                             rasterized=True)
+    else:
+        # Discrete colour map: one colour band per contour step.
+        # An int N -> N bands (N+1 boundaries); a sequence is used as boundaries.
+        lv = (np.linspace(vmin, vmax, int(levels) + 1)
+              if np.isscalar(levels) else np.asarray(levels, dtype=float))
+        n_bands  = len(lv) - 1
+        cmap_obj = plt.get_cmap(cmap, n_bands)
+        norm     = BoundaryNorm(lv, n_bands)
+        # 'gouraud' would interpolate across the bands and wash them out.
+        # rasterized + edgecolors='face' + no AA: otherwise every quad is a
+        # separate vector polygon in the PDF and the seams look like a grid.
+        mesh = ax.pcolormesh(freqs, angles_deg, spl, cmap=cmap_obj,
+                             norm=norm, shading="gouraud",
+                             edgecolors="face", linewidth=0,
+                             antialiased=False, rasterized=True)
+        cs = ax.contour(freqs, angles_deg, spl, levels=lv,
+                        colors=contour_color, linewidths=0.8, alpha=0.8)
+        if contour_labels:
+            ax.clabel(cs, inline=True, fontsize=8, fmt="%g")
+
+    ax.set_xlabel("Frequency  [Hz]")
+    ax.set_ylabel(r"Angle from $z$ axis  [$^\circ$]")
+    ax.set_title(title or "Directivity map")
+    cbar = fig.colorbar(mesh, ax=ax, label=cbar_lbl)
+    if cbar.solids is not None:          # kill the same seam artifact in the bar
+        cbar.solids.set_edgecolor("face")
+        cbar.solids.set_rasterized(True)
+
+    fig.tight_layout()
+    return fig
 
 
 # ── impulse response (IR from a complex frequency response) ──────────────────

@@ -11,6 +11,8 @@ from .field_plots import (
 
 from .signal_plots import (
     plot_spl_sweep,
+    plot_spl_sweep_multi,
+    plot_spl_angle_map,
     plot_directivity,
     plot_uva_time,
     plot_uva_fft,

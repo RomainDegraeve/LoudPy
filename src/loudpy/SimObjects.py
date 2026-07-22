@@ -55,12 +55,14 @@ class DomainSpecMecaHysteretic(DomainSpec):
 class DomainSpecAcou(DomainSpec):
     physics      : ClassVar[type] = SubDomainAcou
     c : Optional[float]= None
+    rho : Optional[float] = None
     size : float = 0.01
 @dataclass(eq=False)
 class DomainSpecPML(DomainSpec):
     physics      : ClassVar[type] = SubDomainAcou_PML
     t      : float = 1
     size : float = 0.01
+    rho : Optional[float] = None
     f_pml : Optional[float] = None
     c : Optional[float]= None
     alpha : Optional[float]= None
