@@ -146,6 +146,18 @@ class MeshManager:
                 None
             )
             if found_tag is None:
+                from collections import defaultdict
+                deg = defaultdict(list)
+                for t in curve_tags:
+                    n1, n2 = edges[t]
+                    deg[n1].append(int(t))
+                    deg[n2].append(int(t))
+                print("\n--- loop debug ---")
+                for n, tags in sorted(deg.items()):
+                    if len(tags) != 2:
+                        print(f"node {n}: degree {len(tags)} -> curves {tags}")
+                print(f"stuck at node {tail}, ordered so far: {ordered}")
+                print("--- end debug ---\n")
                 raise ValueError(
                     f"Cannot continue ordered loop at node {tail}. "
                     f"Remaining curves: {remaining}. "
