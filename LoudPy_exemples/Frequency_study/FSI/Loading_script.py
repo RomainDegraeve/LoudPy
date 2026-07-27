@@ -25,8 +25,6 @@ from loudpy.Plotter import (
 )
 
 
-
-
 # ── Paths ──────────────────────────────────────────────────────────────────────
 results_dir = Path("LoudPy_exemples/Frequency_study/FSI/Results/Files")
 out_dir     = Path("LoudPy_exemples/Frequency_study/FSI/Results/Figures")
@@ -96,17 +94,13 @@ for _fpath, r, snap in all_snapshots(files):
 freqs_sweep = np.array(freqs_sweep)
 curves      = {rf"$\theta$ = {a}$^\circ$": np.array(p_sweep[a]) for a in angles_deg}
 
-if max_miss > 0.05 * R_probe:
-    print(f"WARNING: nearest node was up to {max_miss:.3g} m from the requested "
-          f"probe — R = {R_probe} m may fall outside the acoustic domain.")
+
 
 fig = plot_spl_sweep_multi(
     freqs_sweep, curves,
     title=rf"SPL and phase at $R$ = {R_probe} m",
 )
 fig.savefig(out_dir / "spl_sweep_angles.pdf", bbox_inches="tight")
-
-
 
 
 angles_deg = np.linspace(0, 80, 50)
