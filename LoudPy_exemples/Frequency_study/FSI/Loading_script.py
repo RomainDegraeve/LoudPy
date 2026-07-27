@@ -20,8 +20,12 @@ import numpy as np
 from loudpy.Files_Loader import FreqReader, Domain
 from loudpy.Plotter import (
     plot_field, plot_fields_grid, plot_spl_sweep, plot_meca_sweep,
-    plot_interface_deformed, STYLE,
+    plot_interface_deformed, STYLE,plot_spl_angle_map
+
 )
+
+
+
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 results_dir = Path("LoudPy_exemples/Frequency_study/FSI/Results/Files")
@@ -51,6 +55,9 @@ def all_snapshots(files):
 # ── Build a flat frequency index ───────────────────────────────────────────────
 # One pass to collect (freq, fpath, snap) so we can quickly find the snapshot
 # closest to any target frequency without re-reading every file.
+# ── Build a flat frequency index ───────────────────────────────────────────────
+# One pass to collect (freq, fpath, snap) so we can quickly find the snapshot
+# closest to any target frequency without re-reading every file.
 all_snaps_index = [(snap.f, fpath, snap)
                    for fpath, r, snap in all_snapshots(files)]
 all_snaps_index.sort(key=lambda x: x[0])
@@ -59,22 +66,92 @@ freqs_all = np.array([x[0] for x in all_snaps_index])
 # ── SPL sweep at an acoustic probe point ──────────────────────────────────────
 # The acoustic mesh changes between blocks, so the probe row is re-located
 # for every snapshot using a nearest-node search.
-target_acou  = np.array([0.3, 0.1])   # probe location [m] — adjust as needed
-freqs_sweep, p_sweep = [], []
+from loudpy.Plotter import plot_spl_sweep_multi
+
+# ── probes given as (R, theta) instead of (r, z) ──────────────────────────────
+R_probe    = 0.3                            # distance from the origin [m]
+angles_deg = [0, 10, 30, 45, 60]        # angle from the z axis [deg]
+
+def probe_rz(R: float, theta_deg: float) -> np.ndarray:
+    """(r, z) of a point at distance R, at angle theta from the z axis."""
+    th = np.radians(theta_deg)
+    return np.array([R * np.sin(th),        # r  = R sin(theta)   (radial, = x)
+                     R * np.cos(th)])       # z  = R cos(theta)   (axial,  = y)
+
+targets = {a: probe_rz(R_probe, a) for a in angles_deg}
+
+freqs_sweep = []
+p_sweep     = {a: [] for a in angles_deg}
+max_miss    = 0.0
 
 for _fpath, r, snap in all_snapshots(files):
     mesh_acou = r.mesh(snap.mesh_id, Domain.ACOU)
-    probe_row = int(np.argmin(np.linalg.norm(
-        mesh_acou.coords - target_acou, axis=1)))
     freqs_sweep.append(snap.f)
-    p_sweep.append(snap.fields["p_acou"][probe_row])
+    for a, tgt in targets.items():
+        d   = np.linalg.norm(mesh_acou.coords - tgt, axis=1)
+        row = int(np.argmin(d))
+        max_miss = max(max_miss, d[row])
+        p_sweep[a].append(snap.fields["p_acou"][row])
 
 freqs_sweep = np.array(freqs_sweep)
-p_sweep     = np.array(p_sweep)
+curves      = {rf"$\theta$ = {a}$^\circ$": np.array(p_sweep[a]) for a in angles_deg}
 
-fig = plot_spl_sweep(freqs_sweep, p_sweep,
-                     title=f"SPL at probe {target_acou} m (front field)")
-fig.savefig(out_dir / "spl_sweep.pdf", bbox_inches="tight")
+if max_miss > 0.05 * R_probe:
+    print(f"WARNING: nearest node was up to {max_miss:.3g} m from the requested "
+          f"probe — R = {R_probe} m may fall outside the acoustic domain.")
+
+fig = plot_spl_sweep_multi(
+    freqs_sweep, curves,
+    title=rf"SPL and phase at $R$ = {R_probe} m",
+)
+fig.savefig(out_dir / "spl_sweep_angles.pdf", bbox_inches="tight")
+
+
+
+
+angles_deg = np.linspace(0, 80, 50)
+
+
+targets = {a: probe_rz(R_probe, a) for a in angles_deg}
+
+freqs_sweep = []
+p_sweep     = {a: [] for a in angles_deg}
+max_miss    = 0.0
+
+for _fpath, r, snap in all_snapshots(files):
+    mesh_acou = r.mesh(snap.mesh_id, Domain.ACOU)
+    freqs_sweep.append(snap.f)
+    for a, tgt in targets.items():
+        d   = np.linalg.norm(mesh_acou.coords - tgt, axis=1)
+        row = int(np.argmin(d))
+        max_miss = max(max_miss, d[row])
+        p_sweep[a].append(snap.fields["p_acou"][row])
+
+
+# ── directivity map: frequency x angle -> SPL ─────────────────────────────────
+# Reuses R_probe / angles_deg / p_sweep / freqs_sweep from the block above.
+p_map = np.array([p_sweep[a] for a in angles_deg])   # (n_angle, n_freq)
+
+fig = plot_spl_angle_map(
+    freqs_sweep, np.array(angles_deg), p_map,
+    title=rf"Directivity at $R$ = {R_probe} m",
+)
+fig.savefig(out_dir / "spl_angle_map.pdf", bbox_inches="tight")
+
+# Normalised version (0 dB on axis) — usually the more readable one
+
+# Normalised version (0 dB on axis) — usually the more readable one
+fig = plot_spl_angle_map(
+    freqs_sweep, np.array(angles_deg), p_map,
+    normalize=True, dynamic_range=30,
+    levels=[-24, -18, -12, -9, -6, -3, -1],   # explicit dB steps
+    title=rf"Directivity at $R$ = {R_probe} m (normalised to on-axis)",
+)
+fig.savefig(out_dir / "spl_angle_map_norm.pdf", bbox_inches="tight")
+fig.savefig(out_dir / "spl_angle_map_norm.pdf", bbox_inches="tight")
+
+
+
 
 # ── Mechanical sweep at the cone tip ──────────────────────────────────────────
 # Velocity and acceleration derived from the harmonic displacement:

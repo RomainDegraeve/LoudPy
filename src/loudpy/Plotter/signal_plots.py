@@ -78,7 +78,7 @@ def plot_spl_sweep_multi(freqs: np.ndarray, curves: dict, *,
         a1.semilogx(freqs, spl,   lw=1.2, color=color, label=label)
         a2.semilogx(freqs, phase, lw=1.2, color=color, label=label)
 
-    a1.set_ylabel(r"SPL  [dB re 20\,$\mu$Pa]")
+    a1.set_ylabel(r"SPL  [dB re 20 $\mu$Pa]")
     a1.set_title(title or "SPL and Phase Frequency Response")
     a1.grid(True, which="both", ls="--", lw=0.5, alpha=0.7)
     a1.legend(fontsize=10, ncol=2)
