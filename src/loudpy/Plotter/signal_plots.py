@@ -54,9 +54,13 @@ def plot_spl_sweep(freqs: np.ndarray, p_complex: np.ndarray, *,
 
 def plot_spl_sweep_multi(freqs: np.ndarray, curves: dict, *,
                          p_ref: float = 20e-6, title: str = "",
-                         wrap_phase: bool = True) -> plt.Figure:
+                         wrap_phase: bool = True,
+                         Z_elec: np.ndarray = None,
+                         U_drive: float = None,
+                         I_coil: np.ndarray = None) -> plt.Figure:
     """
-    SPL and phase vs frequency for several probes.
+    SPL and phase vs frequency for several probes, with optional electrical
+    impedance overlaid on a twin axis of the SPL subplot.
 
     Parameters
     ----------
@@ -64,6 +68,11 @@ def plot_spl_sweep_multi(freqs: np.ndarray, curves: dict, *,
     curves     : {label: p_complex (n_freq,)}  one entry per probe
     wrap_phase : True  -> phase wrapped to [-180, 180] deg (np.angle, no unwrap)
                  False -> continuous unwrapped phase
+    Z_elec     : (n_freq,) complex electrical impedance [Ohm], optional.
+                 If given, |Z| is plotted on a twin axis over SPL.
+    U_drive    : scalar drive voltage [V]. Used with I_coil to build Z = U/I
+                 if Z_elec is not supplied directly.
+    I_coil     : (n_freq,) complex coil current [A], optional.
     """
     fig, (a1, a2) = plt.subplots(2, 1, figsize=(9, 7), sharex=True)
 
@@ -81,7 +90,26 @@ def plot_spl_sweep_multi(freqs: np.ndarray, curves: dict, *,
     a1.set_ylabel(r"SPL  [dB re 20 $\mu$Pa]")
     a1.set_title(title or "SPL and Phase Frequency Response")
     a1.grid(True, which="both", ls="--", lw=0.5, alpha=0.7)
-    a1.legend(fontsize=10, ncol=2)
+
+    # ── Electrical impedance on twin axis ────────────────────────────────
+    if Z_elec is None and (U_drive is not None and I_coil is not None):
+        I = np.asarray(I_coil)
+        Z_elec = U_drive / np.where(np.abs(I) < 1e-30, np.nan, I)
+
+    if Z_elec is not None:
+        Z_elec = np.asarray(Z_elec)
+        a1b = a1.twinx()
+        a1b.semilogx(freqs, np.abs(Z_elec), lw=1.6, color="k", ls="-.",
+                     label=r"$|Z_\mathrm{e}|$")
+        a2.semilogx(freqs, np.degrees(np.angle(Z_elec)), lw=1.6, color="k", ls="-.")
+        a1b.set_ylabel(r"$|Z_\mathrm{e}|$  [$\Omega$]")
+        a1b.tick_params(axis="y")
+        # merge legends from both axes
+        h1, l1 = a1.get_legend_handles_labels()
+        h2, l2 = a1b.get_legend_handles_labels()
+        a1.legend(h1 + h2, l1 + l2, fontsize=10, ncol=2)
+    else:
+        a1.legend(fontsize=10, ncol=2)
 
     a2.set_ylabel(r"Phase  [$^\circ$]")
     a2.set_xlabel("Frequency  [Hz]")
@@ -92,7 +120,6 @@ def plot_spl_sweep_multi(freqs: np.ndarray, curves: dict, *,
 
     fig.tight_layout()
     return fig
-
 
 # ── directivity map: frequency x angle -> SPL ────────────────────────────────
 

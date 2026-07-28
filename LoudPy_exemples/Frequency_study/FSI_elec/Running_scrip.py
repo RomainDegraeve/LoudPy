@@ -44,7 +44,7 @@ from loudpy import (
 geo_path = "LoudPy_exemples/Geometries/Loudspeaker/HPNEW-Sketch.geo"
 msh_path = "LoudPy_exemples/Geometries/Loudspeaker/HPNEW-Sketch.msh"
 mat_path = "src/loudpy/Materials_Bank/materials.json"
-out_path = "LoudPy_exemples/Frequency_study/FSI/Results/Files/"
+out_path = "LoudPy_exemples/Frequency_study/FSI_elec/Results/Files/"
 
 # ── Simulation parameters ──────────────────────────────────────────────────────
 c     = 344.0   # speed of sound in air [m/s]
@@ -52,11 +52,29 @@ force = 0.1     # applied force amplitude [N]
 
 # Integer-valued frequencies avoid duplicate FFT bins when comparing with
 # time-domain results (where bin spacing is 1/T_block).
-f_array = np.unique(np.logspace(np.log10(20), np.log10(20000), 320).astype(int))
+f_array = np.concatenate([
+    np.array([20, 30, 40, 50, 60, 70, 80]),
+    np.linspace(82, 150, 80),
+    np.linspace(151, 300, 60),
+    np.linspace(301, 1500, 60),
+    np.linspace(1501, 20000, 140),
+])
+Bl = 7         # Force factor [T/m]
+n = 0.8        # [-]
+Re = 8         # Resitor [Ohm]
+Le = 4e-3      # Inductor [H]
+P     = 1.0    # Power [Watt]
+u = np.sqrt(P * Re)   # Voltage [V]
 
-# Number of consecutive frequencies that share the same mesh.
-# Smaller values keep the mesh better-resolved but increase setup overhead.
-REMESH_EVERY = 30
+
+
+# ── Fréquences (Hz) auxquelles on veut (re)mailler ──────────────────────────
+# Un remesh se déclenche dès qu'on franchit un de ces seuils.
+REMESH_AT = [20, 40, 80, 160, 320, 640, 1280, 1810, 2560, 3620, 5120, 7240, 10240, 15000]
+
+def block_index(f, thresholds):
+    """Indice du bloc de mesh pour la fréquence f (nb de seuils franchis)."""
+    return int(np.searchsorted(thresholds, f, side="right"))
 
 # ── Problem definition ─────────────────────────────────────────────────────────
 problem = Problem(geo_path=geo_path, msh_path=msh_path,
@@ -90,39 +108,53 @@ pml = DomainSpecPML("PML", "Air")
 problem.add_sub_domain(pml)
 
 # ── FSI frequency sweep ────────────────────────────────────────────────────────
-study = None
+study        = None
+prev_block   = None   # bloc de la fréquence précédente
+block_start  = 0      # indice k du début du bloc courant
 
 for k, f in enumerate(f_array):
+    cur_block = block_index(f, REMESH_AT)
 
-    # ── Remesh + reassemble every REMESH_EVERY steps ──────────────────────────
-    if k % REMESH_EVERY == 0:
-        lam       = c / f             # wavelength at the current frequency [m]
-        pml.size  = lam / 8           # PML element size (λ/8)
-        pml.f_pml = f                 # centre frequency for PML attenuation
-        pml.t     = lam               # PML thickness (one wavelength)
+    # ── Remesh quand on entre dans un nouveau bloc ────────────────────────
+    if cur_block != prev_block:
+        # flush du bloc précédent avant de remailler
+        if study is not None:
+            f_start = f_array[block_start]
+            f_end   = f_array[k - 1]
+            lam     = c / f_end
+            fpath   = (out_path
+                       + f"snap_{block_start:04d}_{k-1:04d}"
+                       + f"_f{f_start:.0f}-{f_end:.0f}Hz.h5")
+            study.save(fpath, case="fsi_sweep", index=k-1, lam=lam)
+            print(f"  saved block [{block_start}→{k-1}] → {fpath}")
 
-        # Acoustic element size: λ/6 gives 6 elements per wavelength.
-        # The cap at 0.1 m prevents over-refinement at very low frequencies.
+        lam       = c / f
+        pml.size  = lam / 8
+        pml.f_pml = f
+        pml.t     = lam
         problem.set_mesh_sizes({"coil": 0.0015, "subacou": min(lam / 6, 0.005)})
-        problem.mesh(show_mesh_gui=True)
+        problem.mesh(show_mesh_gui=False)
 
         study = FreqStudy(problem)
         study.assemble_domains()
-        print(f"  → remeshed at k={k},  f={f:.1f} Hz  (λ = {lam*100:.1f} cm)")
+        print(f"  → remeshed at k={k}, f={f:.1f} Hz "
+              f"(block {cur_block}, λ = {lam*100:.1f} cm)")
 
-    # ── Solve coupled system at this frequency ────────────────────────────────
-    study.solve_fsi(freq=f, force=force)
+        block_start = k
+        prev_block  = cur_block
 
-    # ── Flush block to disk when the mesh block is complete ───────────────────
-    is_last_in_block = (k + 1) % REMESH_EVERY == 0 or k == len(f_array) - 1
-    if is_last_in_block:
-        block_start = (k // REMESH_EVERY) * REMESH_EVERY
-        f_start     = f_array[block_start]
-        lam         = c / f
-        fpath       = (out_path
-                       + f"snap_{block_start:04d}_{k:04d}"
-                       + f"_f{f_start:.0f}-{f:.0f}Hz.h5")
-        study.save(fpath, case="fsi_sweep", index=k, lam=lam)
-        print(f"[{k+1}/{len(f_array)}]  saved block [{block_start}→{k}] → {fpath}")
-    else:
-        print(f"[{k+1}/{len(f_array)}]  f = {f:8.2f} Hz")
+    # ── Solve ─────────────────────────────────────────────────────────────
+    study.solve_fsi(freq=f, Re=Re, Le=Le, n=n, u=u, Bl=Bl)
+    print(f"[{k+1}/{len(f_array)}]  f = {f:8.2f} Hz  (block {cur_block})")
+
+# ── Flush du dernier bloc ───────────────────────────────────────────────────
+if study is not None:
+    f_start = f_array[block_start]
+    f_end   = f_array[-1]
+    lam     = c / f_end
+    k       = len(f_array) - 1
+    fpath   = (out_path
+               + f"snap_{block_start:04d}_{k:04d}"
+               + f"_f{f_start:.0f}-{f_end:.0f}Hz.h5")
+    study.save(fpath, case="fsi_sweep", index=k, lam=lam)
+    print(f"  saved final block [{block_start}→{k}] → {fpath}")
