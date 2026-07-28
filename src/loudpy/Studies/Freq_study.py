@@ -1,6 +1,7 @@
 # loudpy/Studies/FreqStudy.py
 import numpy as np
 from pathlib import Path
+import scipy.sparse as sp
 from scipy.sparse import bmat
 from scipy.sparse.linalg import spsolve
 from loudpy.assembly import MecaAssembler, AcouAssembler, ForceAssembler, FsiAssembler
@@ -66,7 +67,6 @@ class FreqStudy(Problem, DofMapMixin):
 
 
 
-
     def solve_meca(self, freq: float, force: float, *, record: bool = True):
         omega  = 2 * np.pi * freq
         omega2 = omega ** 2
@@ -94,7 +94,17 @@ class FreqStudy(Problem, DofMapMixin):
 
 
     # ───────────────────────── solve + record ─────────────────────────
-    def solve_fsi(self, freq: float, force : bool, *, record: bool = True):
+    def solve_fsi(self, freq: float, force: bool = False, *,
+                Re: float = None, Le: float = None, n: float = None,
+                u: float = None, Bl: float = None, record: bool = True):
+        """
+        Two drive modes:
+        - force=True : mechanical drive using self.F as a unit force pattern
+                        (no electrical branch).
+        - voltage    : pass Re, Le, n, Bl and u (voltage). Adds a lumped electrical
+                        DOF with Ze = Re + (jω)^n * Le, coupled via
+                        F_meca = Bl*I*b and back-EMF Bl*jω*(bᵀu), b = self.F.
+        """
         omega  = 2 * np.pi * freq
         omega2 = omega ** 2
         self.omega = omega
@@ -103,31 +113,63 @@ class FreqStudy(Problem, DofMapMixin):
         A_acou       = self.H - omega2 * self.Q
         fsi_coupling = self.rho * omega2 * self.Cam
 
-        system_matrix = bmat(
-            [[A_meca,        -self.Cam.T],
-             [-fsi_coupling,  A_acou    ]], format="csc")
-        rhs = np.zeros(self.n_dof_meca + self.n_dof_acou, dtype=complex)
-        rhs[:self.n_dof_meca] = self.F*force
+        n_meca = self.n_dof_meca
+        n_acou = self.n_dof_acou
+
+        electrical = (u is not None)   # voltage-drive mode if a voltage was passed
+
+        if electrical:
+            # store the lumped params on self for later reuse
+            n = 1 if n is None else n
+            self.Re, self.Le, self.n, self.Bl, self.U = Re, Le, n, Bl, u
+
+            Ze = Re + (1j * omega) ** n * Le
+            b  = self.F.reshape(-1, 1)                 # normalized, sums to 1
+
+            C_mi = -Bl * b                             # elec -> mech : -Bl*b
+            C_im = 1j * omega * Bl * b.T               # mech -> elec : jω*Bl*bᵀ
+            Z_ee = np.array([[Ze]], dtype=complex)
+
+            system_matrix = bmat(
+                [[A_meca,             -self.Cam.T,  sp.csr_matrix(C_mi)],
+                [-fsi_coupling,       A_acou,      None               ],
+                [sp.csr_matrix(C_im), None,        sp.csr_matrix(Z_ee)]],
+                format="csc")
+
+            rhs = np.zeros(n_meca + n_acou + 1, dtype=complex)
+            rhs[-1] = u                                # drive voltage on electrical DOF
+        else:
+            system_matrix = bmat(
+                [[A_meca,        -self.Cam.T],
+                [-fsi_coupling,  A_acou    ]], format="csc")
+            rhs = np.zeros(n_meca + n_acou, dtype=complex)
+            rhs[:n_meca] = self.F * force              # unit force pattern
 
         sol      = spsolve(system_matrix, rhs)
-        sol_meca = sol[:self.n_dof_meca]
-        sol_acou = sol[self.n_dof_meca:]
+        sol_meca = sol[:n_meca]
+        sol_acou = sol[n_meca:n_meca + n_acou]
+        I_coil   = complex(sol[-1]) if electrical else None
 
         sol_meca_full = self.meca_asm.expand(sol_meca)
         sol_acou_full = sol_acou
 
         if record:
+            attrs = {"omega": float(omega)}
+            if electrical:
+                attrs.update({"I_coil": I_coil, "Ze": complex(Ze),
+                            "Re": float(Re), "Le": float(Le),
+                            "n": float(n), "Bl": float(Bl), "U": complex(u)})
             self._results.append({
                 "kind":   "freq",
                 "value":  float(freq),
                 "fields": {"u_meca": sol_meca_full,
-                           "p_acou": sol_acou_full},
-                "attrs":  {"omega": float(omega)},
+                        "p_acou": sol_acou_full},
+                "attrs":  attrs,
                 "solver_params": {"f": float(freq)},
-                 "interfaces": self._interface_meta,   
+                "interfaces": self._interface_meta,
             })
 
-        return sol_meca_full, sol_acou_full
+        return sol_meca_full, sol_acou_full, I_coil
 
 
     # ───────────────────────── one-shot saver ─────────────────────────────
