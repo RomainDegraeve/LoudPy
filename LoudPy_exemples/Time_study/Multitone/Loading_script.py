@@ -20,7 +20,7 @@ from loudpy.Plotter import (plot_field, plot_uva_time, plot_uva_fft,
                              animate_field, STYLE)
 
 # ── Paths ────────────────────────────────────────────────────────────────────────
-h5_path = Path("LoudPy_exemples/Time_study/Multitone/Results/time_study_large_signal_1N.h5")
+h5_path = Path("LoudPy_exemples/Time_study/Multitone/Results/time_study_1N_bis.h5")
 out_dir = Path("LoudPy_exemples/Time_study/Multitone/Results/Figures")
 out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -108,7 +108,7 @@ animate_field(
     U_xy           = U,        # (n_t, n_nodes, 2)
     time            = time,
     scale_factor    = 1,        # display scale factor (1 = true proportions)
-    start_time      = 1.8,
+    start_time      = 0.5,
     fps             = 30,
     target_duration = 10.0,
     save_path       = out_dir / "animation.mp4",

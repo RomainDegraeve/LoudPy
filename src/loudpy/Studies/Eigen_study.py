@@ -39,7 +39,7 @@ def _shift_invert_op(A_shifted: sp.spmatrix, B_matvec, size: int) -> LinearOpera
 def _run_arpack(op: LinearOperator, k: int) -> tuple:
     """Run eigs with sensible defaults; returns (mu, vecs)."""
     ncv = min(max(4 * k, 40), op.shape[0] - 1)
-    return eigs(op, k=k, which="LM", ncv=ncv, maxiter=20_000, tol=1e-9)
+    return eigs(op, k=k, which="LM", ncv=ncv, maxiter=30_000, tol=1e-7)
 
 def _mac_deduplicate(s_vals: np.ndarray, phi: np.ndarray,
                      freq_tol_rad: float = 1.0,
@@ -290,8 +290,8 @@ class EigenStudy(Problem, DofMapMixin):
         s_vals, phi = _mac_deduplicate(
             s_vals[upper], phi[:, upper],
             freq_tol_rad=1.0,
-            mac_tol=0.99,
-            zeta_max=0.9999,   # élimine les ζ=1 spurieux
+            mac_tol=0.99999,
+            zeta_max=0.999999,   # élimine les ζ=1 spurieux
         )
         print(f"  QEP | {upper.sum()} after half-plane filter, "
               f"{len(s_vals)} after MAC dedup")
@@ -458,7 +458,99 @@ class EigenStudy(Problem, DofMapMixin):
             print(f"  {i:4d}  {f:12.4f}  {z:10.4f}  {eta:10.4f}")
         print(f"\n  {len(frequencies)} modes found.")
 
+    def solve_meca_eigen_multishift(
+        self,
+        f_targets: list[float] = None,
+        n_modes_per_shift: int = 20,
+        f_min: float = 20.0,
+        f_max: float = 6000.0,
+        dedup_freq_tol_hz: float = 0.5,
+        mac_tol: float = 0.99,
+    ) -> tuple:
+        """
+        Multi-shift modal analysis: runs the QEP/GEP solver at several spectral
+        shifts spread across [f_min, f_max], then merges + deduplicates the
+        results. Covers a wide band uniformly without a huge single n_modes.
 
+        Parameters
+        ----------
+        f_targets : list[float]
+            Shift frequencies [Hz]. If None, log-spaced across the band.
+        n_modes_per_shift : int
+            Modes requested per shift (kept modest — each shift is local).
+        dedup_freq_tol_hz : float
+            Two modes closer than this (Hz) and MAC-similar are merged.
+        """
+        K, M, C = self._assemble()
+        hysteretic = _has_imaginary_part(K)
+        viscous    = C is not None
+
+        if f_targets is None:
+            # log-spaced shifts; ~1 shift per octave is usually plenty
+            n_shifts  = max(2, int(np.ceil(np.log2(f_max / max(f_min, 1.0)))))
+            f_targets = np.geomspace(max(f_min, 20.0), f_max, n_shifts).tolist()
+
+        print(f"\n  Multi-shift | {len(f_targets)} shifts: "
+            f"{[f'{f:.0f}' for f in f_targets]} Hz")
+
+        # ── collect (s, phi) from every shift ──────────────────────────────
+        s_all, phi_all = [], []
+        for ft in f_targets:
+            try:
+                if viscous:
+                    s_v, phi_v = self._solve_qep(K, M, C, n_modes_per_shift, ft)
+                else:
+                    s_v, phi_v = self._solve_gep(K, M, n_modes_per_shift, ft, hysteretic)
+                s_all.append(s_v)
+                phi_all.append(phi_v)
+                print(f"    shift {ft:7.1f} Hz → {len(s_v)} raw modes")
+            except Exception as e:
+                print(f"    shift {ft:7.1f} Hz → FAILED ({type(e).__name__}: {e})")
+
+        if not s_all:
+            raise RuntimeError("All shifts failed — no modes collected.")
+
+        s_vals = np.concatenate(s_all)
+        phi    = np.concatenate(phi_all, axis=1)
+
+        # ── global dedup across shifts (freq + MAC) ────────────────────────
+        freq_tol_rad = 2.0 * np.pi * dedup_freq_tol_hz
+        s_vals, phi  = _mac_deduplicate(
+            s_vals, phi,
+            freq_tol_rad=freq_tol_rad,
+            mac_tol=mac_tol,
+            zeta_max=0.999999,
+        )
+
+        # ── post-process (band filter + sort) ──────────────────────────────
+        frequencies, zeta, loss_factors, s_vals, phi = \
+            self._postprocess(s_vals, phi, f_min, f_max,
+                            filter_halfplane=(hysteretic or viscous))
+
+        # ── normalise + expand ─────────────────────────────────────────────
+        reduced = self._normalise(phi, s_vals, M, C, hysteretic, viscous)
+        full_modes_list = [self.meca.expand(reduced[:, i])
+                        for i in range(reduced.shape[1])]
+        mode_shapes_full = np.array(full_modes_list)
+
+        self._print_summary(frequencies, zeta, loss_factors, hysteretic, viscous)
+
+        self._results.append({
+            "kind":    "meca",
+            "dof_key": "u_meca",
+            "freqs":   frequencies,
+            "zeta":    zeta,
+            "modes":   mode_shapes_full,
+            "solver_params": {
+                "f_targets":         list(f_targets),
+                "n_modes_per_shift": n_modes_per_shift,
+                "f_min":             f_min,
+                "f_max":             f_max,
+            },
+            "interfaces": self._interface_meta,
+        })
+
+        return frequencies, zeta, mode_shapes_full
 
     def save(self, path, **metadata):
         """

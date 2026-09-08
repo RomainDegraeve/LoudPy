@@ -75,10 +75,21 @@ class TimeStudy(Problem, DofMapMixin):                  #
         dof_map[free] = np.arange(n_free)
 
         # ── Mass matrix (state-independent, assembled once at u=0) ───────────────
-        u_zero             = np.zeros(n_dof, dtype=np.float64)
-        _, M_full, _, _    = self.assembler_nl.assemble_tangent(u_zero)
+        u_zero                        = np.zeros(n_dof, dtype=np.float64)
+        K_T_zero, M_full, C_zero, F_int_zero = self.assembler_nl.assemble_tangent(u_zero)
         # Use chained slicing (same as K_red / C_red inside the loop) — NOT np.ix_
         M_red              = M_full[free, :][:, free].tocsc()
+
+        # ── Diagnostic: compare NL tangent at u=0 with linear assembler ──────────
+        _K_lin, _, _C_lin  = MecaAssembler(self.fem_objects).assemble()
+        _K_lin_real        = _K_lin.real
+        _dK                = (K_T_zero - _K_lin_real)
+        _dC                = (C_zero   - _C_lin.real)
+        print("── NL vs Linear assembler at u=0 ──────────────────────────────")
+        print(f"  F_int(u=0): max={np.max(np.abs(F_int_zero)):.3e}  norm={np.linalg.norm(F_int_zero):.3e}")
+        print(f"  ΔK:  max={np.max(np.abs(_dK.data)):.3e}  rel={np.max(np.abs(_dK.data))/np.max(np.abs(K_T_zero.data)):.3e}")
+        print(f"  ΔC:  max={np.max(np.abs(_dC.data)):.3e}  rel={np.max(np.abs(_dC.data))/np.max(np.abs(C_zero.data)):.3e}")
+        print("────────────────────────────────────────────────────────────────")
 
         # ── Spatial force vector ──────────────────────────────────────────────────
         dof_offset = {'_r_': 0, '_z_': 1}

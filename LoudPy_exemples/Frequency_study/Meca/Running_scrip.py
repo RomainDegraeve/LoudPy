@@ -37,8 +37,8 @@ mat_path = "src/loudpy/Materials_Bank/materials.json"
 out_path = "LoudPy_exemples/Frequency_study/Meca/Results/Files/"
 
 # ── Simulation parameters ──────────────────────────────────────────────────────
-f_array = np.logspace(np.log10(20), np.log10(20000), 400)  # 400 log-spaced freqs [Hz]
-force   = 0.1   # force amplitude applied at the excitation interface [N]
+f_array = np.logspace(np.log10(10), np.log10(20000), 3000)  # 400 log-spaced freqs [Hz]
+force   = 1   # force amplitude applied at the excitation interface [N]
 
 # ── Problem definition ─────────────────────────────────────────────────────────
 problem = Problem(geo_path=geo_path, msh_path=msh_path,

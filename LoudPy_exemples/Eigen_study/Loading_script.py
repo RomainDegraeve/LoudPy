@@ -63,14 +63,14 @@ with EigenReader(in_path) as r:
 # relative to the characteristic mesh size.
 fig = plot_modes_grid(
     mesh.coords, mesh.tris, shapes, freqs,
-    zetas=zetas, n_plot=35, ncols=4, deform_scale=0.02)
+    zetas=zetas, n_plot=77, ncols=4, deform_scale=0.02)
 fig.savefig(out_dir / "modes_grid.pdf", bbox_inches="tight")
 
 # ── Mode-shape grid — user-selected modes ─────────────────────────────────────
 # Pass mode_indices to choose any subset of modes by 0-based index.
 fig = plot_modes_grid(
     mesh.coords, mesh.tris, shapes, freqs,
-    zetas=zetas, mode_indices=[0, 2, ], ncols=3)
+    zetas=zetas, mode_indices=[0, 1, 2, 4, 7, 16, 17, 20, 32, 34, 39, 41, 42, 46, 47], ncols=5, deform_scale=0.02) #  50, 53, 56, 59, 64], 
 fig.savefig(out_dir / "modes_selection.pdf", bbox_inches="tight")
 
 # ── Single mode — full mesh ────────────────────────────────────────────────────

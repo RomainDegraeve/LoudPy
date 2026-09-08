@@ -89,11 +89,6 @@ takes plain numpy arrays; all file/reader handling lives in the loader.
 """
 
 
-from pathlib import Path
-
-import numpy as np
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # 1) Loader — adapt the three FIELD/DOMAIN names here if yours differ
 # ─────────────────────────────────────────────────────────────────────────────
@@ -503,7 +498,7 @@ def plot_modes_grid(coords: np.ndarray, tris: np.ndarray,
         ax.set_aspect("equal")
 
         sub = rf" $\zeta$={zetas[k]:.3g}" if zetas is not None and zetas[k] is not None else ""
-        ax.set_title(f"Mode {k+1}  {freqs[k]:.1f} Hz{sub}")
+        ax.set_title(f"Mode {k}  {freqs[k]:.1f} Hz{sub}")
 
         is_bottom = (row == nrows - 1) or (
             row == nrows - 2 and col >= (n_plot - (nrows - 1) * ncols))

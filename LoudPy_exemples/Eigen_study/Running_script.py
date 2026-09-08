@@ -53,14 +53,17 @@ problem.add_interface(
 
 # ── Meshing ────────────────────────────────────────────────────────────────────
 # Set show_mesh_gui=True to preview the mesh in GMSH before solving.
-problem.mesh(show_mesh_gui=False)
+problem.mesh(show_mesh_gui=True)
 
 # ── Modal solve ────────────────────────────────────────────────────────────────
 # ARPACK shift-invert finds n_modes eigenvalues near f_target [Hz].
 # Increasing n_modes captures more resonances at the cost of memory and time.
 study = EigenStudy(problem)
-study.solve_meca_eigen_ARPAC(n_modes=44, f_target=115)
-
-# ── Save ───────────────────────────────────────────────────────────────────────
+study.solve_meca_eigen_multishift(
+    f_min=20.0,
+    f_max=40000.0,
+    n_modes_per_shift=20,       # 20 modes locaux par shift
+    # f_targets=[100, 300, 800, 2000, 4000, 6000],  # ou laisse None pour auto
+)
 study.save(out_path)
 print(f"Saved → {out_path}")

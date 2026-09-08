@@ -23,7 +23,7 @@ from loudpy.Plotter import (
 
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
-h5_path = Path("LoudPy_exemples/Frequency_study/Meca/Results/Files/snap_f_20-20000Hz.h5")
+h5_path = Path("LoudPy_exemples/Frequency_study/Meca/Results/Files/snap_f_10-20000Hz.h5")
 out_dir = Path("LoudPy_exemples/Frequency_study/Meca/Results/Figures")
 out_dir.mkdir(parents=True, exist_ok=True)
 
