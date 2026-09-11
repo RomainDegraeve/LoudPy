@@ -48,7 +48,6 @@ out_path = "LoudPy_exemples/Frequency_study/FSI_elec/Results/Files/"
 
 # ── Simulation parameters ──────────────────────────────────────────────────────
 c     = 344.0   # speed of sound in air [m/s]
-force = 0.1     # applied force amplitude [N]
 
 # Integer-valued frequencies avoid duplicate FFT bins when comparing with
 # time-domain results (where bin spacing is 1/T_block).
