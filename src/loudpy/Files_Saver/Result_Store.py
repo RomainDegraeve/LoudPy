@@ -214,3 +214,8 @@ class ResultStore:
             if len(tags) > 0:
                 if "node_tags" in g: del g["node_tags"]
                 g.create_dataset("node_tags", data=np.asarray(tags, dtype=np.int64))
+            edges = data.get("edges", np.array([]))
+            if len(edges) > 0:
+                if "edges" in g: del g["edges"]
+                g.create_dataset("edges", data=np.asarray(edges, dtype=np.int64))
+

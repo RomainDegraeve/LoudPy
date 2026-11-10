@@ -29,6 +29,8 @@ class TimeStudy(Problem, DofMapMixin):                  #
             self._interface_meta[spec.name] = {
                 "kind":      spec.__class__.__name__,
                 "node_tags": tags,
+                "edges":     self._get_interface_edges(spec),
+
             }
 
 

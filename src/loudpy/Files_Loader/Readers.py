@@ -98,24 +98,26 @@ class BaseReader:
         values = global_field[rows] if valid.all() else global_field[rows[valid]]
         return sub_mesh, values
 
-    def extract_interface(self, snap, 
-                          interface: str, field: str,mesh_id: str | None = None) -> tuple:
+    def extract_interface(self, snap,
+                        interface: str, field: str, mesh_id: str | None = None) -> tuple:
         """
-        Extract field values along a named interface.
-
         Returns
         -------
         coords : np.ndarray  (n_iface_nodes, 2)
         values : np.ndarray  (n_iface_nodes,) or (n_iface_nodes, dpn)
+        edges  : np.ndarray  (n_iface_elems, nodes_per_elem) row indices into coords/values
         """
         mesh_id      = mesh_id or self._first_mesh_id()
         iface_tags   = self._h5[f"interfaces/{interface}/node_tags"][:]
+        edges_path   = f"interfaces/{interface}/edges"
+        edges        = self._h5[edges_path][:] if edges_path in self._h5 else np.empty((0, 3), dtype=np.int64)
         global_mesh  = self.mesh(mesh_id, _field_to_domain(field))
         t2r          = global_mesh.tag_to_row
         rows         = np.array([t2r[int(t)] for t in iface_tags if int(t) in t2r])
         coords       = global_mesh.coords[rows]
         values       = snap.fields[field][rows]
-        return coords, values
+        return coords, values, edges
+
 
     def dump(self) -> None:
         def walk(node, ind=0):

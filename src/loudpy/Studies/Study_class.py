@@ -89,4 +89,15 @@ class Problem:
                 if hasattr(fem_obj, "node_tags"):
                     tags.update(fem_obj.node_tags.tolist())
         return np.array(sorted(tags), dtype=np.int64)
+
     
+    def _get_interface_edges(self, spec) -> np.ndarray:
+        """Per-element node ordering for an interface, as row indices into
+        the array returned by _get_interface_node_tags(spec)."""
+        tags = self._get_interface_node_tags(spec)
+        edges = []
+        for fem_obj in self.fem_objects:
+            if spec.name in fem_obj.name and hasattr(fem_obj, "edges"):
+                rows = np.searchsorted(tags, fem_obj.edges.ravel())
+                edges.append(rows.reshape(fem_obj.edges.shape))
+        return np.vstack(edges).astype(np.int64) if edges else np.empty((0, 3), dtype=np.int64)
