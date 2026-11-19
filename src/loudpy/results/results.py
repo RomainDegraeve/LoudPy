@@ -75,6 +75,23 @@ class FieldView:
     def triangles(self) -> np.ndarray:
         return self.mesh.triangles()
 
+    def restrict(self, region: str) -> "FieldView":
+        """The field on the mesh groups selected by `region` (e.g. "surround"; naming rules)."""
+        from loudpy.geometry.naming import matches
+        names = [n for n in self.mesh.groups if matches(region, n)]
+        if not names:
+            raise KeyError(f"no mesh group selected by {region!r} (groups: {list(self.mesh.groups)})")
+        tags = np.unique(np.concatenate([self.mesh.groups[n].cells.ravel() for n in names]))
+        rows = self.mesh.rows_of(tags)
+        sub = Mesh(tags, self.mesh.coords[rows], {n: self.mesh.groups[n] for n in names}, self.mesh.path)
+        return FieldView(self.name, sub, self.values[rows], self.coordinate, self.extra)
+
+    def at_nodes(self, tags) -> tuple[np.ndarray, np.ndarray]:
+        """(coords, values) at the node tags present on this field's mesh (e.g. res.boundary(...))."""
+        pos = self.mesh._positions
+        rows = np.array([pos[int(t)] for t in np.asarray(tags) if int(t) in pos], dtype=np.int64)
+        return self.mesh.coords[rows], self.values[rows]
+
 
 def spl(p, rms: bool = True) -> np.ndarray:
     """Sound pressure level [dB re 20 µPa] of complex amplitudes (RMS: |p|/√2; rms=False: |p|)."""
@@ -115,6 +132,14 @@ class Results:
 
     def mesh(self, physics: str = "solid", block: int = 0) -> Mesh:
         return self.blocks[block].meshes[physics]
+
+    def boundary(self, name: str) -> np.ndarray:
+        """Node tags of the boundaries selected by `name` (e.g. "interface_acou_meca_front")."""
+        from loudpy.geometry.naming import matches
+        sel = [b for n, b in self.boundaries.items() if n == name or matches(name, n)]
+        if not sel:
+            raise KeyError(f"no boundary {name!r} (boundaries: {list(self.boundaries)})")
+        return np.unique(np.concatenate([np.asarray(b["node_tags"]) for b in sel]))
 
     def __repr__(self):
         v = self.values

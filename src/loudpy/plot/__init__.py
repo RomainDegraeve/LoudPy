@@ -110,4 +110,45 @@ def history(res, at, name: str = "u", component: str = "z", ax=None, label=None)
     return _curve(res.times, y, ax, label, "t [s]", f"{name}_{component}", logx=False)
 
 
-__all__ = ["field", "mode", "spl", "response", "history"]
+def modes_grid(modes, indices=None, n: int | None = None, ncols: int = 4, deform_scale: float = 0.02,
+               name: str = "u"):
+    """Grid of mode shapes (|u| on the deformed mesh) of one mode set (e.g. modes.order(0))."""
+    from loudpy.Plotter.field_plots import plot_modes_grid
+    if len(modes.blocks) != 1:
+        raise ValueError(f"pick one mode set first (sets: {modes.sets}), e.g. modes.order(0)")
+    b = modes.blocks[0]
+    mesh = b.mesh_of(name)
+    kw = dict(mode_indices=list(indices)) if indices is not None else dict(n_plot=n or len(b))
+    return plot_modes_grid(mesh.coords, mesh.triangles(), b.fields[name], b.values,
+                           zetas=b.extra.get("zeta"), ncols=ncols, deform_scale=deform_scale, **kw)
+
+
+def deformed_boundary(view: FieldView, tags, scale: float = 0.1, title: str | None = None, ax=None):
+    """Rest and deformed positions of the nodes `tags` (e.g. res.boundary(name)) for a displacement view."""
+    from loudpy.Plotter.field_plots import plot_interface_deformed
+    coords, u = view.at_nodes(tags)
+    return plot_interface_deformed(coords[:, 0], coords[:, 1], u[:, 0], u[:, 1], scale=scale,
+                                   title=title or f"{view.name} at {view.coordinate:.4g}", ax=ax)
+
+
+def coupled_modes_grid(modes, indices, labels=None, **kwargs):
+    """
+    Coupled structure + air modes of one mode set (e.g. modes.set("fsi")): pressure in the air and
+    deformed structure side by side (keyword arguments: Plotter.plot_coupled_modes_grid).
+    """
+    from loudpy.Plotter.field_plots import plot_coupled_modes_grid
+    if len(modes.blocks) != 1:
+        raise ValueError(f"pick one mode set first (sets: {modes.sets})")
+    b = modes.blocks[0]
+    ma, mm = b.meshes["air"], b.meshes["solid"]
+    ta, tm = ma.triangles(), mm.triangles()
+    frames = [dict(freq=float(b.values[k]), zeta=float(b.extra.get("zeta", [np.nan] * len(b))[k]), index=k,
+                   coords_a=ma.coords, tris_a=ta, p=b.fields["p"][k],
+                   coords_m=mm.coords, tris_m=tm, u=b.fields["u"][k],
+                   meta={n: v[k] for n, v in b.extra.items()})
+              for k in range(len(b))]
+    return plot_coupled_modes_grid(frames, mode_indices=list(indices), labels=labels, **kwargs)
+
+
+__all__ = ["field", "mode", "spl", "response", "history", "modes_grid", "deformed_boundary",
+           "coupled_modes_grid"]

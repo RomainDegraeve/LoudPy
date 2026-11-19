@@ -1,99 +1,53 @@
 """
-Loading_script.py — Visualise the results of a modal analysis.
+Loading_script.py — the results of the modal analysis (Running_script.py first).
 
-Reads eigen_study.h5 and produces the following figures in Results/Figures/:
-  - modes_grid.pdf        : all computed mode shapes on the full mesh
+What this produces (in Results/Figures/)
+-----------------------------------------
+  - modes_grid.pdf        : all computed mode shapes
   - modes_selection.pdf   : a hand-picked subset of mode shapes
-  - mode_k_full.pdf       : one mode on the full mesh
-  - mode_k_surround.pdf   : that mode restricted to the surround subdomain
+  - mode_k_full.pdf       : one mode on the whole structure
+  - mode_k_surround.pdf   : that mode on the surround only
   - mode_k_interface.pdf  : deformed profile of the fluid-structure interface
 """
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-import numpy as np
 
-from loudpy.Files_Loader import EigenReader, Domain
-from loudpy.Plotter import (
-    plot_modes_grid, plot_field, plot_interface_deformed, STYLE,
-)
+import loudpy as lp
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
-in_path = "LoudPy_exemples/Eigen_study/Meca/Results/Files/eigen_study.h5"
+in_path = "LoudPy_exemples/Eigen_study/Meca/Results/Files/modes.h5"
 out_dir = Path("LoudPy_exemples/Eigen_study/Meca/Results/Figures")
 out_dir.mkdir(parents=True, exist_ok=True)
 
-# ── Inspect file contents ──────────────────────────────────────────────────────
-with EigenReader(in_path) as r:
-    r.inspect()   # prints a summary of stored modes, meshes, and sub-domains
+modes = lp.load(in_path)
+print(modes)
+print("Regions   :", modes.mesh("solid").names(2))
+print("Boundaries:", list(modes.boundaries))
 
-# ── Load all modal data ────────────────────────────────────────────────────────
-with EigenReader(in_path) as r:
-    # load() returns one EigenSnapshot per mode, the full mesh, and dpn
-    # (degrees of freedom per node — 2 for 2-D mechanics: ux, uy).
-    snaps, mesh, dpn = r.load(Domain.MECA)
-
-    freqs  = np.array([s.freq           for s in snaps])        # (n_modes,)  [Hz]
-    zetas  = np.array([s.zeta           for s in snaps])        # (n_modes,)  damping ratios
-    shapes = np.stack([s.fields["u_meca"] for s in snaps])      # (n_modes, n_nodes, 2)
-
-    print(f"Loaded {len(freqs)} modes,  "
-          f"f = [{freqs[0]:.1f}, {freqs[-1]:.1f}] Hz")
-    print("Available sub-domains:", r.subdomain_names())
-    print("Available interfaces :", r.interface_names())
-
-    # Choose mode index k to examine in detail (0-based: k=2 → mode 3)
-    k = 2
-
-    # Extract displacement field restricted to the surround sub-domain
-    # Returns: surround_mesh (coords, tris for surround nodes only)
-    #          u_surround    (n_surround_nodes, 2) complex displacement
-    surround_mesh, u_surround = r.extract_subdomain(
-        snaps[k], "submeca_surround", "u_meca")
-
-    # Extract displacement along the fluid-structure interface boundary
-    # Returns: coords_iface (n_iface_nodes, 2) node coordinates
-    #          u_iface      (n_iface_nodes, 2) complex displacement
-    coords_iface, u_iface, _ = r.extract_interface(
-        snaps[k], interface="interface_acou_meca_front", field="u_meca")
-
-# ── Mode-shape grid — all modes ────────────────────────────────────────────────
-# Each panel shows the displacement magnitude |u| with the undeformed mesh
-# overlaid in grey.  deform_scale controls the visible deformation amplitude
-# relative to the characteristic mesh size.
-fig = plot_modes_grid(
-    mesh.coords, mesh.tris, shapes, freqs,
-    zetas=zetas, n_plot=77, ncols=4, deform_scale=0.02)
+# ── Mode-shape grids ───────────────────────────────────────────────────────────
+# |u| on the deformed mesh; deform_scale sets the visible deformation.
+fig = lp.plot.modes_grid(modes, n=77, ncols=4, deform_scale=0.02)
 fig.savefig(out_dir / "modes_grid.pdf", bbox_inches="tight")
 
-# ── Mode-shape grid — user-selected modes ─────────────────────────────────────
-# Pass mode_indices to choose any subset of modes by 0-based index.
-fig = plot_modes_grid(
-    mesh.coords, mesh.tris, shapes, freqs,
-    zetas=zetas, mode_indices=[0, 1, 2, 4, 7, 16, 17, 20, 32, 34, 39, 41, 42, 46, 47], ncols=5, deform_scale=0.02) #  50, 53, 56, 59, 64], 
+fig = lp.plot.modes_grid(modes, indices=[0, 1, 2, 4, 7, 16, 17, 20, 32, 34, 39, 41, 42, 46, 47],
+                         ncols=5, deform_scale=0.02)
 fig.savefig(out_dir / "modes_selection.pdf", bbox_inches="tight")
 
-# ── Single mode — full mesh ────────────────────────────────────────────────────
-u_mag = np.linalg.norm(np.abs(shapes[k]), axis=1)   # scalar |u| per node
-ax = plot_field(mesh.coords, mesh.tris, u_mag,
-                title=f"Mode {k+1} - {freqs[k]:.1f} Hz", **STYLE["meca"])
-ax.figure.savefig(out_dir / f"mode_{k+1}_full.pdf", bbox_inches="tight")
+# ── One mode: whole structure, surround only, interface profile ───────────────
+k = 2                                           # 0-based: mode 3
+mode = modes.mode(k)
+title = f"Mode {k + 1} - {mode.coordinate:.1f} Hz"
 
-# ── Single mode — surround subdomain only ─────────────────────────────────────
-u_sur_mag = np.linalg.norm(np.abs(u_surround), axis=1)
-ax = plot_field(surround_mesh.coords, surround_mesh.tris, u_sur_mag,
-                title=f"Surround - mode {k+1} - {freqs[k]:.1f} Hz",
-                **STYLE["meca"])
-ax.figure.savefig(out_dir / f"mode_{k+1}_surround.pdf", bbox_inches="tight")
+ax = lp.plot.field(mode, title=title)
+ax.figure.savefig(out_dir / f"mode_{k + 1}_full.pdf", bbox_inches="tight")
 
-# ── Fluid-structure interface — deformed profile ───────────────────────────────
-# Compares the rest position (dots) against the scaled deformed position (red)
-# along the coupling boundary between the cone and the acoustic cavity.
-ax = plot_interface_deformed(
-    coords_iface[:, 0], coords_iface[:, 1],
-    u_iface[:, 0], u_iface[:, 1],
-    scale=0.1,
-    title=f"Interface - mode {k+1} - {freqs[k]:.1f} Hz")
-ax.figure.savefig(out_dir / f"mode_{k+1}_interface.pdf", bbox_inches="tight")
+ax = lp.plot.field(mode.restrict("surround"), title=f"Surround - {title}")
+ax.figure.savefig(out_dir / f"mode_{k + 1}_surround.pdf", bbox_inches="tight")
+
+# rest position (dots) against the scaled deformed position (red) along the cone / air boundary
+ax = lp.plot.deformed_boundary(mode, modes.boundary("interface_acou_meca_front"), scale=0.1,
+                               title=f"Interface - {title}")
+ax.figure.savefig(out_dir / f"mode_{k + 1}_interface.pdf", bbox_inches="tight")
 
 plt.show()

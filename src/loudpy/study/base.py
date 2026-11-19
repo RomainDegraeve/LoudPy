@@ -16,8 +16,9 @@ class Study:
             raise RuntimeError("mesh the model first: model.mesh(path)")
         return self.model.as_problem()
 
-    def save(self, path):
-        """Write the last results (loudpy result format 2)."""
+    def save(self, path, **metadata):
+        """Write the last results (loudpy result format 2), with extra metadata (read back in .meta)."""
         if self.results is None:
             raise RuntimeError("nothing to save: call solve() first")
+        self.results.meta.update(metadata)
         return self.results.save(path)

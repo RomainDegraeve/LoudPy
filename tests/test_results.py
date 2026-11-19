@@ -115,3 +115,30 @@ def test_plots(tmp_path):
     lp.plot.history(lp.load(_legacy("time.h5")), at=(0.0, 0.03))
     ax = lp.plot.field(r.field("u", index=0))                     # a FieldView works too
     ax.figure.savefig(tmp_path / "f.png")
+
+
+def test_region_and_boundary_views():
+    r = lp.load(_legacy("freq_meca.h5"))
+    v = r.field("u", index=0)
+    sur = v.restrict("surround")
+    assert 0 < sur.mesh.n_nodes < v.mesh.n_nodes and set(sur.mesh.groups) == {"submeca_surround"}
+    k = v.mesh.rows_of(sur.mesh.node_tags[:5])
+    np.testing.assert_array_equal(sur.values[:5], v.values[k])
+    tags = r.boundary("interface_acou_meca_front")
+    coords, vals = v.at_nodes(tags)
+    assert len(coords) == len(tags) == len(vals)
+    with pytest.raises(KeyError):
+        v.restrict("no_such_part")
+
+
+def test_grid_plots_and_save_metadata(tmp_path, mesh_dir):
+    import matplotlib
+    matplotlib.use("Agg")
+    modes = lp.load(_legacy("eigen_fourier.h5"))
+    lp.plot.modes_grid(modes.order(0), indices=[0, 1])
+    with pytest.raises(ValueError, match="pick one mode set"):
+        lp.plot.modes_grid(modes)
+    _, study = api.speaker_freq_meca(mesh_dir, [100.0])
+    study.save(tmp_path / "m.h5", case="demo", tones=np.array([1.0, 2.0]))
+    meta = lp.load(tmp_path / "m.h5").meta
+    assert meta["case"] == "demo" and meta["tones"] == [1.0, 2.0] and meta["study"] == "FrequencyResponse"

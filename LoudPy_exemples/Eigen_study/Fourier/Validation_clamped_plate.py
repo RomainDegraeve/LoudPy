@@ -13,37 +13,34 @@ difference must stay well under 1 % for the low modes at h/a = 0.02.
 """
 import numpy as np
 
-from loudpy.Studies import Problem, EigenStudy
-from loudpy import DomainSpecMecaRayleigh, InterfaceSpecClamped
+import loudpy as lp
 
-geo_path = "LoudPy_exemples/Geometries/Plate/clamped_plate.geo"
-msh_path = "LoudPy_exemples/Eigen_study/Fourier/Results/Files/plate_mesh.msh"
+geometry = "LoudPy_exemples/Geometries/Plate/clamped_plate.geo"
+mesh_path = "LoudPy_exemples/Eigen_study/Fourier/Results/Files/plate_mesh.msh"
 
 E, nu, rho, a, h = 2.1e11, 0.3, 7850.0, 0.1, 0.002
 # λ²_mn of the clamped circular plate (Leissa, Vibration of Plates), n = 1, 2
 LAMBDA2 = {(0, 1): 10.2158, (0, 2): 39.771, (1, 1): 21.260, (1, 2): 60.829,
            (2, 1): 34.877, (2, 2): 84.583, (3, 1): 51.030, (4, 1): 69.666}
 
-problem = Problem(geo_path=geo_path, msh_path=msh_path)
-problem.add_sub_domain(DomainSpecMecaRayleigh("plate", material="Steel", E=E, nu=nu, rho=rho,
-                                              alpha_ray=0.0, beta_ray=0.0, size=h / 3))
-problem.add_interface(InterfaceSpecClamped("interface_constrained"))
-problem.mesh(show_mesh_gui=False, reuse_mesh=True)
+steel = lp.Material("Steel", rho=rho, E=E, nu=nu)
+model = lp.Model(geometry).add(
+    lp.Solid("plate", steel, damping=lp.Undamped(), mesh_size=h / 3),
+    lp.Clamped("interface_constrained"),
+)
+model.mesh(mesh_path)
+modes = lp.Modes(model).solve(f_min=10.0, f_max=4000.0, orders=range(5), n_per_shift=10)
 
 D = E * h ** 3 / (12 * (1 - nu ** 2))
 scale = np.sqrt(D / (rho * h)) / (2 * np.pi * a ** 2)
-study = EigenStudy(problem)
 print(f"\n{'m':>2} {'n':>2} {'analytical [Hz]':>16} {'FE [Hz]':>10} {'diff [%]':>9}")
 worst = 0.0
-for m in range(5):
-    f, _, modes = study.solve_meca_eigen_fourier(m, f_min=10.0, f_max=4000.0, n_modes_per_shift=10)
+for m in modes.orders:
+    om = modes.order(m)
+    U = om.blocks[0].fields["u"]                                        # (n_modes, n_nodes, dpn)
     # bending modes only: drop the in-plane / torsional ones (much higher here, or tiny U_z)
-    if m == 0:
-        bend = [k for k in range(len(f))]
-    else:
-        bend = [k for k in range(len(f))
-                if np.linalg.norm(modes[k][1::3]) > 0.5 * np.linalg.norm(modes[k])]
-    fb = np.sort(np.asarray(f)[bend])
+    bend = np.linalg.norm(U[..., 1], axis=1) > 0.5 * np.linalg.norm(U.reshape(len(U), -1), axis=1)
+    fb = np.sort(om.frequencies if m == 0 else om.frequencies[bend])
     for n in (1, 2):
         if (m, n) in LAMBDA2 and len(fb) >= n:
             fa = LAMBDA2[(m, n)] * scale

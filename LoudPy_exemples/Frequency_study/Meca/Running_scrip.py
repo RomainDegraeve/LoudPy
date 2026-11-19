@@ -1,82 +1,50 @@
 """
-Running_script.py — Structural harmonic sweep (mechanics only, no acoustics).
+Running_scrip.py — structural harmonic sweep (structure only, no air).
 
-The mechanical FE matrices (K, M, C) are assembled once.  The complex linear
-system  (-ω²M + jωC + K) u = F  is then solved independently at each
-frequency in f_array.  This is valid when the acoustic back-pressure on the
-cone is negligible (in-air, low-frequency regime) or when the acoustic
-coupling is handled separately.
+The structural matrices (K, M, C) are assembled once and (−ω²M + jωC + K) u = F is solved at
+every frequency (the factorisation is reused between close frequencies). Valid when the air
+load on the cone is negligible, or handled separately.
 
 What this produces
 ------------------
-    Results/Files/snap_f_20-20000Hz.h5   — one snapshot per frequency
+    Results/Files/sweep.h5   — one entry per frequency (loudpy result format 2)
 
-Typical use
------------
-Run once.  Then use Loading_script.py to visualise the results.
+Then run Loading_script.py.
 """
-import os
 import numpy as np
 
-# Avoids an OpenMP conflict that arises when scipy (OpenBLAS/MKL) and
-# numba both load their own OpenMP runtime simultaneously.
-os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
-
-from loudpy.Studies import Problem, FreqStudy
-from loudpy import (
-    DomainSpecMecaRayleigh,
-    InterfaceSpecClamped,
-    InterfaceSpecForced,
-    InterfaceSpecAcouMeca,
-)
+import loudpy as lp
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
-geo_path = "LoudPy_exemples/Geometries/Loudspeaker/HPNEW-Sketch.geo"
-msh_path = "LoudPy_exemples/Frequency_study/Meca/Results/Files/mesh.msh"   # own mesh, reused on reruns
-mat_path = "src/loudpy/Materials_Bank/materials.json"
-out_path = "LoudPy_exemples/Frequency_study/Meca/Results/Files/"
+geometry = "LoudPy_exemples/Geometries/Loudspeaker/HPNEW-Sketch.geo"
+mesh_path = "LoudPy_exemples/Frequency_study/Meca/Results/Files/mesh.msh"   # reused on reruns
+out_path = "LoudPy_exemples/Frequency_study/Meca/Results/Files/sweep.h5"
 
-# ── Simulation parameters ──────────────────────────────────────────────────────
-f_array = np.logspace(np.log10(10), np.log10(20000), 3000)  # 400 log-spaced freqs [Hz]
-force   = 1   # force amplitude applied at the excitation interface [N]
+# ── Sweep ──────────────────────────────────────────────────────────────────────
+freqs = np.logspace(np.log10(10), np.log10(20000), 3000)   # [Hz]
+force = 1.0                                                 # on the voice coil [N]
 
-# ── Problem definition ─────────────────────────────────────────────────────────
-problem = Problem(geo_path=geo_path, msh_path=msh_path,
-                  mat_path=mat_path, subdomains_key="sub")
-
-problem.add_sub_domain(
-    DomainSpecMecaRayleigh("membranne",  material="Paper",         size=0.0005),
-    DomainSpecMecaRayleigh("coil",       material="Copper",        size=0.0005),
-    DomainSpecMecaRayleigh("surround",   material="Rubber",        size=0.0005),
-    DomainSpecMecaRayleigh("spider",     material="PhenolicCloth", size=0.0005),
-    DomainSpecMecaRayleigh("former",     material="Kapton",        size=0.0005),
-    DomainSpecMecaRayleigh("glue",       material="SolidGlue",     size=0.0005),
-    DomainSpecMecaRayleigh("dustcap",    material="Polypropylene", size=0.0005),
+# ── Model ──────────────────────────────────────────────────────────────────────
+size = 0.0005
+model = lp.Model(geometry)
+model.add(
+    lp.Solid("membranne", "Paper", mesh_size=size),
+    lp.Solid("coil", "Copper", mesh_size=size),
+    lp.Solid("surround", "Rubber", mesh_size=size),
+    lp.Solid("spider", "PhenolicCloth", mesh_size=size),
+    lp.Solid("former", "Kapton", mesh_size=size),
+    lp.Solid("glue", "SolidGlue", mesh_size=size),
+    lp.Solid("dustcap", "Polypropylene", mesh_size=size),
+    lp.Clamped("interface_constrained"),
+    lp.Coil("interface_forced"),
+    lp.FluidStructure("interface_acou_meca_front"),     # kept in the results for the plots
+    lp.FluidStructure("interface_acou_meca_rear"),
 )
+model.mesh(mesh_path)
 
-problem.add_interface(
-    InterfaceSpecClamped("interface_constrained"),
-    InterfaceSpecForced("interface_forced"),
-    InterfaceSpecAcouMeca("interface_acou_meca_front"),
-    InterfaceSpecAcouMeca("interface_acou_meca_rear"),
-)
-
-
-
-
-# ── Mesh ───────────────────────────────────────────────────────────────────────
-problem.mesh(show_mesh_gui=False, reuse_mesh=True)  # loads msh_path if built from the same geo/specs
-
-# ── Frequency sweep ────────────────────────────────────────────────────────────
-# assemble_meca() builds K, M, C once.
-# solve_meca() factorises and solves at each frequency (the most expensive step).
-study = FreqStudy(problem)
-study.assemble_meca()
-
-for f in f_array:
-    study.solve_meca(freq=f, force=force)
-
-# ── Save ───────────────────────────────────────────────────────────────────────
-out_file = out_path + f"snap_f_{int(f_array.min())}-{int(f_array.max())}Hz.h5"
-study.save(out_file, case="meca_sweep")
-print(f"Saved → {out_file}")
+# ── Solve ──────────────────────────────────────────────────────────────────────
+study = lp.FrequencyResponse(model, drive=lp.Force(force))
+res = study.solve(freqs)
+print(res)
+study.save(out_path)
+print(f"Saved → {out_path}")

@@ -10,6 +10,11 @@ The former API (Problem, DomainSpec*, InterfaceSpec*, loudpy.Studies) keeps work
 refactor proceeds (docs/ARCHITECTURE.md).
 """
 
+import os as _os
+
+# scipy (OpenBLAS / MKL) and numba may each load an OpenMP runtime; allow both (set before they load).
+_os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
 # ── new API ──────────────────────────────────────────────────────────────────
 from .model import (
     Model, Solid, Air, PML, Clamped, Coil, FluidStructure, Radiation,

@@ -28,7 +28,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 import pyvista as pv
 
-from loudpy.Files_Loader import EigenReader
+import loudpy as lp
 
 in_path = "LoudPy_exemples/Eigen_study/Fourier/Results/Files/eigen_fourier.h5"
 out_dir = Path("LoudPy_exemples/Eigen_study/Fourier/Results/Figures")
@@ -92,36 +92,37 @@ def render(surf, view):
     return img
 
 
-with EigenReader(in_path) as r:
-    available = r.fourier_orders()
-    data = {m: r.load_fourier(m) for m in ORDERS if m in available}
+modes = lp.load(in_path)
 
-for m, (snaps, mesh, dpn) in data.items():
-    xy = np.asarray(mesh.coords)
-    edges = boundary_edges(np.asarray(mesh.tris)[:, :3])
+for m in [m for m in ORDERS if m in modes.orders]:
+    om = modes.order(m)
+    mesh = om.mesh("solid")
+    xy = mesh.coords
+    edges = boundary_edges(mesh.triangles())
     size = max(2 * xy[:, 0].max(), np.ptp(xy[:, 1]))     # largest dimension (outer diameter)
     target = out_dir / f"modes_3d_m{m}.pdf"
     tmp = out_dir / f"modes_3d_m{m}.tmp.pdf"   # new file then rename (synced folders time out
     with PdfPages(tmp) as pdf:                 # when a large existing PDF is overwritten)
-        for start in range(0, len(snaps), MODES_PER_PAGE):
-            page = snaps[start:start + MODES_PER_PAGE]
+        for start in range(0, len(om), MODES_PER_PAGE):
+            page = range(start, min(start + MODES_PER_PAGE, len(om)))
             fig, axs = plt.subplots(MODES_PER_PAGE, 2, figsize=(12, 4.4 * MODES_PER_PAGE))
             for a in axs.ravel():
                 a.axis("off")
-            for row, s_ in zip(axs, page):
-                U = np.real(np.asarray(s_.fields["u_meca"]))
+            for row, k in zip(axs, page):
+                mode = om.mode(k)
+                U = np.real(mode.values)
                 U = U / max(np.linalg.norm(U, axis=1).max(), 1e-30)   # max |u| = 1
                 scale = DEFORMATION * size
                 row[0].imshow(render(revolved(xy, edges, U, m, scale, 1.5 * np.pi), "3d"))
                 row[1].imshow(render(revolved(xy, edges, U, m, scale, 2 * np.pi), "top"))
-                row[0].set_title(f"m = {m}   mode {s_.index + 1}   {s_.freq:.0f} Hz   "
-                                 f"zeta = {s_.zeta:.3f}   (3D view)", fontsize=10)
+                row[0].set_title(f"m = {m}   mode {k + 1}   {mode.coordinate:.0f} Hz   "
+                                 f"zeta = {mode.extra['zeta']:.3f}   (3D view)", fontsize=10)
                 row[1].set_title("top view", fontsize=10)
             fig.suptitle(f"Azimuthal order m = {m}: modes {start + 1}-{start + len(page)} of "
-                         f"{len(snaps)}   (deformed shape, max |u| = {100 * DEFORMATION:.0f} % "
+                         f"{len(om)}   (deformed shape, max |u| = {100 * DEFORMATION:.0f} % "
                          f"of the diameter; colour = |u|)", fontsize=11)
             fig.tight_layout()
             pdf.savefig(fig, dpi=110)
             plt.close(fig)
     os.replace(tmp, target)
-    print(f"✓ m = {m}: {len(snaps)} modes → {target}")
+    print(f"✓ m = {m}: {len(om)} modes → {target}")

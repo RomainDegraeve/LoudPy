@@ -253,23 +253,44 @@ class DriverModes:
 
     @classmethod
     def from_eigen_h5(cls, path, orders, f_max=None):
-        from loudpy.Files_Loader import EigenReader
+        """
+        Modes of the azimuthal orders `orders` from an eigen result file: format 2 (lp.Modes,
+        read with lp.load) or format 1 (former EigenStudy.save, read with the former reader).
+        """
+        import h5py
+        with h5py.File(path, "r") as f:
+            fmt2 = str(f.attrs.get("loudpy_format", "1.0")).startswith("2")
         m_, fam, fr, ze, Us = [], [], [], [], []
-        with EigenReader(str(path)) as r:
+
+        def add(m, freq, zeta, U):
+            if f_max is not None and freq > f_max:
+                return
+            U = np.asarray(U)
+            if U.shape[1] == 2:
+                U = np.column_stack([U, np.zeros(len(U))])
+            w = 2 * np.pi * freq
+            v = U * np.sqrt(2j * w * np.sqrt(max(1 - zeta ** 2, 0.0)))
+            v = (v * np.exp(-1j * np.angle(v.ravel()[np.argmax(np.abs(v))]))).real
+            for f_ in (("c", "s") if m > 0 else ("c",)):
+                m_.append(m), fam.append(f_), fr.append(freq), ze.append(zeta), Us.append(v)
+
+        if fmt2:
+            from loudpy.results import load
+            res = load(path)
             for m in orders:
-                snaps, mesh, _ = r.load_fourier(m)
-                for s in snaps:
-                    if f_max is not None and s.freq > f_max:
-                        continue
-                    U = np.asarray(s.fields["u_meca"])
-                    if U.shape[1] == 2:
-                        U = np.column_stack([U, np.zeros(len(U))])
-                    w = 2 * np.pi * s.freq
-                    v = U * np.sqrt(2j * w * np.sqrt(max(1 - s.zeta ** 2, 0.0)))
-                    v = (v * np.exp(-1j * np.angle(v.ravel()[np.argmax(np.abs(v))]))).real
-                    for f_ in (("c", "s") if m > 0 else ("c",)):
-                        m_.append(m), fam.append(f_), fr.append(s.freq), ze.append(s.zeta), Us.append(v)
-                xy, tris = np.asarray(mesh.coords), np.asarray(mesh.tris)[:, :3]
+                b = res.order(m).blocks[0]
+                for k in range(len(b)):
+                    add(m, float(b.values[k]), float(b.extra["zeta"][k]), b.fields["u"][k])
+                mesh = b.mesh_of("u")
+                xy, tris = np.asarray(mesh.coords), mesh.triangles()
+        else:
+            from loudpy.Files_Loader import EigenReader
+            with EigenReader(str(path)) as r:
+                for m in orders:
+                    snaps, mesh, _ = r.load_fourier(m)
+                    for s in snaps:
+                        add(m, s.freq, s.zeta, s.fields["u_meca"])
+                    xy, tris = np.asarray(mesh.coords), np.asarray(mesh.tris)[:, :3]
         return cls(xy, tris, m_, fam, fr, ze, np.array(Us))
 
     def __len__(self):

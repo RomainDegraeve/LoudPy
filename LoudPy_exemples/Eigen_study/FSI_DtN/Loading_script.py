@@ -1,8 +1,7 @@
 """
-Loading_script.py — Visualise the coupled fluid-structure modes of the DtN eigen study.
+Loading_script.py — the coupled structure + air modes of the DtN study (Running_script.py first).
 
-Reads fsi_eigen_study_dtn.h5 (Running_script.py of this folder) and, when available, the
-in-vacuo modes of ../Meca (eigen_study.h5) to tell the two families of coupled modes apart:
+The in-vacuo modes of ../Meca (when available) tell the two families of coupled modes apart:
   - air-loaded structural modes: close to an in-vacuo mode (within MATCH_F_TOL in frequency
     and MATCH_ZETA_TOL in damping ratio);
   - radiation ("air") modes: the others. They depend on the DtN radius; individually they
@@ -13,10 +12,6 @@ What this produces (in Results/Figures/)
   - eigenvalues.pdf        : ζ vs f and complex plane (coupled, structural, in-vacuo modes)
   - modes_structural.pdf   : SPL in the air + deformed structure of every structural mode
   - modes_first.pdf        : the same for the first N_FIRST coupled modes (by frequency)
-
-Typical use
------------
-Run Running_script.py of this folder (and of ../Meca for the in-vacuo modes) first.
 """
 from pathlib import Path
 
@@ -24,43 +19,34 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 
-from loudpy.Files_Loader import EigenReader, Domain
-from loudpy.Plotter import load_mode_frames, plot_coupled_modes_grid
+import loudpy as lp
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
-in_path     = "LoudPy_exemples/Eigen_study/FSI_DtN/Results/Files/fsi_eigen_study_dtn.h5"
-vacuo_path  = Path("LoudPy_exemples/Eigen_study/Meca/Results/Files/eigen_study.h5")
-out_dir     = Path("LoudPy_exemples/Eigen_study/FSI_DtN/Results/Figures")
+in_path = "LoudPy_exemples/Eigen_study/FSI_DtN/Results/Files/modes.h5"
+vacuo_path = Path("LoudPy_exemples/Eigen_study/Meca/Results/Files/modes.h5")      # ../Meca
+out_dir = Path("LoudPy_exemples/Eigen_study/FSI_DtN/Results/Figures")
 out_dir.mkdir(parents=True, exist_ok=True)
 
 # ── Settings ───────────────────────────────────────────────────────────────────
-MATCH_F_TOL    = 0.05            # structural ↔ in-vacuo: relative tolerance on f
-MATCH_ZETA_TOL = 0.15            #                        relative tolerance on ζ
-N_FIRST        = 12              # first coupled modes shown in modes_first.pdf
-PER_PAGE       = 6               # modes per page of the mode grids
+MATCH_F_TOL = 0.05             # structural ↔ in-vacuo: relative tolerance on f
+MATCH_ZETA_TOL = 0.15          #                        relative tolerance on ζ
+N_FIRST = 12                   # first coupled modes shown in modes_first.pdf
+PER_PAGE = 6                   # modes per page of the mode grids
 P_XLIM, P_YLIM = (0.0, 0.21), (-0.24, 0.24)   # air window of the mode plots [m]
-SPL_RANGE      = 60.0            # colour range of the SPL maps [dB]
+SPL_RANGE = 60.0               # colour range of the SPL maps [dB]
 
-# ── Inspect and load ───────────────────────────────────────────────────────────
-with EigenReader(in_path) as r:
-    r.inspect()
-    snaps, mesh_m, mesh_a = r.load_coupled("fsi")
-
-freq = np.array([s.freq for s in snaps])
-zeta = np.array([s.zeta for s in snaps], float)
-s_k  = np.array([complex(s.meta["s"]) if "s" in s.meta
-                 else 2 * np.pi * f * (-z + 1j * np.sqrt(max(1 - z * z, 0.0)))
-                 for s, f, z in zip(snaps, freq, zeta)])
-print(f"Loaded {len(freq)} coupled modes, f = [{freq.min():.1f}, {freq.max():.1f}] Hz, "
-      f"{len(mesh_m.coords)} structural and {len(mesh_a.coords)} air nodes")
+# ── Load ───────────────────────────────────────────────────────────────────────
+modes = lp.load(in_path).set("fsi")
+freq, zeta = modes.frequencies, modes.zeta
+s_k = modes.extra("s") if "s" in modes.blocks[0].extra else \
+    2 * np.pi * freq * (-zeta + 1j * np.sqrt(np.maximum(1 - zeta ** 2, 0.0)))
+print(f"{modes}: {modes.mesh('solid').n_nodes} structural and {modes.mesh('air').n_nodes} air nodes")
 
 # ── Structural modes: match each in-vacuo mode to its closest coupled mode ─────
 structural, pairs = np.array([], int), []
 if vacuo_path.exists():
-    with EigenReader(str(vacuo_path)) as r:
-        vac, _, _ = r.load(Domain.MECA)
-    vf = np.array([v.freq for v in vac])
-    vz = np.array([v.zeta for v in vac], float)
+    vac = lp.load(vacuo_path)
+    vf, vz = vac.frequencies, vac.zeta
     df = np.abs(freq[None, :] - vf[:, None]) / vf[:, None]
     dz = np.abs(zeta[None, :] - vz[:, None]) / vz[:, None]
     cost = np.where((df < MATCH_F_TOL) & (dz < MATCH_ZETA_TOL), df + dz, np.inf)
@@ -107,28 +93,26 @@ fig.savefig(out_dir / "eigenvalues.pdf", bbox_inches="tight")
 plt.close(fig)
 
 # ── mode grids ─────────────────────────────────────────────────────────────────
-frames = load_mode_frames(in_path, kind="fsi")
 vac_of = {ic: iv for iv, ic in pairs}
 
 
 def label(k):
-    """Mode number and family (plot_coupled_modes_grid adds f and zeta itself)."""
+    """Mode number and family (the grid adds f and zeta itself)."""
     return f"#{k} (in vacuo #{vac_of[k]})" if k in vac_of else f"#{k} (air)"
 
 
-def mode_pages(name, modes, title):
-    if not len(modes):
+def mode_pages(name, idx_all, title):
+    if not len(idx_all):
         return
     with PdfPages(out_dir / name) as pdf:
-        for start in range(0, len(modes), PER_PAGE):
-            idx = [int(k) for k in modes[start:start + PER_PAGE]]
-            fig = plot_coupled_modes_grid(frames, mode_indices=idx, p_xlim=P_XLIM, p_ylim=P_YLIM,
-                                          spl_range=SPL_RANGE, deform_scale=0.05,
-                                          labels=[label(k) for k in idx])
-            fig.suptitle(f"{title}: {start + 1}-{start + len(idx)} of {len(modes)}", fontsize=9, y=1.01)
+        for start in range(0, len(idx_all), PER_PAGE):
+            idx = [int(k) for k in idx_all[start:start + PER_PAGE]]
+            fig = lp.plot.coupled_modes_grid(modes, idx, labels=[label(k) for k in idx], p_xlim=P_XLIM,
+                                             p_ylim=P_YLIM, spl_range=SPL_RANGE, deform_scale=0.05)
+            fig.suptitle(f"{title}: {start + 1}-{start + len(idx)} of {len(idx_all)}", fontsize=9, y=1.01)
             pdf.savefig(fig, bbox_inches="tight", dpi=150)
             plt.close(fig)
-    print(f"  ✓ {len(modes)} modes → {out_dir / name}")
+    print(f"  ✓ {len(idx_all)} modes → {out_dir / name}")
 
 
 mode_pages("modes_structural.pdf", structural[np.argsort(freq[structural])], "Air-loaded structural modes")

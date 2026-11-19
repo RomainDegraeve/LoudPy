@@ -220,7 +220,7 @@ The refactor proceeds by strangling the old code: build the new layers next to t
 | 2 ✅ | `fem/` (move kernels, assembly, dofs) + `physics/` with the role registry | the assembled matrices are identical to the old ones |
 | 3 ✅ | `solvers/` (eigen, linear, time moved out of the studies) | regression tests green |
 | 4 ✅ | `results/` (schema, save, load, old-file readers) + `plot/` on `Results` | `lp.load` reads every former file to the same numbers as the former readers |
-| 5 | `studies/` (Modes, FrequencyResponse with remesh bands, Transient) returning `Results` | 2D examples (Running and Loading scripts) migrated |
+| 5 ✅ | `study/` (Modes, FrequencyResponse with remesh bands, Transient) returning `Results` | 2D examples (Running and Loading scripts) migrated |
 | 6 | 3D: `Scene`, `Driver`, `physics.modal`, `physics.radiation` | Coupling_3D examples migrated, results unchanged |
 | 7 | Delete the old packages, docs, ruff + CI | only the new API remains |
 
@@ -325,3 +325,26 @@ New package `loudpy.study`, exported as `lp.Modes`, `lp.FrequencyResponse`, `lp.
 - **Legacy files:** `tests/data/legacy/` (format 1) is fixed data now. The update run no longer rewrites it, because the new studies write format 2.
 
 Tests: 92 passing.
+
+### Phase 5b — the 2D examples
+
+Every 2D example now uses the new API only: `Eigen_study/Meca`, `Fourier` (incl. the plate validation and the 3D views), `FSI_DtN`, `Frequency_study/Meca`, `FSI`, `FSI_elec`, `Time_study/Multitone`, and `generate_meshes.py`. They went from about 2,000 to 1,190 lines. No `Problem`, `DomainSpec*`, `InterfaceSpec*` or `Files_Loader` remains outside `Coupling_3D` (phase 6).
+
+- **The remesh loops** of FSI and FSI_elec became `lp.PerWavelength(every=30 | bands=[…], …)`. Proof that the rule is the same: `generate_meshes.py` reuses all 14 existing FSI_elec band meshes built by the former loop, because their signatures match exactly.
+- **Each Running script writes one file in format 2** (`modes.h5`, `eigen_fourier.h5`, `sweep.h5`, `time.h5`). `study.save(path, **metadata)` keeps extra parameters, such as the multitone `t_ramp` and tone frequencies.
+- **`DriverModes.from_eigen_h5`** (3D coupling) reads format-2 eigen files too, through `lp.load`, and gives identical driver modes. Format-1 files still go through the former reader.
+- **`import loudpy` sets `KMP_DUPLICATE_LIB_OK`** (the OpenMP clash between scipy and numba), so the scripts no longer do it.
+- **Added for the scripts:** `FieldView.restrict(region)`, `FieldView.at_nodes(tags)`, `Results.boundary(name)`, `lp.plot.modes_grid`, `lp.plot.deformed_boundary` and `lp.plot.coupled_modes_grid`.
+
+Verification, per example:
+- Every Running script ran in a reduced copy (fewer frequencies, modes or steps), output to a scratch folder.
+- Every Loading script ran on the existing full results, converted to the file the new Running script writes: 81 + 373 + 876 modes, sweeps of 3000, 307 and 347 frequencies.
+- The multitone pair ran end to end on a reduced signal, animation included.
+- The plate validation prints the same table as before (worst 0.575 %).
+
+Issues in the former examples, fixed by the migration:
+- **FSI_elec** plotted the impedance with `U_drive=1.0` while the drive is √8 V, so |Z| was 2.83× too low (below Re at low frequency). It now uses the stored drive voltage.
+- **Frequency_study/Meca** unpacked `extract_interface(...)` into 2 values (it returns 3), so it failed at the interface figure.
+- **Time_study/Multitone** Loading hard-coded a `sys.path` entry to a home folder.
+
+Tests: 94 passing.
