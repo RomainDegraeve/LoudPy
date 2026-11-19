@@ -1,0 +1,72 @@
+{
+ "files": {
+  "HPNEW-Sketch.geo": "727a565562a188fcecddb6b2e04183f67013509966404a9f1a1bab96f1fb9ab4",
+  "HPNEW-Sketch.brep": "8ff82eb8c034ddf697f42c433a86fdfd9e60a2e1a28c276cf54fc72afd89671e"
+ },
+ "domains": [
+  [
+   "PML",
+   "DomainSpecPML",
+   0.025,
+   0.1
+  ],
+  [
+   "coil",
+   "DomainSpecMecaRayleigh",
+   0.001,
+   null
+  ],
+  [
+   "dustcap",
+   "DomainSpecMecaRayleigh",
+   0.001,
+   null
+  ],
+  [
+   "former",
+   "DomainSpecMecaRayleigh",
+   0.001,
+   null
+  ],
+  [
+   "glue",
+   "DomainSpecMecaRayleigh",
+   0.001,
+   null
+  ],
+  [
+   "membranne",
+   "DomainSpecMecaRayleigh",
+   0.001,
+   null
+  ],
+  [
+   "spider",
+   "DomainSpecMecaRayleigh",
+   0.001,
+   null
+  ],
+  [
+   "subacou",
+   "DomainSpecAcou",
+   0.01,
+   null
+  ],
+  [
+   "surround",
+   "DomainSpecMecaRayleigh",
+   0.001,
+   null
+  ]
+ ],
+ "interfaces": [
+  "interface_acou_meca_front",
+  "interface_acou_meca_rear",
+  "interface_constrained",
+  "interface_forced"
+ ],
+ "prune_unused": true,
+ "subdomains_key": "sub",
+ "mesh_order": 2,
+ "grading": 0.3
+}

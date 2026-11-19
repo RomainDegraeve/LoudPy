@@ -25,6 +25,11 @@ Coupled sweep (driver + enclosure + exterior), per frequency
 q is eliminated (H is small and dense) and the exterior equation is solved by GMRES,
 preconditioned by a sparse LU of K − k_c²M + (ik_c + 1/R) M_Γ (local absorbing condition)
 factorised once per chunk of frequencies around k_c.
+
+Several drivers: mesh_exterior with lists of frames writes "interface_front_<j>", and
+ExteriorFE.couple_driver takes a MultiDriver (Cavity_coupling); q stacks all the drivers' modes.
+coupled_sweep takes one force vector: combine the drivers' coil forces with their complex
+amplitudes (MultiDriver.coil_forces(coil_nodes, amplitudes)), or run it once per driver.
 """
 from __future__ import annotations
 
@@ -38,7 +43,9 @@ import scipy.sparse.linalg as spla
 from scipy.special import spherical_jn, spherical_yn, sph_harm_y
 
 from loudpy.Studies.Cavity_coupling import (_gmsh, assemble_p2, read_p2_mesh, surface_quadrature,
-                                            surface_coupling, wet_edges, add_pistons, RHO_AIR, C_AIR)
+                                            surface_coupling, wet_edges, add_pistons, RHO_AIR, C_AIR,
+                                            as_frame, as_drivers, couple_drivers, _is_single,
+                                            classify_driver_faces)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -118,13 +125,15 @@ def add_driver_front(segments, center, z_low):
     (revolved about z through `center`) between z_low and the profile, and the cylinder
     r ≤ R_f, z_low ≤ z ≤ z_front that it replaces in the box. segments: chained (r, z)
     polylines from the box front face (first point, r = R_f, z = z_front) to the axis.
-    Returns (rev, cyl, R_f, z_front).
+    `center` may be a DriverFrame: then everything is built in its local frame (z_low, R_f,
+    z_front are local). Returns (rev, cyl, R_f, z_front).
     """
     gmsh = _gmsh()
     occ = gmsh.model.occ
-    x0, y0 = center
+    frame = as_frame(center)
+    x0, y0, z0 = frame.origin if frame.is_identity else (0.0, 0.0, 0.0)
     r_f, z_f = segments[0][0]
-    P = lambda r, z: occ.addPoint(x0 + float(r), y0, float(z))
+    P = lambda r, z: occ.addPoint(x0 + float(r), y0, z0 + float(z))
     lines, first, cur = [], None, None
     for s in segments:
         tags = [cur if (cur is not None and k == 0) else P(*q) for k, q in enumerate(s)]
@@ -135,8 +144,10 @@ def add_driver_front(segments, center, z_low):
     a, b = P(0.0, z_low), P(r_f, z_low)
     lines += [occ.addLine(cur, a), occ.addLine(a, b), occ.addLine(b, first)]
     face = occ.addPlaneSurface([occ.addCurveLoop(lines)])
-    rev = [t for d, t in occ.revolve([(2, face)], x0, y0, 0, 0, 0, 1, 2 * np.pi) if d == 3][0]
-    cyl = occ.addCylinder(x0, y0, z_low, 0, 0, z_f - z_low, r_f)
+    rev = [t for d, t in occ.revolve([(2, face)], x0, y0, z0, 0, 0, 1, 2 * np.pi) if d == 3][0]
+    cyl = occ.addCylinder(x0, y0, z0 + z_low, 0, 0, z_f - z_low, r_f)
+    if not frame.is_identity:
+        frame.place([(3, rev), (3, cyl)])
     return rev, cyl, float(r_f), float(z_f)
 
 
@@ -145,29 +156,38 @@ def mesh_exterior(msh_path, volume, dtn: HalfSpaceDtN, center, r_f, z_front, h_n
     """
     Mesh the exterior (P2, straight edges) with the physical surfaces "dtn" (hemisphere),
     "ground", "interface_front" (wet front of the driver) and "walls" (box).
+
+    Several drivers: center, r_f and z_front are lists (one center or DriverFrame per driver;
+    r_f and z_front may be scalars); the wet fronts are "interface_front_0", "interface_front_1", …
     """
     gmsh = _gmsh()
     gmsh.model.occ.synchronize()
-    x0, y0 = center
-    groups = {"dtn": [], "ground": [], "interface_front": [], "walls": []}
+    single = _is_single(center)
+    frames = [center] if single else list(center)
+    fronts = ["interface_front"] if single else [f"interface_front_{j}" for j in range(len(frames))]
+    groups = {"dtn": [], "ground": [], **{nm: [] for nm in fronts}, "walls": []}
+    rest = []
     for _, t in gmsh.model.getBoundary([(3, volume)], oriented=False):
         xmin, ymin, zmin, xmax, ymax, zmax = gmsh.model.getBoundingBox(2, t)
         lo, hi = (xmin, ymin, zmin), (xmax, ymax, zmax)
-        rmax = max(xmax - x0, x0 - xmin, ymax - y0, y0 - ymin)
         if gmsh.model.getType(2, t) == "Sphere":
             groups["dtn"].append(t)
         elif abs(hi[dtn.up] - lo[dtn.up]) < 1e-6 and abs(hi[dtn.up] - dtn.center[dtn.up]) < 1e-6:
             groups["ground"].append(t)
-        elif rmax <= r_f * 1.0001 + 1e-6 and not (abs(zmax - zmin) < 1e-6 and abs(zmax - z_front) < 1e-6):
-            groups["interface_front"].append(t)
         else:
-            groups["walls"].append(t)
+            rest.append(t)
+    owner = classify_driver_faces(rest, frames, r_f, z_front, atol=1e-6)
+    for t, o in zip(rest, owner):
+        groups[fronts[o] if o >= 0 else "walls"].append(t)
+    for nm in fronts:
+        if not groups[nm]:
+            raise ValueError(f"no wet surface found for {nm}")
     gmsh.model.addPhysicalGroup(3, [volume], 1, name="air")
     for k, (name, ts) in enumerate(groups.items(), start=2):
         gmsh.model.addPhysicalGroup(2, ts, k, name=name)
     f = gmsh.model.mesh.field
     fd = f.add("Distance")
-    f.setNumbers(fd, "SurfacesList", groups["interface_front"])
+    f.setNumbers(fd, "SurfacesList", [t for nm in fronts for t in groups[nm]])
     f.setNumber(fd, "Sampling", 60)
     ft = f.add("Threshold")
     f.setNumber(ft, "InField", fd)
@@ -231,7 +251,12 @@ class ExteriorFE:
     """P2 exterior air: K, M, the DtN pieces on Γ and (optionally) the front coupling Bf."""
 
     def __init__(self, msh_path, dtn: HalfSpaceDtN, f_max, front="interface_front", c=C_AIR, surfaces=()):
-        self.nodes, self.tets, self.faces = read_p2_mesh(msh_path, ["dtn", "ground", front, "walls",
+        """
+        front: name of the wet surface; with a single name the per-driver surfaces "<front>_0",
+        "<front>_1", … of a multi-driver mesh are read too. A list of names is also accepted.
+        """
+        fronts = [front, f"{front}_*"] if isinstance(front, str) else list(front)
+        self.nodes, self.tets, self.faces = read_p2_mesh(msh_path, ["dtn", "ground", *fronts, "walls",
                                                                     *surfaces])
         self.dtn, self.c = dtn, c
         self.K, self.M, self.volume = assemble_p2(self.nodes, self.tets)
@@ -244,15 +269,31 @@ class ExteriorFE:
         self.front = front
         self.pnodes = self.Bf = None
 
-    def couple_driver(self, drv, profile, center, map_tol=5e-4, pistons=()):
+    def couple_driver(self, drv, profile, center=(0.0, 0.0), map_tol=5e-4, pistons=(), patch=None):
         """
         Coupling of the wet surface with the driver modes (profile: one wet profile, or a tuple
         of them, e.g. (front, rear) when one air domain wets both faces), plus extra piston
         coordinates appended after the modes (see add_pistons).
+
+        Several drivers: drv is a MultiDriver (frames inside, center ignored), profile a list
+        with one profile (or tuple of profiles) per driver, and patch the wet surface of each
+        driver (default: the names given as `front` if it was a list, else "<front>_<j>").
         """
-        edges, edge_n = wet_edges(drv, profile)
-        self.pnodes, self.Bf, self.wet_area = surface_coupling(
-            self.nodes, self.faces[self.front], drv, edges, edge_n, center, map_tol)
+        drivers, profiles, single = as_drivers(drv, profile, center)
+        if patch is not None:
+            names = [patch] if isinstance(patch, str) else list(patch)
+        elif single:
+            names = [self.front if isinstance(self.front, str) else self.front[0]]
+        elif isinstance(self.front, str):
+            names = [f"{self.front}_{j}" for j in range(drivers.n_drivers)]
+        else:
+            names = list(self.front)
+        missing = [nm for nm in names if nm not in self.faces or not len(self.faces[nm])]
+        if missing:
+            raise KeyError(f"no faces for {missing} in the mesh (read: {list(self.faces)})")
+        self.pnodes, self.Bf, self.wet_areas, _ = couple_drivers(
+            self.nodes, [self.faces[nm] for nm in names], drivers, profiles, map_tol)
+        self.wet_area = float(sum(self.wet_areas))
         if pistons:
             self.pnodes, self.Bf = add_pistons(self.nodes, self.pnodes, self.Bf, pistons)
         return self

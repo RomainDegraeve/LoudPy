@@ -31,3 +31,7 @@ test = [
 
 [tool.pdm.build]
 package-dir = "src"
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-p no:cacheprovider"
+filterwarnings = ["ignore::DeprecationWarning", "ignore::numba.core.errors.NumbaPerformanceWarning"]

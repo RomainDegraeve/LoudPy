@@ -25,9 +25,17 @@ R = Bcᵀ K⁺ Bc − Σ_{n≥1} S_n S_nᵀ / κ_n² is the static correction of
 (added mass of the air near the wet surface). Eliminating P gives the structure loaded by the
 cavity modal impedance; the same matrices give the coupled modes (quadratic eigenproblem).
 Only the cavity side is loaded: the front of the driver is in vacuo.
+
+Several drivers
+---------------
+Each driver has its own frame (DriverFrame: origin + rotation, any orientation) and its own
+wet patch ("interface_driver_0", "interface_driver_1", ...). MultiDriver stacks their modal
+coordinates (driver 0 first), so q, S, R and the solvers are unchanged: the drivers interact
+through the off-diagonal blocks of S D Sᵀ + R, i.e. through the air.
 """
 from __future__ import annotations
 
+import fnmatch
 from pathlib import Path
 
 import numpy as np
@@ -37,6 +45,88 @@ import scipy.sparse.linalg as spla
 from scipy.spatial import cKDTree
 
 RHO_AIR, C_AIR = 1.2, 343.0
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  Driver frame: placement and orientation of an axisymmetric driver in 3D
+# ════════════════════════════════════════════════════════════════════════════
+class DriverFrame:
+    """
+    Local frame of a driver: x_l = (x − origin) @ rotation. The columns of `rotation` are the
+    local axes in global coordinates. z_l is the driver axis (the +z of the meridian geometry,
+    towards the front), x_l is θ = 0, and `origin` is the point of the axis where the meridian
+    z = 0. A 2D center (x0, y0) is the frame (x0, y0, 0) with the identity rotation, which is
+    the convention of the single-driver code (axis along global z, absolute meridian z).
+    """
+
+    def __init__(self, origin=(0.0, 0.0, 0.0), rotation=None):
+        o = np.zeros(3)
+        o[:len(origin)] = np.asarray(origin, float)
+        self.origin = o
+        self.rotation = np.eye(3) if rotation is None else np.asarray(rotation, float)
+        if not np.allclose(self.rotation.T @ self.rotation, np.eye(3), atol=1e-9):
+            raise ValueError("rotation must be orthonormal")
+        if np.linalg.det(self.rotation) < 0:
+            raise ValueError("rotation must be right-handed (det = +1)")
+
+    @classmethod
+    def from_axis(cls, origin, axis, ref=None):
+        """Frame with z_l along `axis` and x_l (θ = 0) towards `ref` (projected; default: global x, or y)."""
+        z = np.asarray(axis, float)
+        z = z / np.linalg.norm(z)
+        if ref is None:
+            ref = (1.0, 0.0, 0.0) if abs(z[0]) < 0.9 else (0.0, 1.0, 0.0)
+        x = np.asarray(ref, float) - np.dot(ref, z) * z
+        if np.linalg.norm(x) < 1e-9:
+            raise ValueError("ref is parallel to the axis")
+        x /= np.linalg.norm(x)
+        return cls(origin, np.column_stack([x, np.cross(z, x), z]))
+
+    @property
+    def axis(self):
+        return self.rotation[:, 2]
+
+    @property
+    def is_identity(self):
+        return np.array_equal(self.rotation, np.eye(3))
+
+    @property
+    def axis_aligned(self):
+        a = np.abs(self.rotation)
+        return bool(np.all(np.isclose(a, 0.0, atol=1e-12) | np.isclose(a, 1.0, atol=1e-12)))
+
+    def to_local(self, x):
+        return (np.asarray(x, float) - self.origin) @ self.rotation
+
+    def to_global(self, xl):
+        return np.asarray(xl, float) @ self.rotation.T + self.origin
+
+    def place(self, dim_tags):
+        """
+        Move gmsh OCC entities built in the local frame (axis z through the origin) to their
+        global place, by an exact rotation + translation (affineTransform would approximate
+        the shapes by B-splines).
+        """
+        from scipy.spatial.transform import Rotation
+        occ = _gmsh().model.occ
+        rv = Rotation.from_matrix(self.rotation).as_rotvec()
+        angle = float(np.linalg.norm(rv))
+        if angle > 1e-14:
+            occ.rotate(dim_tags, 0.0, 0.0, 0.0, *(rv / angle), angle)
+        occ.translate(dim_tags, *self.origin)
+
+    def __repr__(self):
+        return f"DriverFrame(origin={self.origin.tolist()}, axis={self.axis.round(6).tolist()})"
+
+
+def as_frame(center):
+    """DriverFrame from a frame, a 2D center (x0, y0) or a 3D origin (axis along global z)."""
+    return center if isinstance(center, DriverFrame) else DriverFrame(center)
+
+
+def _is_single(center):
+    """True for one center/frame, False for a sequence of them."""
+    return isinstance(center, DriverFrame) or np.ndim(center) == 1 and np.isscalar(center[0])
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -79,7 +169,8 @@ def sample_profile(geo_path, curves, start, n_per_curve=40):
 def add_driver_cutout(segments, center=(0.0, 0.0), z_top=None):
     """
     In the current gmsh OCC model, the two solids that turn a box into the rear cavity of the
-    driver (axis along z through `center`, profile in (r, z)):
+    driver (axis along z through `center`, profile in (r, z); `center` may be a DriverFrame,
+    then everything is built in its local frame, and r_c, z_b are local):
 
       E : the driver and the air in front of its wet profile (region above the profile,
           up to z_top) — to be cut from the cavity;
@@ -94,7 +185,8 @@ def add_driver_cutout(segments, center=(0.0, 0.0), z_top=None):
     """
     gmsh = _gmsh()
     occ = gmsh.model.occ
-    x0, y0 = center
+    frame = as_frame(center)
+    x0, y0, z0 = frame.origin if frame.is_identity else (0.0, 0.0, 0.0)
     pts = np.vstack([segments[0][:1]] + [s[1:] for s in segments])
     r_c, z_b = pts[0]
     if abs(pts[-1, 0]) > 1e-9:
@@ -102,7 +194,7 @@ def add_driver_cutout(segments, center=(0.0, 0.0), z_top=None):
     z_top = float(z_top if z_top is not None else pts[:, 1].max() + 0.01)
 
     def P(r, z):
-        return occ.addPoint(x0 + float(r), y0, float(z))
+        return occ.addPoint(x0 + float(r), y0, z0 + float(z))
 
     def curve(p, tags):
         ok = np.allclose(np.cross(p[-1] - p[0], p - p[0]), 0.0, atol=1e-12)
@@ -129,10 +221,72 @@ def add_driver_cutout(segments, center=(0.0, 0.0), z_top=None):
     top_out = P(r_c, z_top)
     lines += [occ.addLine(cur, top_axis), occ.addLine(top_axis, top_out), occ.addLine(top_out, first)]
     face = occ.addPlaneSurface([occ.addCurveLoop(lines)])
-    rev = occ.revolve([(2, face)], x0, y0, 0.0, 0.0, 0.0, 1.0, 2 * np.pi)
+    rev = occ.revolve([(2, face)], x0, y0, z0, 0.0, 0.0, 1.0, 2 * np.pi)
     E = [t for d, t in rev if d == 3][0]
-    C = occ.addCylinder(x0, y0, z_b, 0.0, 0.0, z_top - z_b, r_c)
+    C = occ.addCylinder(x0, y0, z0 + z_b, 0.0, 0.0, z_top - z_b, r_c)
+    if not frame.is_identity:
+        frame.place([(3, E), (3, C)])
     return E, C, float(r_c), float(z_b)
+
+
+def carve_drivers(box, cutouts, extra_cuts=()):
+    """
+    Cavity of a box with one or several drivers cut out: (box − ∪E_j − extra) ∪ (∪C_j − ∪E_j),
+    with cutouts the (E, C, …) tuples of add_driver_cutout and box / extra_cuts volume tags.
+    Cutting before fusing is robust when the baffle is a slanted face (fusing C onto it first
+    can make the OCC cut fail). Returns the list of volume tags.
+    """
+    occ = _gmsh().model.occ
+    E = [(3, c[0]) for c in cutouts]
+    a, _ = occ.cut([(3, box)], E + [(3, t) for t in extra_cuts], removeTool=False)
+    b, _ = occ.cut([(3, c[1]) for c in cutouts], E)
+    vol, _ = occ.fuse(a, b)
+    occ.synchronize()
+    return [t for d, t in vol if d == 3]
+
+
+def _local_extent(tag, frame, n_per_curve=24):
+    """
+    (r_max, z_min, z_max) of a surface in a driver frame. Axis-aligned frames: from the
+    bounding box (r_max is its half-width, as in the single-driver code); otherwise from points
+    sampled on the boundary curves.
+    """
+    gmsh = _gmsh()
+    if frame.axis_aligned:
+        lo_hi = np.array(gmsh.model.getBoundingBox(2, tag)).reshape(2, 3)
+        corners = np.array([[lo_hi[i, 0], lo_hi[j, 1], lo_hi[k, 2]]
+                            for i in (0, 1) for j in (0, 1) for k in (0, 1)])
+        xl = frame.to_local(corners)
+        lo, hi = xl.min(0), xl.max(0)
+        return max(hi[0], -lo[0], hi[1], -lo[1]), lo[2], hi[2]
+    pts = [np.array(gmsh.model.occ.getCenterOfMass(2, tag))]
+    for _, c in gmsh.model.getBoundary([(2, tag)], oriented=False):
+        a, b = gmsh.model.getParametrizationBounds(1, abs(c))
+        u = np.linspace(a[0], b[0], n_per_curve)
+        pts.append(np.array(gmsh.model.getValue(1, abs(c), u)).reshape(-1, 3))
+    xl = frame.to_local(np.vstack(pts))
+    return np.hypot(xl[:, 0], xl[:, 1]).max(), xl[:, 2].min(), xl[:, 2].max()
+
+
+def classify_driver_faces(tags, frames, r_max, z_plane, rtol=1e-4, atol=1e-9):
+    """
+    For each surface tag, the index of the first driver whose cylinder r_l ≤ r_max[j] contains
+    it, except the flat face z_l = z_plane[j] (baffle or box face), else −1.
+    """
+    frames = [as_frame(f) for f in frames]
+    r_max = np.broadcast_to(np.asarray(r_max, float), (len(frames),))
+    z_plane = np.broadcast_to(np.asarray(z_plane, float), (len(frames),))
+    out = []
+    for t in tags:
+        owner = -1
+        for j, fr in enumerate(frames):
+            rm, zmin, zmax = _local_extent(t, fr)
+            flat = abs(zmax - zmin) < atol and abs(zmax - z_plane[j]) < atol
+            if rm <= r_max[j] * (1 + rtol) + atol and not flat:
+                owner = j
+                break
+        out.append(owner)
+    return np.array(out, int)
 
 
 def mesh_cavity(msh_path, cavity_volume, center, r_c, z_b, h_near, h_far, d_near=0.005,
@@ -141,25 +295,35 @@ def mesh_cavity(msh_path, cavity_volume, center, r_c, z_b, h_near, h_far, d_near
     Mesh the cavity volume (P2 tetrahedra, straight edges) and write it with the physical groups
     "cavity" (volume), "interface_driver" (wet surface: boundary faces within r ≤ R_c of the
     driver axis, off the baffle plane) and "walls" (the rest).
+
+    Several drivers: center, r_c and z_b are lists (one center or DriverFrame per driver; r_c
+    and z_b may be scalars); the wet surfaces are "interface_driver_0", "interface_driver_1", …
+    and the first return value is one list of surface tags per driver.
     """
     gmsh = _gmsh()
     occ = gmsh.model.occ
     occ.synchronize()
-    x0, y0 = center
+    single = _is_single(center)
+    frames = [center] if single else list(center)
     bnd = [t for d, t in gmsh.model.getBoundary([(3, cavity_volume)], oriented=False)]
-    driver, walls = [], []
-    for t in bnd:
-        xmin, ymin, zmin, xmax, ymax, zmax = gmsh.model.getBoundingBox(2, t)
-        rmax = max(xmax - x0, x0 - xmin, ymax - y0, y0 - ymin)      # bounding box half-width
-        on_baffle = abs(zmax - zmin) < 1e-9 and abs(zmax - z_b) < 1e-9
-        (driver if (rmax <= r_c * 1.0001 + 1e-9 and not on_baffle) else walls).append(t)
+    owner = classify_driver_faces(bnd, frames, r_c, z_b)
+    drivers = [[t for t, o in zip(bnd, owner) if o == j] for j in range(len(frames))]
+    walls = [t for t, o in zip(bnd, owner) if o < 0]
+    for j, d in enumerate(drivers):
+        if not d:
+            raise ValueError(f"no wet surface found for driver {j} ({as_frame(frames[j])})")
     gmsh.model.addPhysicalGroup(3, [cavity_volume], 1, name="cavity")
-    gmsh.model.addPhysicalGroup(2, driver, 2, name="interface_driver")
+    if single:
+        gmsh.model.addPhysicalGroup(2, drivers[0], 2, name="interface_driver")
+    else:
+        for j, d in enumerate(drivers):
+            gmsh.model.addPhysicalGroup(2, d, 10 + j, name=f"interface_driver_{j}")
     gmsh.model.addPhysicalGroup(2, walls, 3, name="walls")
+    driver = drivers[0] if single else drivers
 
     f = gmsh.model.mesh.field
     fd = f.add("Distance")
-    f.setNumbers(fd, "SurfacesList", driver)
+    f.setNumbers(fd, "SurfacesList", [t for d in drivers for t in d])
     f.setNumber(fd, "Sampling", 60)
     ft = f.add("Threshold")
     f.setNumber(ft, "InField", fd)
@@ -252,8 +416,14 @@ def read_p2_mesh(msh_path, surfaces):
     _, _, enodes = gmsh.model.mesh.getElements(3)
     tets = row(np.concatenate(enodes).astype(np.int64)).reshape(-1, 10)
     names = {gmsh.model.getPhysicalName(2, t): t for _, t in gmsh.model.getPhysicalGroups(2)}
+    wanted = []
+    for name in surfaces:                         # glob patterns ("interface_driver_*") expand
+        if any(ch in name for ch in "*?["):
+            wanted += sorted(fnmatch.filter(names, name))
+        else:
+            wanted.append(name)
     faces = {}
-    for name in surfaces:
+    for name in dict.fromkeys(wanted):
         if name not in names:
             faces[name] = np.zeros((0, 6), np.int64)
             continue
@@ -275,10 +445,11 @@ def read_p2_mesh(msh_path, surfaces):
 class CavityModes:
     """Rigid-wall acoustic modes of a 3D cavity (P2 tetrahedra)."""
 
-    def __init__(self, nodes, tets, patch_tris):
+    def __init__(self, nodes, tets, patch_tris, patches=None):
         self.nodes = np.asarray(nodes, float)            # (n, 3)
         self.tets = np.asarray(tets, np.int64)           # (n_e, 10)
-        self.patch_tris = np.asarray(patch_tris, np.int64)  # (n_f, 6) wet surface
+        self.patch_tris = np.asarray(patch_tris, np.int64)  # (n_f, 6) wet surface (all drivers)
+        self.patches = dict(patches or {})               # wet surface of each driver, by name
         self.surfaces = {}                               # other named TRI6 surfaces (e.g. port mouth)
         self.kappa2 = None                               # (n_modes,) κ_n² = (ω_n / c)²
         self.psi = None                                  # (n, n_modes), ψᵀMψ = I
@@ -288,10 +459,26 @@ class CavityModes:
     # ── input ──────────────────────────────────────────────────────────────
     @classmethod
     def from_msh(cls, msh_path, patch="interface_driver", surfaces=()):
-        nodes, tets, faces = read_p2_mesh(msh_path, [patch, *surfaces])
-        obj = cls(nodes, tets, faces[patch])
+        """
+        patch: name (or list of names) of the wet surface(s). With a single name, the per-driver
+        surfaces "<patch>_0", "<patch>_1", … of a multi-driver mesh are read too.
+        """
+        names = [patch, f"{patch}_*"] if isinstance(patch, str) else list(patch)
+        nodes, tets, faces = read_p2_mesh(msh_path, [*names, *surfaces])
+        patches = {k: v for k, v in faces.items() if k not in surfaces and len(v)}
+        tris = np.vstack(list(patches.values())) if patches else np.zeros((0, 6), np.int64)
+        obj = cls(nodes, tets, tris, patches)
         obj.surfaces = {s: faces[s] for s in surfaces}
         return obj
+
+    def face_set(self, name):
+        """TRI6 faces of a named wet patch or surface."""
+        if name in self.patches:
+            return self.patches[name]
+        if name in self.surfaces:
+            return self.surfaces[name]
+        raise KeyError(f"no surface {name!r} (patches: {list(self.patches)}, "
+                       f"surfaces: {list(self.surfaces)})")
 
     # ── FE ─────────────────────────────────────────────────────────────────
     def assemble(self):
@@ -347,6 +534,8 @@ class CavityModes:
             f.attrs["c"], f.attrs["volume"] = self.c, self.volume
             for k, v in self.surfaces.items():
                 f[f"surfaces/{k}"] = v
+            for k, v in self.patches.items():
+                f[f"patches/{k}"] = v
 
     @classmethod
     def load(cls, path):
@@ -357,6 +546,8 @@ class CavityModes:
             obj.c, obj.volume = float(f.attrs["c"]), float(f.attrs["volume"])
             if "surfaces" in f:
                 obj.surfaces = {k: f[f"surfaces/{k}"][()] for k in f["surfaces"]}
+            if "patches" in f:
+                obj.patches = {k: f[f"patches/{k}"][()] for k in f["patches"]}
         return obj
 
     def nearest_node(self, x):
@@ -425,6 +616,88 @@ class DriverModes:
         return ur, ut, uz
 
 
+class MultiDriver:
+    """
+    Several axisymmetric drivers placed in one 3D model, each with its modes (DriverModes) and
+    its frame (DriverFrame, or a 2D center for an axis along global z). Their modal coordinates
+    are stacked, driver 0 first: m, family, freq, zeta, len() describe the whole set, like
+    DriverModes, so DriverCavityCoupling, ExteriorFE and the solvers take it in place of one
+    driver. Identical drivers can share one DriverModes object (pass it once).
+    """
+
+    def __init__(self, modes, frames, names=None):
+        self.frames = [as_frame(f) for f in frames]
+        n_d = len(self.frames)
+        self.modes = [modes] * n_d if isinstance(modes, DriverModes) else list(modes)
+        if len(self.modes) != n_d:
+            raise ValueError(f"{len(self.modes)} DriverModes for {n_d} frames")
+        self.names = list(names) if names is not None else [f"driver_{j}" for j in range(n_d)]
+        n = [len(d) for d in self.modes]
+        self.offsets = np.concatenate([[0], np.cumsum(n)]).astype(int)
+        self.m = np.concatenate([d.m for d in self.modes])
+        self.family = np.concatenate([d.family for d in self.modes])
+        self.freq = np.concatenate([d.freq for d in self.modes])
+        self.zeta = np.concatenate([d.zeta for d in self.modes])
+        self.driver_index = np.repeat(np.arange(n_d), n)        # driver of each modal column
+
+    def __len__(self):
+        return int(self.offsets[-1])
+
+    @property
+    def n_drivers(self):
+        return len(self.frames)
+
+    def slice(self, j):
+        """Columns of driver j in the stacked coordinates."""
+        return slice(self.offsets[j], self.offsets[j + 1])
+
+    def split(self, q):
+        """Per-driver modal amplitudes q[..., slice(j)] (extra columns after the modes are ignored)."""
+        q = np.asarray(q)
+        return [q[..., self.slice(j)] for j in range(self.n_drivers)]
+
+    def coil_force(self, j, coil_nodes, total=1.0):
+        """
+        Modal force of an axial force `total` [N] (complex: amplitude and phase) on the coil
+        nodes of driver j (meridian node indices, axisymmetric force along its axis). Zero on the
+        other drivers' columns.
+        """
+        d, sl = self.modes[j], self.slice(j)
+        F = np.zeros(len(self), np.result_type(total, float))
+        F[sl] = total * d.U[:, coil_nodes, 1].mean(axis=1) * (d.m == 0)
+        return F
+
+    def coil_forces(self, coil_nodes, amplitudes=None):
+        """
+        Unit coil forces of all drivers, one column per driver (n_modes × n_drivers), or their
+        combination F = Σ_j a_j F_j for complex amplitudes a_j. coil_nodes: one array for all
+        drivers, or one per driver.
+        """
+        per = (isinstance(coil_nodes, (list, tuple)) and len(coil_nodes) == self.n_drivers
+               and np.ndim(coil_nodes[0]) == 1)
+        Fs = np.column_stack([self.coil_force(j, coil_nodes[j] if per else coil_nodes)
+                              for j in range(self.n_drivers)])
+        return Fs if amplitudes is None else Fs @ np.asarray(amplitudes)
+
+    def surface(self, j, q, **kwargs):
+        """Deformed surface of driver j in its frame (driver_surface) from the stacked amplitudes q."""
+        return driver_surface(self.modes[j], np.asarray(q)[self.slice(j)], self.frames[j], **kwargs)
+
+    def __repr__(self):
+        return (f"MultiDriver({self.n_drivers} drivers, {len(self)} modes: "
+                + ", ".join(f"{nm} {len(d)} @ {fr.origin.round(4).tolist()}"
+                            for nm, d, fr in zip(self.names, self.modes, self.frames)) + ")")
+
+
+def as_drivers(driver, profile=None, center=(0.0, 0.0)):
+    """(MultiDriver, per-driver profiles, single?) from one DriverModes or a MultiDriver."""
+    if isinstance(driver, MultiDriver):
+        if profile is None or len(profile) != driver.n_drivers:
+            raise ValueError("with a MultiDriver, profile is a list with one wet profile per driver")
+        return driver, list(profile), False
+    return MultiDriver([driver], [center]), [profile], True
+
+
 def wet_edges(driver: DriverModes, profile, tol=2.5e-4):
     """
     Boundary edges of the meridian mesh lying on the wet profile (chained polylines), with their
@@ -465,9 +738,13 @@ def solve_forced(freqs, F, w_s, zeta, S, R, kappa2, rho=RHO_AIR, c=C_AIR, eta_ai
     Forced response of the coupled system from its modal data (see the module docstring):
     q (n_f, n_s) driver modal amplitudes, P (n_f, n_a) cavity modal pressures.
     S = None gives the driver in vacuo (P = 0).
+    F may be (n_s, n_rhs), e.g. one unit coil force per driver (MultiDriver.coil_forces): then
+    q is (n_f, n_s, n_rhs) and P (n_f, n_a, n_rhs), one factorisation per frequency.
     """
-    q = np.zeros((len(freqs), len(w_s)), complex)
-    P = np.zeros((len(freqs), len(kappa2)), complex)
+    F = np.asarray(F)
+    rhs = F.shape[1:]
+    q = np.zeros((len(freqs), len(w_s)) + rhs, complex)
+    P = np.zeros((len(freqs), len(kappa2)) + rhs, complex)
     for i, f in enumerate(freqs):
         w = 2 * np.pi * f
         A = np.diag(w_s ** 2 + 2j * zeta * w_s * w - w ** 2)
@@ -477,7 +754,7 @@ def solve_forced(freqs, F, w_s, zeta, S, R, kappa2, rho=RHO_AIR, c=C_AIR, eta_ai
         D = 1.0 / (kappa2 - (w / c) ** 2 + 1j * eta_air * np.sqrt(kappa2) * w / c)
         A = A - rho * w ** 2 * ((S * D) @ S.T + R)
         q[i] = np.linalg.solve(A, F)
-        P[i] = -rho * w ** 2 * D * (S.T @ q[i])
+        P[i] = -rho * w ** 2 * D.reshape((-1,) + (1,) * len(rhs)) * (S.T @ q[i])
     return q, P
 
 def surface_quadrature(nodes, tri):
@@ -503,13 +780,15 @@ def surface_quadrature(nodes, tri):
 def surface_coupling(nodes, tri, drv, edges, edge_n, center, map_tol=5e-4):
     """
     Bc[i, k] = ∫_S N_i (φ_k·n) dS on a TRI6 wet surface of a 3D air mesh (n out of the
-    structure). Each quadrature point is mapped to (r, θ, z) about the driver axis (along z
-    through `center`); φ_k·n is interpolated on the nearest wet edge of the meridian mesh
-    (points farther than map_tol from it are rigid). Returns (surface nodes, Bc, wet area).
+    structure). Each quadrature point is mapped to (r, θ, z) in the driver frame (`center`: a
+    DriverFrame, or a 2D center for an axis along global z); φ_k·n is interpolated on the
+    nearest wet edge of the meridian mesh (points farther than map_tol from it are rigid).
+    Returns (surface nodes, Bc, wet area).
     """
     xq, wq, surf_nodes, W = surface_quadrature(nodes, tri)
-    dx, dy = xq[:, 0] - center[0], xq[:, 1] - center[1]
-    r, th, z = np.hypot(dx, dy), np.arctan2(dy, dx), xq[:, 2]
+    xl = as_frame(center).to_local(xq)
+    dx, dy = xl[:, 0], xl[:, 1]
+    r, th, z = np.hypot(dx, dy), np.arctan2(dy, dx), xl[:, 2]
     xy = drv.xy
     A, B = xy[edges[:, 0]], xy[edges[:, 1]]
     _, cand = cKDTree(0.5 * (A + B)).query(np.column_stack([r, z]), k=min(8, len(A)))
@@ -537,51 +816,93 @@ def add_pistons(nodes, surf_nodes, B, pistons):
     (TRI6 faces, scale) the column scale·∫_S N_i dS, for None a zero column. Returns the union of
     the surface nodes and the extended matrix.
     """
-    cols = []
+    cols = [(surf_nodes, B)]
     for pst in pistons:
         if pst is None:
-            cols.append((np.zeros(0, np.int64), np.zeros(0)))
+            cols.append((np.zeros(0, np.int64), np.zeros((0, 1))))
             continue
         tris, scale = pst
         xq, wq, sn, W = surface_quadrature(nodes, tris)
-        cols.append((sn, scale * np.asarray(W.T @ wq).ravel()))
-    allnodes = np.unique(np.concatenate([surf_nodes] + [c[0] for c in cols]))
-    out = np.zeros((len(allnodes), B.shape[1] + len(cols)))
-    out[np.searchsorted(allnodes, surf_nodes), :B.shape[1]] = B
-    for j, (sn, v) in enumerate(cols):
+        cols.append((sn, scale * np.asarray(W.T @ wq).reshape(-1, 1)))
+    return stack_columns(cols)
+
+
+def stack_columns(blocks):
+    """
+    Side-by-side surface coupling matrices on different (possibly overlapping) node sets:
+    blocks [(nodes_j, B_j (len(nodes_j) × k_j)), …] → (union of the nodes, B (n × Σ k_j)).
+    """
+    allnodes = np.unique(np.concatenate([np.asarray(sn, np.int64) for sn, _ in blocks]))
+    out = np.zeros((len(allnodes), sum(B.shape[1] for _, B in blocks)))
+    c = 0
+    for sn, B in blocks:
         if len(sn):
-            out[np.searchsorted(allnodes, sn), B.shape[1] + j] = v
+            out[np.searchsorted(allnodes, sn), c:c + B.shape[1]] += B
+        c += B.shape[1]
     return allnodes, out
 
 
-class DriverCavityCoupling:
-    """Modal coupling of a cavity (CavityModes) and an axisymmetric driver (DriverModes)."""
+def couple_drivers(nodes, face_sets, drivers: MultiDriver, profiles, map_tol=5e-4):
+    """
+    Surface coupling of every driver with its own wet faces of one air mesh, stacked
+    (surface_coupling per driver, then stack_columns). face_sets: TRI6 faces per driver.
+    Returns (surface nodes, B, wet area per driver, (edges, edge normals) per driver).
+    """
+    blocks, areas, wet = [], [], []
+    for drv, prof, fr, tris in zip(drivers.modes, profiles, drivers.frames, face_sets):
+        e, en = wet_edges(drv, prof)
+        sn, B, a = surface_coupling(nodes, tris, drv, e, en, fr, map_tol)
+        blocks.append((sn, B))
+        areas.append(a)
+        wet.append((e, en))
+    sn, B = stack_columns(blocks)
+    return sn, B, areas, wet
 
-    def __init__(self, cavity: CavityModes, driver: DriverModes, profile, center=(0.0, 0.0),
-                 rho=RHO_AIR, c=None, eta_air=0.0, map_tol=5e-4, static_correction=True, pistons=()):
+
+class DriverCavityCoupling:
+    """
+    Modal coupling of a cavity (CavityModes) and an axisymmetric driver (DriverModes), or
+    several drivers (MultiDriver), each on its own wet patch.
+    """
+
+    def __init__(self, cavity: CavityModes, driver: DriverModes | MultiDriver, profile,
+                 center=(0.0, 0.0), rho=RHO_AIR, c=None, eta_air=0.0, map_tol=5e-4,
+                 static_correction=True, pistons=(), patch=None):
         """
+        driver, profile, center: one DriverModes, its wet profile and its center or DriverFrame;
+            or a MultiDriver (frames inside, center ignored) and a list with one wet profile per
+            driver.
+        patch: wet patch name(s) in the cavity. Default: the whole wet surface for one driver,
+            "interface_driver_<j>" for driver j of a MultiDriver.
         pistons: extra generalised coordinates appended after the driver modes, each a uniform
-        normal displacement of a cavity surface: (TRI6 faces, displacement into the air per unit
-        coordinate), or None for a coordinate that does not touch the cavity.
+            normal displacement of a cavity surface: (TRI6 faces, displacement into the air per
+            unit coordinate), or None for a coordinate that does not touch the cavity.
         """
         self.cav, self.drv = cavity, driver
-        self.center = np.asarray(center, float)
+        self.drivers, profiles, single = as_drivers(driver, profile, center)
+        self.center = np.asarray(center, float) if single else None
         self.rho, self.c = rho, (c or cavity.c)
         self.eta_air = eta_air
-        self.edges, self.edge_n = wet_edges(driver, profile)
-        self._build_Bc(map_tol)
+        if single:
+            faces = [cavity.patch_tris if patch is None else cavity.face_set(patch)]
+        else:
+            names = patch or [f"interface_driver_{j}" for j in range(self.drivers.n_drivers)]
+            faces = [cavity.face_set(nm) for nm in names]
+        self._build_Bc(faces, profiles, map_tol)
         if pistons:
             self.patch_nodes, self.Bc = add_pistons(cavity.nodes, self.patch_nodes, self.Bc, pistons)
             self.volume_disp = self.Bc.sum(axis=0)
         self.S = self.Bc.T @ cavity.psi[self.patch_nodes]                     # (n_y, n_a)
         self.R = self._static_correction() if static_correction else np.zeros((self.Bc.shape[1],) * 2)
-        self.w_s = 2 * np.pi * driver.freq
+        self.w_s = 2 * np.pi * self.drivers.freq
         self.w_a = self.c * np.sqrt(np.maximum(cavity.kappa2, 0.0))
 
     # ── Bc = ∫_S N_i (φ_k·n) dS on the cavity side ─────────────────────────
-    def _build_Bc(self, map_tol):
-        self.patch_nodes, self.Bc, self.wet_area = surface_coupling(
-            self.cav.nodes, self.cav.patch_tris, self.drv, self.edges, self.edge_n, self.center, map_tol)
+    def _build_Bc(self, faces, profiles, map_tol):
+        self.patch_nodes, self.Bc, self.wet_areas, self.wet = couple_drivers(
+            self.cav.nodes, faces, self.drivers, profiles, map_tol)
+        self.wet_area = float(sum(self.wet_areas))
+        self.edges, self.edge_n = self.wet[0]                    # first driver (single-driver API)
         self.volume_disp = self.Bc.sum(axis=0)                                          # ∫ φ·n dS
 
     def _static_correction(self):
@@ -600,23 +921,32 @@ class DriverCavityCoupling:
         return 0.5 * (R + R.T)
 
     # ── forced response ────────────────────────────────────────────────────
-    def coil_force(self, coil_nodes, total=1.0):
-        """Modal force of an axial force `total` [N] shared by the coil nodes (axisymmetric)."""
-        Uz = self.drv.U[:, coil_nodes, 1].mean(axis=1)
-        return total * Uz * (self.drv.m == 0)
+    def coil_force(self, coil_nodes, total=1.0, driver=0):
+        """
+        Modal force of an axial force `total` [N] (complex allowed: amplitude and phase) shared
+        by the coil nodes of driver `driver` (axisymmetric); zero on the other drivers.
+        """
+        return self.drivers.coil_force(driver, coil_nodes, total)
+
+    def coil_forces(self, coil_nodes, amplitudes=None):
+        """Unit coil force of each driver (columns), or Σ_j a_j F_j (MultiDriver.coil_forces)."""
+        return self.drivers.coil_forces(coil_nodes, amplitudes)
 
     def forced(self, freqs, F, loaded=True):
-        """Modal amplitudes q (n_f, n_s) and cavity modal pressures P (n_f, n_a)."""
-        return solve_forced(freqs, F, self.w_s, self.drv.zeta, self.S if loaded else None, self.R,
-                            self.cav.kappa2, self.rho, self.c, self.eta_air)
+        """
+        Modal amplitudes q (n_f, n_s) and cavity modal pressures P (n_f, n_a); with F of shape
+        (n_s, n_rhs) (e.g. coil_forces), one response per column: the transfer matrix.
+        """
+        return solve_forced(freqs, F, self.w_s, self.drivers.zeta, self.S if loaded else None,
+                            self.R, self.cav.kappa2, self.rho, self.c, self.eta_air)
 
     # ── coupled modes ──────────────────────────────────────────────────────
     def coupled_modes(self, f_max=None):
         """Coupled eigenvalues s = −ζω + iω_d and right vectors x = (q, P)."""
-        ns, na = len(self.drv), len(self.w_a)
+        ns, na = len(self.drivers), len(self.w_a)
         I_s, I_a = np.eye(ns), np.eye(na)
         K = np.block([[np.diag(self.w_s ** 2), self.S], [np.zeros((na, ns)), np.diag(self.w_a ** 2)]])
-        C = np.block([[np.diag(2 * self.drv.zeta * self.w_s), np.zeros((ns, na))],
+        C = np.block([[np.diag(2 * self.drivers.zeta * self.w_s), np.zeros((ns, na))],
                       [np.zeros((na, ns)), np.diag(self.eta_air * self.w_a)]])
         M = np.block([[I_s + self.rho * self.R, np.zeros((ns, na))],
                       [-self.rho * self.c ** 2 * self.S.T, I_a]])
@@ -637,12 +967,15 @@ class DriverCavityCoupling:
 #  3D views (pyvista)
 # ════════════════════════════════════════════════════════════════════════════
 def driver_surface(drv: DriverModes, q, center=(0.0, 0.0, 0.0), theta=(0.0, 2 * np.pi),
-                   n_theta=73, deformation=0.10, phase=None):
+                   n_theta=73, deformation=0.10, phase=None, u_max=None):
     """
-    Deformed driver (boundary of the meridian mesh revolved over `theta`, placed at `center`)
-    for the modal amplitudes q (complex, all orders summed): real part at `phase`
+    Deformed driver (boundary of the meridian mesh revolved over `theta`, placed at `center`:
+    a translation (x0, y0[, z0]), or a DriverFrame for any orientation; θ is measured from its
+    x_l axis) for the modal amplitudes q (complex, all orders summed): real part at `phase`
     (default: phase of the largest displacement), max |u| = deformation × driver diameter.
-    Returns (pv.PolyData with point data "|u|" in [0, 1], phase).
+    u_max: displacement [m] mapped to that deformation and to |u| = 1 (default: the max of this
+    surface); pass a common value (and phase) to draw several drivers at one scale and instant.
+    Returns (pv.PolyData with point data "|u|" (normalised) and "|u| [m]", phase).
     """
     import pyvista as pv
     t = drv.tris
@@ -661,19 +994,25 @@ def driver_surface(drv: DriverModes, q, center=(0.0, 0.0, 0.0), theta=(0.0, 2 * 
         phase = -np.angle(big)
     ur, ut, uz = (np.real(x * np.exp(1j * phase)) for x in (ur, ut, uz))
     mag = np.sqrt(ur ** 2 + ut ** 2 + uz ** 2)
-    sc = deformation * 2 * drv.xy[:, 0].max() / max(mag.max(), 1e-30)
+    ref = max(mag.max() if u_max is None else u_max, 1e-30)
+    sc = deformation * 2 * drv.xy[:, 0].max() / ref
     r, z = drv.xy[nodes, 0][:, None], drv.xy[nodes, 1][:, None]
     rr = r + sc * ur
-    pts = np.column_stack([(rr * np.cos(th) - sc * ut * np.sin(th)).ravel() + center[0],
-                           (rr * np.sin(th) + sc * ut * np.cos(th)).ravel() + center[1],
-                           (z + sc * uz).ravel() + (center[2] if len(center) > 2 else 0.0)])
+    pts = np.column_stack([(rr * np.cos(th) - sc * ut * np.sin(th)).ravel(),
+                           (rr * np.sin(th) + sc * ut * np.cos(th)).ravel(),
+                           (z + sc * uz).ravel()])
+    if isinstance(center, DriverFrame):
+        pts = center.to_global(pts)
+    else:
+        pts = pts + np.array([center[0], center[1], center[2] if len(center) > 2 else 0.0])
     ia, ib = loc[edges[:, 0]], loc[edges[:, 1]]
     k = np.arange(n_theta - 1)
     quads = np.stack([np.full((len(edges), n_theta - 1), 4), ia[:, None] * n_theta + k,
                       ib[:, None] * n_theta + k, ib[:, None] * n_theta + k + 1,
                       ia[:, None] * n_theta + k + 1], axis=2)
     surf = pv.PolyData(pts, quads.reshape(-1))
-    surf["|u|"] = (mag / max(mag.max(), 1e-30)).ravel()
+    surf["|u|"] = (mag / ref).ravel()
+    surf["|u| [m]"] = mag.ravel()
     return surf, phase
 
 

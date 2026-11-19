@@ -232,3 +232,9 @@ LoudPy_exemples/Eigen_study/Fourier/Results/
 
 # Claude Code local session data
 **/.claude/
+
+# Regression tests: committed meshes, references and legacy result files
+!tests/data/**/*.msh
+!tests/data/**/*.msh.json
+!tests/data/**/*.h5
+!tests/reference/*.npz

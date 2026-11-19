@@ -1,0 +1,20 @@
+{
+ "files": {
+  "clamped_plate.geo": "e57b98e02b1a93f6db7ec6ab693a732f9b9e159345fa2f1ca675f6c32b6273f1"
+ },
+ "domains": [
+  [
+   "plate",
+   "DomainSpecMecaRayleigh",
+   0.002,
+   null
+  ]
+ ],
+ "interfaces": [
+  "interface_constrained"
+ ],
+ "prune_unused": true,
+ "subdomains_key": "sub",
+ "mesh_order": 2,
+ "grading": 0.3
+}
