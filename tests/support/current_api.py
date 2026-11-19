@@ -14,6 +14,7 @@ from pathlib import Path
 
 import numpy as np
 
+import loudpy as lp
 from loudpy import (DomainSpecMecaRayleigh, DomainSpecAcou, DomainSpecPML, InterfaceSpecClamped,
                     InterfaceSpecForced, InterfaceSpecAcouMeca)
 from loudpy.Studies import Problem, EigenStudy, FreqStudy, TimeStudy
@@ -28,9 +29,49 @@ PLATE = dict(E=2.1e11, nu=0.3, rho=7850.0, a=0.1, h=0.002)
 
 
 # ════════════════════════════════════════════════════════════════════════════
-#  Models
+#  Models (new API: lp.Model; the studies still take the equivalent Problem)
 # ════════════════════════════════════════════════════════════════════════════
+def plate_model():
+    """Clamped steel plate (radius 0.1 m, 2 mm), axisymmetric solid, no damping."""
+    steel = lp.Material("Steel", rho=PLATE["rho"], E=PLATE["E"], nu=PLATE["nu"])
+    return lp.Model(PLATE_GEO).add(
+        lp.Solid("plate", steel, damping=lp.Undamped(), mesh_size=PLATE["h"]),
+        lp.Clamped("interface_constrained"),
+    )
+
+
+def speaker_model(size=1e-3, acoustic=False, rear=False):
+    """HPNEW loudspeaker (structure only, or with the air and a PML for the FSI case)."""
+    model = lp.Model(SPEAKER_GEO, MATERIALS)
+    model.add([lp.Solid(n, m, mesh_size=size) for n, m in SPEAKER_PARTS],
+              lp.Clamped("interface_constrained"), lp.Coil("interface_forced"),
+              lp.FluidStructure("interface_acou_meca_front"))
+    if acoustic or rear:
+        model.add(lp.FluidStructure("interface_acou_meca_rear"))
+    if acoustic:
+        model.add(lp.Air("subacou", mesh_size=0.01),
+                  lp.PML("PML", thickness=0.1, mesh_size=0.025, tuned_to=1000.0, order=2, strength=1.5))
+    return model
+
+
+def _speaker_tag(size, acoustic, rear):
+    return f"speaker_{size:g}_{'fsi' if acoustic else 'meca'}{'_rear' if rear else ''}"
+
+
 def plate_problem(mesh_dir: Path):
+    model = plate_model()
+    model.mesh(mesh_dir / "plate.msh")
+    return model.as_problem()
+
+
+def speaker_problem(mesh_dir: Path, size=1e-3, acoustic=False, rear=False):
+    model = speaker_model(size, acoustic, rear)
+    model.mesh(mesh_dir / f"{_speaker_tag(size, acoustic, rear)}.msh")
+    return model.as_problem()
+
+
+# ── former API (kept to check that Model builds the same objects) ──────────────
+def legacy_plate_problem(mesh_dir: Path):
     """Clamped steel plate (radius 0.1 m, 2 mm), axisymmetric solid, no damping."""
     p = Problem(geo_path=PLATE_GEO, msh_path=str(mesh_dir / "plate.msh"))
     p.add_sub_domain(DomainSpecMecaRayleigh("plate", material="Steel", E=PLATE["E"], nu=PLATE["nu"],
@@ -41,12 +82,9 @@ def plate_problem(mesh_dir: Path):
     return p
 
 
-def speaker_problem(mesh_dir: Path, size=1e-3, acoustic=False, rear=False):
-    """
-    HPNEW loudspeaker (structure only, or with the air and a PML for the FSI case).
-    size: element size of the structure [m] (coarse: 1 mm).
-    """
-    tag = f"speaker_{size:g}_{'fsi' if acoustic else 'meca'}{'_rear' if rear else ''}"
+def legacy_speaker_problem(mesh_dir: Path, size=1e-3, acoustic=False, rear=False):
+    """HPNEW loudspeaker through Problem + DomainSpec* (former API)."""
+    tag = _speaker_tag(size, acoustic, rear)
     p = Problem(geo_path=SPEAKER_GEO, msh_path=str(mesh_dir / f"{tag}.msh"), mat_path=MATERIALS)
     p.add_sub_domain(*[DomainSpecMecaRayleigh(n, material=m, size=size) for n, m in SPEAKER_PARTS])
     p.add_interface(InterfaceSpecClamped("interface_constrained"), InterfaceSpecForced("interface_forced"),

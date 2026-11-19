@@ -9,6 +9,6 @@ __all__ = [
     "ForceAssembler",
      "FsiAssembler",
     "MecaAssembler",
-    "AcouAssembler"
-    "MecaAssemblerNL"
+    "AcouAssembler",
+    "MecaAssemblerNL",
 ]

@@ -42,10 +42,12 @@ import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 from scipy.special import spherical_jn, spherical_yn, sph_harm_y
 
-from loudpy.Studies.Cavity_coupling import (_gmsh, assemble_p2, read_p2_mesh, surface_quadrature,
+from loudpy.Studies.Cavity_coupling import (assemble_p2, read_p2_mesh, surface_quadrature,
                                             surface_coupling, wet_edges, add_pistons, RHO_AIR, C_AIR,
-                                            as_frame, as_drivers, couple_drivers, _is_single,
-                                            classify_driver_faces)
+                                            as_drivers, couple_drivers)
+from loudpy.geometry.gmsh_session import gmsh_module as _gmsh  # noqa: F401
+# moved to loudpy.geometry.meshing3d, re-exported for existing scripts
+from loudpy.geometry.meshing3d import add_driver_front, mesh_exterior, mesh_volume  # noqa: F401
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -119,129 +121,6 @@ class HalfSpaceDtN:
 # ════════════════════════════════════════════════════════════════════════════
 #  Geometry: hemisphere over the ground, minus the enclosure and the driver front
 # ════════════════════════════════════════════════════════════════════════════
-def add_driver_front(segments, center, z_low):
-    """
-    In the current gmsh OCC model, the solid under the wet front profile of the driver
-    (revolved about z through `center`) between z_low and the profile, and the cylinder
-    r ≤ R_f, z_low ≤ z ≤ z_front that it replaces in the box. segments: chained (r, z)
-    polylines from the box front face (first point, r = R_f, z = z_front) to the axis.
-    `center` may be a DriverFrame: then everything is built in its local frame (z_low, R_f,
-    z_front are local). Returns (rev, cyl, R_f, z_front).
-    """
-    gmsh = _gmsh()
-    occ = gmsh.model.occ
-    frame = as_frame(center)
-    x0, y0, z0 = frame.origin if frame.is_identity else (0.0, 0.0, 0.0)
-    r_f, z_f = segments[0][0]
-    P = lambda r, z: occ.addPoint(x0 + float(r), y0, z0 + float(z))
-    lines, first, cur = [], None, None
-    for s in segments:
-        tags = [cur if (cur is not None and k == 0) else P(*q) for k, q in enumerate(s)]
-        first = first or tags[0]
-        ok = np.allclose(np.cross(s[-1] - s[0], s - s[0]), 0.0, atol=1e-12)
-        lines.append(occ.addLine(tags[0], tags[-1]) if ok else occ.addSpline(tags))
-        cur = tags[-1]
-    a, b = P(0.0, z_low), P(r_f, z_low)
-    lines += [occ.addLine(cur, a), occ.addLine(a, b), occ.addLine(b, first)]
-    face = occ.addPlaneSurface([occ.addCurveLoop(lines)])
-    rev = [t for d, t in occ.revolve([(2, face)], x0, y0, z0, 0, 0, 1, 2 * np.pi) if d == 3][0]
-    cyl = occ.addCylinder(x0, y0, z0 + z_low, 0, 0, z_f - z_low, r_f)
-    if not frame.is_identity:
-        frame.place([(3, rev), (3, cyl)])
-    return rev, cyl, float(r_f), float(z_f)
-
-
-def mesh_exterior(msh_path, volume, dtn: HalfSpaceDtN, center, r_f, z_front, h_near, h_far,
-                  d_near=0.004, d_far=0.08):
-    """
-    Mesh the exterior (P2, straight edges) with the physical surfaces "dtn" (hemisphere),
-    "ground", "interface_front" (wet front of the driver) and "walls" (box).
-
-    Several drivers: center, r_f and z_front are lists (one center or DriverFrame per driver;
-    r_f and z_front may be scalars); the wet fronts are "interface_front_0", "interface_front_1", …
-    """
-    gmsh = _gmsh()
-    gmsh.model.occ.synchronize()
-    single = _is_single(center)
-    frames = [center] if single else list(center)
-    fronts = ["interface_front"] if single else [f"interface_front_{j}" for j in range(len(frames))]
-    groups = {"dtn": [], "ground": [], **{nm: [] for nm in fronts}, "walls": []}
-    rest = []
-    for _, t in gmsh.model.getBoundary([(3, volume)], oriented=False):
-        xmin, ymin, zmin, xmax, ymax, zmax = gmsh.model.getBoundingBox(2, t)
-        lo, hi = (xmin, ymin, zmin), (xmax, ymax, zmax)
-        if gmsh.model.getType(2, t) == "Sphere":
-            groups["dtn"].append(t)
-        elif abs(hi[dtn.up] - lo[dtn.up]) < 1e-6 and abs(hi[dtn.up] - dtn.center[dtn.up]) < 1e-6:
-            groups["ground"].append(t)
-        else:
-            rest.append(t)
-    owner = classify_driver_faces(rest, frames, r_f, z_front, atol=1e-6)
-    for t, o in zip(rest, owner):
-        groups[fronts[o] if o >= 0 else "walls"].append(t)
-    for nm in fronts:
-        if not groups[nm]:
-            raise ValueError(f"no wet surface found for {nm}")
-    gmsh.model.addPhysicalGroup(3, [volume], 1, name="air")
-    for k, (name, ts) in enumerate(groups.items(), start=2):
-        gmsh.model.addPhysicalGroup(2, ts, k, name=name)
-    f = gmsh.model.mesh.field
-    fd = f.add("Distance")
-    f.setNumbers(fd, "SurfacesList", [t for nm in fronts for t in groups[nm]])
-    f.setNumber(fd, "Sampling", 60)
-    ft = f.add("Threshold")
-    f.setNumber(ft, "InField", fd)
-    for k, v in (("SizeMin", h_near), ("SizeMax", h_far), ("DistMin", d_near), ("DistMax", d_far)):
-        f.setNumber(ft, k, v)
-    f.setAsBackgroundMesh(ft)
-    for k, v in (("Mesh.MeshSizeExtendFromBoundary", 0), ("Mesh.MeshSizeFromPoints", 0),
-                 ("Mesh.MeshSizeFromCurvature", 0), ("Mesh.ElementOrder", 2),
-                 ("Mesh.SecondOrderLinear", 1), ("Mesh.Algorithm3D", 10)):
-        gmsh.option.setNumber(k, v)
-    gmsh.model.mesh.generate(3)
-    Path(msh_path).parent.mkdir(parents=True, exist_ok=True)
-    gmsh.write(str(msh_path))
-    return {k: len(v) for k, v in groups.items()}
-
-
-def mesh_volume(msh_path, volume, classify, refine, h_far):
-    """
-    Mesh one air volume (P2, straight edges). classify(surface tag) → physical surface name;
-    refine: {name: (h, d_near, d_far)} size ramps from the surfaces of that name up to h_far.
-    Returns {name: number of surfaces}.
-    """
-    gmsh = _gmsh()
-    gmsh.model.occ.synchronize()
-    groups = {}
-    for _, t in gmsh.model.getBoundary([(3, volume)], oriented=False):
-        groups.setdefault(classify(t), []).append(t)
-    gmsh.model.addPhysicalGroup(3, [volume], 1, name="air")
-    for k, (name, ts) in enumerate(sorted(groups.items()), start=2):
-        gmsh.model.addPhysicalGroup(2, ts, k, name=name)
-    f = gmsh.model.mesh.field
-    fields = []
-    for name, (h, d0, d1) in refine.items():
-        if name not in groups:
-            continue
-        fd = f.add("Distance")
-        f.setNumbers(fd, "SurfacesList", groups[name])
-        f.setNumber(fd, "Sampling", 60)
-        ft = f.add("Threshold")
-        f.setNumber(ft, "InField", fd)
-        for k, v in (("SizeMin", h), ("SizeMax", h_far), ("DistMin", d0), ("DistMax", d1)):
-            f.setNumber(ft, k, v)
-        fields.append(ft)
-    fm = f.add("Min")
-    f.setNumbers(fm, "FieldsList", fields)
-    f.setAsBackgroundMesh(fm)
-    for k, v in (("Mesh.MeshSizeExtendFromBoundary", 0), ("Mesh.MeshSizeFromPoints", 0),
-                 ("Mesh.MeshSizeFromCurvature", 0), ("Mesh.MeshSizeMax", h_far),
-                 ("Mesh.ElementOrder", 2), ("Mesh.SecondOrderLinear", 1), ("Mesh.Algorithm3D", 10)):
-        gmsh.option.setNumber(k, v)
-    gmsh.model.mesh.generate(3)
-    Path(msh_path).parent.mkdir(parents=True, exist_ok=True)
-    gmsh.write(str(msh_path))
-    return {k: len(v) for k, v in groups.items()}
 
 
 # ════════════════════════════════════════════════════════════════════════════

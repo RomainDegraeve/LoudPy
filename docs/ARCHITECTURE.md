@@ -216,12 +216,12 @@ The refactor proceeds by strangling the old code: build the new layers next to t
 | Phase | Content | Done when |
 |---|---|---|
 | 0 ✅ | Test harness: pytest + regression fixtures from the current code (`tests/`, see below) | the tests reproduce today's numbers |
-| 1 | `model/` (Model, Scene, regions, boundaries, materials, damping, drives) + `geometry/` (Mesh, gmsh session, meshing2d moved, meshing3d, Frame) | the 2D examples mesh through `Model` |
+| 1 ✅ | `model/` (Model, regions, boundaries, materials, damping, drives) + `geometry/` (Mesh, gmsh session, naming, meshing2d moved, meshing3d, Frame) | the tests build their models through `lp.Model` |
 | 2 | `fem/` (move kernels, assembly, dofs) + `physics/` with the contribution registry | the assembled matrices are bit-identical to the old ones |
 | 3 | `solvers/` (eigen, linear, time moved out of the studies) | regression tests green |
 | 4 | `results/` (schema, save, load, old-file readers) + `plot/` on `Results` | all Loading scripts use `lp.load` |
 | 5 | `studies/` (Modes, FrequencyResponse with remesh bands, Transient) | 2D examples migrated |
-| 6 | 3D: `Driver`, `Scene`, `physics.modal`, `physics.radiation` | Coupling_3D examples migrated, results unchanged |
+| 6 | 3D: `Scene`, `Driver`, `physics.modal`, `physics.radiation` | Coupling_3D examples migrated, results unchanged |
 | 7 | Delete the old packages, docs, ruff + CI | only the new API remains |
 
 ### Phase 0 — done
@@ -240,3 +240,18 @@ Reproducibility issues found (to fix in the phase named):
 |---|---|---|---|
 | gmsh meshes with `General.NumThreads = cpu_count()` | `Meshing/MeshManager.py` | The same `.geo` gives different triangulations from run to run (~1e-6 on frequencies). The 3D HXT meshing (`Mesh.Algorithm3D = 10`) is multithreaded too. | 1 (a `deterministic=True` meshing option, used by the tests) |
 | `eigsh` without a start vector | `CavityModes.solve` (and ARPACK calls generally) | Cavity-mode results vary ~1e-6 between runs, so the 3D tests use rtol 1e-5 | 3 (fixed `v0` in `solvers.eigen`, then tighten `RTOL_3D`) |
+
+### Phase 1 — done
+
+New packages: `loudpy.geometry` and `loudpy.model`. The new names are exported from `import loudpy as lp`: `Model`, `Solid`, `Air`, `PML`, `Clamped`, `Coil`, `FluidStructure`, `Radiation`, `Rayleigh`, `Hysteretic`, `Undamped`, `Force`, `Voltage`, `Material`, `materials`, `load_materials`, `Frame`, `Mesh`.
+
+- **Exact selection:** names select physical groups by whole tokens, not substrings (`geometry/naming.py`): "coil" no longer matches "coil_former". Explicit globs work with or without the physics prefix (`"glue_*"`). `Model.selection()` (called by `mesh()`) fails on a name that selects nothing, or a group claimed by two regions, and lists the available groups.
+- **Materials:** a validated `MaterialLibrary` of frozen `Material` values (SI units). Missing properties give an explicit error. A material can be defined in the script (`lp.Material("Steel", …)`). Constructor-signature inspection is gone from the new path.
+- **Damping** is a separate object, so there is one `Solid` instead of three spec classes.
+- **Deterministic meshing:** `Model.mesh(deterministic=True)` meshes on one thread and gives identical meshes (test).
+- **Moves (history kept with `git mv`):** `MeshManager` is now `geometry/meshing2d.py`, with an injectable name matcher and the deterministic option. The 3D builders and `DriverFrame` (now `Frame`) moved from `Cavity_coupling` / `Exterior_dtn` to `geometry/meshing3d.py` and `geometry/frame.py`. All old import paths are re-exported; the 74 loudpy import statements of the examples all resolve.
+- **Bridge:** `model/_legacy.py`. Until the studies are rebuilt (phases 2–5), `Model.as_problem()` returns the equivalent `Problem` for `EigenStudy` / `FreqStudy` / `TimeStudy`. A test checks that `Model` builds the same physics objects (class, parameters, cells, nodes) as `Problem` for the plate, the speaker and the speaker with air + PML.
+- **Small fixes:** the broken `__all__` of `loudpy.Studies` and `loudpy.assembly`. `from loudpy import *` works.
+- **Scene (3D):** moved to phase 6, together with `Driver`, so that the 3D declarative API and its physics are designed together.
+
+Tests: 51 (24 regression through `lp.Model`, 27 for the model layer), all passing. The committed meshes and references are unchanged.
