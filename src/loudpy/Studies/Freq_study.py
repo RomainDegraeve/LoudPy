@@ -4,7 +4,7 @@ from pathlib import Path
 import scipy.sparse as sp
 from scipy.sparse import bmat
 from scipy.sparse.linalg import spsolve
-from loudpy.Studies.fast_linalg import SweepSolver
+from loudpy.solvers.linear import SweepSolver
 from loudpy.physics.structural import MecaAssembler
 from loudpy.physics.acoustic import AcouAssembler
 from loudpy.physics.forcing import ForceAssembler

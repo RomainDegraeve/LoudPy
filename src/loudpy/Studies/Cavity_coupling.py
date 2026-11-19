@@ -43,6 +43,8 @@ import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 from scipy.spatial import cKDTree
 
+from loudpy.solvers.eigen import start_vector
+
 # Geometry (frames, cut-outs, meshing, P2 mesh reading) lives in loudpy.geometry; the names
 # are re-exported here so that existing scripts keep working.
 from loudpy.geometry.frame import Frame, as_frame, _is_single  # noqa: F401
@@ -171,7 +173,8 @@ class CavityModes:
         n = n_guess or int(1.4 * self.volume * (2 * np.pi * f_max / c) ** 3 / (6 * np.pi ** 2)) + 30
         while True:
             n = min(n, len(self.nodes) - 2)
-            lam, vec = spla.eigsh(self._K, k=n, M=self._M, sigma=-1e-4 * k_max2, which="LM")
+            lam, vec = spla.eigsh(self._K, k=n, M=self._M, sigma=-1e-4 * k_max2, which="LM",
+                                  v0=start_vector(len(self.nodes), complex_=False))   # reproducible
             o = np.argsort(lam)
             lam, vec = lam[o], vec[:, o]
             if lam[-1] >= k_max2 or n >= len(self.nodes) - 2:

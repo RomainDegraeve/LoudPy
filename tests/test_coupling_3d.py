@@ -14,9 +14,9 @@ from support import current_api as api
 
 pytestmark = pytest.mark.slow
 FREQS = np.array([60.0, 120.0, 300.0, 900.0, 1500.0])
-# CavityModes.solve uses eigsh with a random start vector: cavity-mode results vary ~1e-6
-# from run to run (to be made deterministic in phase 3, then tighten).
-RTOL_3D = 1e-5
+# CavityModes.solve starts ARPACK from a fixed vector (phase 3): identical runs give identical
+# cavity modes. Before, the random start made the results vary ~1e-6 (tolerance was 1e-5).
+RTOL_3D = 1e-9
 
 
 def test_rect_cavity(mesh_dir, reference):

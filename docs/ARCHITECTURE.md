@@ -218,7 +218,7 @@ The refactor proceeds by strangling the old code: build the new layers next to t
 | 0 ✅ | Test harness: pytest + regression fixtures from the current code (`tests/`, see below) | the tests reproduce today's numbers |
 | 1 ✅ | `model/` (Model, regions, boundaries, materials, damping, drives) + `geometry/` (Mesh, gmsh session, naming, meshing2d moved, meshing3d, Frame) | the tests build their models through `lp.Model` |
 | 2 ✅ | `fem/` (move kernels, assembly, dofs) + `physics/` with the role registry | the assembled matrices are identical to the old ones |
-| 3 | `solvers/` (eigen, linear, time moved out of the studies) | regression tests green |
+| 3 ✅ | `solvers/` (eigen, linear, time moved out of the studies) | regression tests green |
 | 4 | `results/` (schema, save, load, old-file readers) + `plot/` on `Results` | all Loading scripts use `lp.load` |
 | 5 | `studies/` (Modes, FrequencyResponse with remesh bands, Transient) | 2D examples migrated |
 | 6 | 3D: `Scene`, `Driver`, `physics.modal`, `physics.radiation` | Coupling_3D examples migrated, results unchanged |
@@ -239,7 +239,7 @@ Reproducibility issues found (to fix in the phase named):
 | Issue | Where | Effect | Fix in |
 |---|---|---|---|
 | gmsh meshes with `General.NumThreads = cpu_count()` | `Meshing/MeshManager.py` | The same `.geo` gives different triangulations from run to run (~1e-6 on frequencies). The 3D HXT meshing (`Mesh.Algorithm3D = 10`) is multithreaded too. | 1 (a `deterministic=True` meshing option, used by the tests) |
-| `eigsh` without a start vector | `CavityModes.solve` (and ARPACK calls generally) | Cavity-mode results vary ~1e-6 between runs, so the 3D tests use rtol 1e-5 | 3 (fixed `v0` in `solvers.eigen`, then tighten `RTOL_3D`) |
+| `eigsh` without a start vector | `CavityModes.solve` (and ARPACK calls generally) | Cavity-mode results vary ~1e-6 between runs, so the 3D tests use rtol 1e-5 | 3 ✅ fixed: every ARPACK call starts from `solvers.eigen.start_vector`; `RTOL_3D` is 1e-9 |
 
 ### Phase 1 — done
 
@@ -278,3 +278,16 @@ Two new layers. `fem` holds no physics names. `physics` holds the physics object
 Gate: `tests/test_operators.py`, 18 operators on the committed meshes. It covers K, M, C, F, H, Q (with PML), Cam, Fourier m = 1 (K, M, C, T), the nonlinear tangent (K_T, M, C, F_int), the reduced system, and the full structure + air + DtN system. The references were written by the phase-1 code. The phase-2 code reproduces them at rtol 1e-12, and a 1e-9 change of E fails exactly the stiffness-dependent ones.
 
 Tests: 69 passing.
+
+### Phase 3 — done
+
+New layer `loudpy.solvers`: algebra on assembled matrices, with no physics and no files.
+
+- **`solvers.linear`** (former `Studies/fast_linalg.py`, moved with `git mv`): `factorize`, `SweepSolver` and `QEPShiftInvert`.
+- **`solvers.eigen`:** the algorithms moved out of `EigenStudy` (1369 → 851 lines) as plain functions with clear names. They cover the GEP / QEP shift-invert solves (`solve_gep`, `solve_qep`, `solve_qep_at`), several shifts over a band (`multishift`, `covering`, `default_shifts`), merging shifts (`mac_deduplicate`, `weighted_mac`), the single physical filter (`filter_modes`), normalisation (`normalise_modes`, `normalise_symmetric`) and the summaries. `EigenStudy` keeps its former private method names as aliases.
+- **`solvers.time`:** the generalised-α / Newton–Raphson integrator moved out of `TimeStudy` (317 → 197 lines). It is `generalized_alpha_newton(tangent, …)` with the structural tangent as a callback, plus `GeneralizedAlpha` (parameters from ρ∞) and `free_dof_reducer`.
+- **Reproducible eigen solves:** every ARPACK call starts from a fixed vector (`start_vector`, seed 0): `arpack_eigs`, the acoustic `eigsh` and `CavityModes.solve`. Identical runs give identical modes. The 3D references were regenerated on purpose; they changed only by the former noise (≤ 5e-6), and `RTOL_3D` went from 1e-5 to 1e-9. The 2D eigen tolerances stay at 1e-7, ARPACK's convergence tolerance: a 1e-15 change of a matrix can move an eigenvalue by up to that much.
+- **Bug fixed:** `EigenStudy._print_acou_summary` lacked `self` / `@staticmethod`, so `solve_acoustic_eigen_ARPAC` failed when printing its summary. It is now a staticmethod alias of `solvers.eigen.print_acoustic_summary` (not covered by a test yet).
+- **Shim:** `loudpy.Studies.fast_linalg`.
+
+Tests: 77 passing. That includes `tests/test_solvers.py`, which checks the solvers layer alone on problems with known answers: undamped frequencies, Rayleigh-damped ζ and the normalisation, gap-free covering, MAC deduplication with degenerate pairs, the half-plane filter, reproducible ARPACK, the sweep solver, and second-order accuracy of generalised-α against an exact solution.

@@ -1,7 +1,8 @@
 import numpy as np
 from scipy.sparse import bmat
 from scipy.sparse.linalg import spsolve
-from loudpy.Studies.fast_linalg import factorize
+from loudpy.solvers.linear import factorize  # noqa: F401
+from loudpy.solvers.time import free_dof_reducer, generalized_alpha_newton
 
 from loudpy.physics.structural import MecaAssembler, MecaAssemblerNL
 from loudpy.physics.registry import select
@@ -90,21 +91,8 @@ class TimeStudy(Problem, DofMapMixin):                  #
         # Use chained slicing (same as K_red / C_red inside the loop) — NOT np.ix_
         M_red              = M_full[free, :][:, free].tocsc()
 
-        # free-DOF reduction by a precomputed index map (all matrices share one CSR pattern)
-        _tmpl = K_T_zero.tocsr().copy()
-        _tmpl.data = np.arange(1, _tmpl.nnz + 1, dtype=np.float64)
-        _red = _tmpl[free, :][:, free].tocsc()
-        _red_idx = _red.data.astype(np.int64) - 1
+        reduce = free_dof_reducer(K_T_zero, free)   # one CSR pattern for every tangent
 
-        def reduce(A_full):
-            A_full = A_full.tocsr()
-            if A_full.nnz != _tmpl.nnz or not np.array_equal(A_full.indices, _tmpl.indices):
-                return A_full[free, :][:, free].tocsc()
-            out = _red.copy()
-            out.data = A_full.data[_red_idx]
-            return out
-
-        lu_eff, n_factor = None, 0
 
         # ── Diagnostic: compare NL tangent at u=0 with linear assembler ──────────
         _K_lin, _, _C_lin  = MecaAssembler(self.fem_objects).assemble()
@@ -136,123 +124,16 @@ class TimeStudy(Problem, DofMapMixin):                  #
 
         print(f"F_red_base  max={np.max(np.abs(F_red_base)):.3e}  sum={F_red_base.sum():.3e}")
 
-        # ── Generalized-Alpha parameters ──────────────────────────────────────────
-        alpha_m = (2.0 * rho_inf - 1.0) / (rho_inf + 1.0)
-        alpha_f =        rho_inf         / (rho_inf + 1.0)
-        gam     = 0.5 - alpha_m + alpha_f
-        beta    = 0.25 * (1.0 - alpha_m + alpha_f) ** 2
+        # ── Generalised-α time integration (loudpy.solvers.time) ───────────────────
+        def tangent(u_full):
+            K_T, _, C, F_int = self.assembler_nl.assemble_tangent(u_full)
+            return K_T, C, F_int
 
-        c1 = 1.0 / (beta * dt ** 2)
-        c2 = gam  / (beta * dt)
-
-        # ── Initial conditions ────────────────────────────────────────────────────
-        u_n = np.zeros(n_free, dtype=np.float64)
-        v_n = np.zeros(n_free, dtype=np.float64)
-        a_n = np.zeros(n_free, dtype=np.float64)
-
-        results_u  = [np.zeros(n_dof, dtype=np.float64)]
-        results_v  = [np.zeros(n_dof, dtype=np.float64)]
-        results_a  = [np.zeros(n_dof, dtype=np.float64)]
-        time_array = [0.0]
-
-
-        # ── Time loop ─────────────────────────────────────────────────────────────
-        for step in range(n_steps):
-            t_n1 = (step + 1) * dt
-
-            F_ext_n   = F_red_base * float(np.real(force_signal[step]))
-            F_ext_n1  = F_red_base * float(np.real(force_signal[step + 1]))
-            F_ext_mid = (1.0 - alpha_f) * F_ext_n1 + alpha_f * F_ext_n
-
-            # ── Predictor ────────────────────────────────────────────────────────
-            u_iter = u_n + dt * v_n + dt ** 2 * (0.5 - beta) * a_n
-            v_iter = v_n + dt * (1.0 - gam) * a_n
-            a_iter = np.zeros_like(a_n)
-
-            # ── Newton-Raphson ────────────────────────────────────────────────────
-            res_norm = np.inf
-            for k in range(nr_max_iter):
-                u_mid = (1.0 - alpha_f) * u_iter + alpha_f * u_n
-                v_mid = (1.0 - alpha_f) * v_iter + alpha_f * v_n
-                a_mid = (1.0 - alpha_m) * a_iter + alpha_m * a_n
-
-                u_full_mid       = np.zeros(n_dof, dtype=np.float64)
-                u_full_mid[free] = u_mid
-
-                K_T_full, _, C_full_it, F_int_full = \
-                    self.assembler_nl.assemble_tangent(u_full_mid)
-
-                C_red     = reduce(C_full_it)
-                F_int_red = F_int_full[free]
-
-                Residual = (F_ext_mid
-                            - F_int_red
-                            - M_red @ a_mid
-                            - C_red @ v_mid)
-
-                res_norm = np.linalg.norm(Residual)
-                f_norm   = np.linalg.norm(F_ext_mid)
-
-                # ── Step-0 / iter-0 deep diagnostics ─────────────────────────────
-                if step == 0 and k == 0:
-                    K_red = reduce(K_T_full)
-                    K_eff_diag0 = ((1.0 - alpha_f) * K_red
-                                + (1.0 - alpha_f) * c2 * C_red
-                                + (1.0 - alpha_m) * c1 * M_red).diagonal()
-                    print(f"  K_eff diag mean={K_eff_diag0.mean():.6e}  min={K_eff_diag0.min():.6e}")
-
-                if res_norm < nr_tol * (f_norm + 1e-12):
-                    break
-
-                if lu_eff is None or not reuse_tangent or k >= reuse_max_iter:
-                    K_red = reduce(K_T_full)
-                    K_eff = (  (1.0 - alpha_f) * K_red
-                            + (1.0 - alpha_f) * c2 * C_red
-                            + (1.0 - alpha_m) * c1 * M_red)
-                    lu_eff = factorize(K_eff)
-                    n_factor += 1
-
-                delta_u = np.real(lu_eff.solve(Residual))
-
-                # ── Step-0 / iter-0 correction diagnostics ───────────────────────
-                if step == 0 and k == 0:
-                    print(f"  delta_u    max={np.max(np.abs(delta_u)):.6e}  norm={np.linalg.norm(delta_u):.6e}")
-                    print(f"===================================\n")
-
-                u_iter += delta_u
-                a_iter += c1 * delta_u
-                v_iter += c2 * delta_u
-
-            else:
-                print(f"  ⚠  NR did not converge at step {step}  "
-                    f"(res_norm = {res_norm:.3e})")
-
-            # ── Advance history ───────────────────────────────────────────────────
-            u_n, v_n, a_n = u_iter, v_iter, a_iter
-
-            u_full_step       = np.zeros(n_dof, dtype=np.float64)
-            v_full_step       = np.zeros(n_dof, dtype=np.float64)
-            a_full_step       = np.zeros(n_dof, dtype=np.float64)
-            u_full_step[free] = u_n
-            v_full_step[free] = v_n
-            a_full_step[free] = a_n
-
-            results_u.append(u_full_step)
-            results_v.append(v_full_step)
-            results_a.append(a_full_step)
-            time_array.append(t_n1)
-
-            if step % 10 == 0:
-                print(f"  step {step:>5}/{n_steps}  t={t_n1:.4f}s  "
-                    f"|u|_max={np.max(np.abs(u_n)):.3e}  "
-                    f"(NR iters: {k + 1})")
-
-        print(f"Nonlinear Generalized-Alpha sweep complete ({n_factor} factorisations).")
-
-        time_array = np.asarray(time_array)
-        U = np.asarray(results_u)
-        V = np.asarray(results_v)
-        A = np.asarray(results_a)
+        time_array, U, V, A, n_factor = generalized_alpha_newton(
+            tangent, M_red, reduce, free, n_dof, F_red_base, force_signal, dt, n_steps,
+            rho_inf=rho_inf, nr_max_iter=nr_max_iter, nr_tol=nr_tol,
+            reuse_tangent=reuse_tangent, reuse_max_iter=reuse_max_iter)
+        results_u, results_v, results_a = list(U), list(V), list(A)
 
         self._results.append({
             "kind":   "time",
