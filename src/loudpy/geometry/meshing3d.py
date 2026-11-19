@@ -147,10 +147,11 @@ def _local_extent(tag, frame, n_per_curve=24):
     return np.hypot(xl[:, 0], xl[:, 1]).max(), xl[:, 2].min(), xl[:, 2].max()
 
 
-def classify_driver_faces(tags, frames, r_max, z_plane, rtol=1e-4, atol=1e-9):
+def classify_driver_faces(tags, frames, r_max, z_plane, rtol=1e-4, atol=1e-9, extra_planes=()):
     """
     For each surface tag, the index of the first driver whose cylinder r_l ≤ r_max[j] contains
-    it, except the flat face z_l = z_plane[j] (baffle or box face), else −1.
+    it, except the flat faces z_l = z_plane[j] (baffle or box face) and z_l = each of
+    `extra_planes` (e.g. both faces of the baffle in a merged air domain), else −1.
     """
     frames = [as_frame(f) for f in frames]
     r_max = np.broadcast_to(np.asarray(r_max, float), (len(frames),))
@@ -160,7 +161,8 @@ def classify_driver_faces(tags, frames, r_max, z_plane, rtol=1e-4, atol=1e-9):
         owner = -1
         for j, fr in enumerate(frames):
             rm, zmin, zmax = _local_extent(t, fr)
-            flat = abs(zmax - zmin) < atol and abs(zmax - z_plane[j]) < atol
+            planes = (z_plane[j],) + tuple(extra_planes)
+            flat = abs(zmax - zmin) < atol and min(abs(zmax - z) for z in planes) < atol
             if rm <= r_max[j] * (1 + rtol) + atol and not flat:
                 owner = j
                 break

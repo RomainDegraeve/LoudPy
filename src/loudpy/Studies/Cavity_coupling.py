@@ -282,7 +282,7 @@ class DriverModes:
                 for k in range(len(b)):
                     add(m, float(b.values[k]), float(b.extra["zeta"][k]), b.fields["u"][k])
                 mesh = b.mesh_of("u")
-                xy, tris = np.asarray(mesh.coords), mesh.triangles()
+                xy, tris, tags = np.asarray(mesh.coords), mesh.triangles(), np.asarray(mesh.node_tags)
         else:
             from loudpy.Files_Loader import EigenReader
             with EigenReader(str(path)) as r:
@@ -290,8 +290,10 @@ class DriverModes:
                     snaps, mesh, _ = r.load_fourier(m)
                     for s in snaps:
                         add(m, s.freq, s.zeta, s.fields["u_meca"])
-                    xy, tris = np.asarray(mesh.coords), np.asarray(mesh.tris)[:, :3]
-        return cls(xy, tris, m_, fam, fr, ze, np.array(Us))
+                    xy, tris, tags = np.asarray(mesh.coords), np.asarray(mesh.tris)[:, :3], np.asarray(mesh.tags)
+        out = cls(xy, tris, m_, fam, fr, ze, np.array(Us))
+        out.node_tags = tags                    # node tag of each row of xy (for boundaries of the file)
+        return out
 
     def __len__(self):
         return len(self.freq)

@@ -109,6 +109,7 @@ class Results:
         self.meta = dict(meta or {})
         self.boundaries = dict(boundaries or {})     # name → {"node_tags", "edges"}
         self.source = source
+        self.attachments: dict = {}                  # name → {array name: array, "meta": {...}}
 
     # ── what is there ──────────────────────────────────────────────────────
     @property
@@ -267,3 +268,11 @@ class ModeResults(Results):
 
 
 KINDS = {"frequency": FrequencyResults, "modes": ModeResults, "time": TimeResults}
+
+
+def result_class(name: str, kind: str):
+    """The Results subclass named in a file (e.g. SceneResults), else the one of its kind."""
+    if name == "SceneResults":
+        from loudpy.results.scene import SceneResults
+        return SceneResults
+    return KINDS[kind]

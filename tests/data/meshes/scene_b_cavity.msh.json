@@ -1,0 +1,59 @@
+{
+ "what": "cavity",
+ "cabinet": "dff8ee5028cc768b",
+ "drivers": [
+  [
+   "main",
+   [
+    0.13,
+    0.1,
+    0.0
+   ],
+   [
+    [
+     1.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     1.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "40634e9f109ebb0b"
+  ]
+ ],
+ "settings": {
+  "cavity": {
+   "mesh_size": [
+    0.006,
+    0.03
+   ],
+   "near": [
+    0.005,
+    0.06
+   ]
+  },
+  "open": {
+   "kind": "exterior",
+   "ground": "y",
+   "level": 0.0,
+   "margin": 0.04,
+   "points_per_wavelength": 4.0,
+   "max_size": 0.07,
+   "driver_size": 0.006,
+   "near": [
+    0.004,
+    0.08
+   ],
+   "plug_from": 0.0
+  }
+ },
+ "extra": null
+}

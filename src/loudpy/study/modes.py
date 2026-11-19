@@ -22,6 +22,8 @@ PHYSICS = ("structure", "coupled", "acoustic")
 
 
 class Modes(Study):
+    accepts_scene = True
+
     def __init__(self, model, physics: str = "structure"):
         super().__init__(model)
         if physics not in PHYSICS:
@@ -38,6 +40,10 @@ class Modes(Study):
         options      : passed to the coupled solver (dtn_center, dtn_half, dtn_order, mac_tol,
                        cover_zeta_max, max_shifts, cover_goal, checkpoint_path, …)
         """
+        if self.is_scene:                       # drivers + cavity modes (scene configuration "cavity")
+            from loudpy.study import scene_response
+            self.results = scene_response.coupled_modes(self, f_max=f_max)
+            return self.results
         from loudpy.Studies import EigenStudy
         engine = EigenStudy(self._problem())
         if self.physics == "structure":

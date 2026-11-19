@@ -348,3 +348,23 @@ Issues in the former examples, fixed by the migration:
 - **Time_study/Multitone** Loading hard-coded a `sys.path` entry to a home folder.
 
 Tests: 94 passing.
+
+### Phase 6a — 3D scenes (library)
+
+New package `loudpy.scene`, exported as `lp.Driver`, `lp.Profile`, `lp.Scene` and `lp.Cabinet`. The scope was decided with the user: configurations A, B and C; the cabinet geometry from a builder function; the 3D fields streamed to the result file.
+
+- **`lp.Driver.from_modes(file, orders, f_max, geometry=, rear=lp.Profile(curves, start), front=…)`:** the modes are read from an eigen file (format 2 or 1). The coil is the boundary `interface_forced` of that file, which gives the same 13 nodes as the former curve-37 lookup. The wet profiles come from the driver's 2D geometry. `driver.place(name, at=, axis=, ref=)` gives a `Frame`.
+- **`lp.Scene(cabinet, drivers)`:** `cabinet(occ)` returns `lp.Cabinet(inner=, cuts=, outer=, openings=)`. `scene.cavity(...)` is configuration A, adding `scene.exterior(...)` gives B, and `scene.merged(...)` is C. `scene.mesh(folder, reuse=True | "always" | False)` does the following:
+  - adds the driver cut-outs and front plugs;
+  - sizes the half-space DtN hemisphere from the cabinet vertices and the drivers;
+  - classifies the wet surfaces per driver (both baffle planes for C);
+  - meshes per band;
+  - writes a signature next to each mesh (cabinet source, drivers, mesh settings only).
+- **`lp.FrequencyResponse(scene, drive=lp.Force | {name: lp.Force}).solve(freqs, store=path)`** returns `SceneResults`. It keeps the stacked modal amplitudes `q`, the DtN coefficients, and the cavity modal pressures (A, B). The FE pressure field is streamed to `store` (format 2, one block per band mesh) and read back lazily. `lp.Modes(scene)` gives the coupled driver + cavity modes (A).
+- **`SceneResults`:** `drivers`, `driver(name)` (`excursion()`, `displacement(at, theta)`, `coil_excursion()`, `surface(f)`), `far_field(points)` (exact DtN), `cavity_pressure(point)`, and `spl(at)` (far field outside the hemisphere, FE field inside, cavity otherwise). The driver modal bases and cavity modes are stored as attachments, so a result file is self-contained.
+- **Format 2 additions:** attachments, `results_class`, lazy datasets above 5·10⁶ values (`LazyArray`), and `StreamWriter`.
+- **Gate (`tests/test_scene.py`):**
+  - Configuration A on the committed test boxes reproduces the existing references at 1e-9 (one driver; the two-driver transfer matrix; the coupled modes).
+  - B and C on small committed scenes match a direct computation with the low-level code (`ExteriorFE` + `coupled_sweep`): amplitudes at 1e-10, the streamed field, and the far field.
+
+Tests: 99 passing.

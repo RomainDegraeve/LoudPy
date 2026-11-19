@@ -63,9 +63,16 @@ class PerWavelength:
 
 
 class FrequencyResponse(Study):
+    accepts_scene = True
+
     def __init__(self, model, drive=None, coupled: bool | None = None, reuse_factorization: bool = True):
         super().__init__(model)
         self.drive = drive if drive is not None else Force(1.0)
+        if self.is_scene:                                    # 3D scene: Force or {driver name: Force}
+            drives = self.drive.values() if isinstance(self.drive, dict) else [self.drive]
+            if not all(isinstance(d, Force) and not d.is_signal for d in drives):
+                raise TypeError("a scene is driven by lp.Force (harmonic) or {driver name: lp.Force}")
+            return
         if not isinstance(self.drive, (Force, Voltage)):
             raise TypeError(f"drive must be lp.Force or lp.Voltage, got {self.drive!r}")
         if isinstance(self.drive, Force) and self.drive.is_signal:
@@ -100,8 +107,16 @@ class FrequencyResponse(Study):
         return block, records.boundaries_of(engine._interface_meta)
 
     # ── public ─────────────────────────────────────────────────────────────
-    def solve(self, freqs, remesh: PerWavelength | None = None) -> FrequencyResults:
-        """Response at every frequency of `freqs` [Hz] (one block per mesh)."""
+    def solve(self, freqs, remesh: PerWavelength | None = None, store=None, **options) -> FrequencyResults:
+        """
+        Response at every frequency of `freqs` [Hz] (one block per mesh).
+        Scene: store= the result file the 3D pressure field is streamed to (format 2); without it
+        only the driver amplitudes, DtN coefficients and cavity pressures are kept.
+        """
+        if self.is_scene:
+            from loudpy.study import scene_response
+            self.results = scene_response.solve(self, freqs, store=store, **options)
+            return self.results
         freqs = np.atleast_1d(np.asarray(freqs, float))
         meta = {"study": "FrequencyResponse", "drive": repr(self.drive), "coupled": self.coupled,
                 "geometry": str(self.model.geometry)}

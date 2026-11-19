@@ -5,9 +5,14 @@ from loudpy.model.model import Model
 
 
 class Study:
+    accepts_scene = False
+
     def __init__(self, model: Model):
-        if not isinstance(model, Model):
-            raise TypeError(f"{type(self).__name__} takes an lp.Model, got {type(model).__name__}")
+        from loudpy.scene.scene import Scene
+        self.is_scene = isinstance(model, Scene)
+        if not isinstance(model, Model) and not (self.is_scene and self.accepts_scene):
+            kinds = "an lp.Model or an lp.Scene" if self.accepts_scene else "an lp.Model"
+            raise TypeError(f"{type(self).__name__} takes {kinds}, got {type(model).__name__}")
         self.model = model
         self.results = None
 

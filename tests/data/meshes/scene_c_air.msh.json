@@ -1,0 +1,52 @@
+{
+ "what": "merged_700",
+ "cabinet": "029dbbd3938414a9",
+ "drivers": [
+  [
+   "main",
+   [
+    0.13,
+    0.1,
+    0.0
+   ],
+   [
+    [
+     1.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     1.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "40634e9f109ebb0b"
+  ]
+ ],
+ "settings": {
+  "cavity": null,
+  "open": {
+   "kind": "merged",
+   "ground": "y",
+   "level": 0.0,
+   "margin": 0.04,
+   "points_per_wavelength": 4.0,
+   "max_size": 0.07,
+   "driver_size": 0.004,
+   "near": [
+    0.004,
+    0.08
+   ],
+   "plug_from": 0.0
+  }
+ },
+ "extra": {
+  "h": 0.07
+ }
+}
