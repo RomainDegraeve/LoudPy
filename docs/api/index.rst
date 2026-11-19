@@ -98,4 +98,4 @@ Plotting
    plot.coupled_modes_grid
 
 .. automodule:: loudpy.plot.style
-   :members: use, reset, context, figure, frequency_axis, label_panels, save, pdf_pages
+   :members: use, reset, context, figure, frequency_axis, tidy, label_panels, save, pdf_pages

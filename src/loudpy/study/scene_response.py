@@ -146,7 +146,7 @@ def solve(study, freqs, store=None, chunk_hz=50.0, rtol=1e-7, log=print):
         sel = [i for i, f in enumerate(freqs) if (b["f_lo"] if bi == 0 else b["f_lo"] + 1e-6) <= f <= b["f_hi"]]
         if not sel:
             continue
-        ext = ExteriorFE(str(b["path"]), dtn, min(b["f_hi"], f_top), front=front_name)
+        ext = ExteriorFE(str(b["path"]), dtn, min(b["f_hi"], f_top), front=front_name, surfaces=["openings"])
         if len(scene.drivers) == 1:
             ext.couple_driver(drivers, profiles, patch=[front_name])
         else:

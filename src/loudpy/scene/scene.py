@@ -188,8 +188,9 @@ class Scene:
         mesh_keys = {"cavity": ("mesh_size", "near"),                 # only what changes the meshes
                      "open": ("kind", "ground", "level", "margin", "points_per_wavelength", "max_size",
                               "driver_size", "near", "plug_from")}
-        settings = {k: ({n: getattr(v, n) for n in mesh_keys[k]} if v is not None else None)
-                    for k, v in (("cavity", self._cavity), ("open", self._open))}
+        kind = "cavity" if what == "cavity" else "open"             # a mesh depends on its own settings only
+        v = self._cavity if kind == "cavity" else self._open
+        settings = {kind: {n: getattr(v, n) for n in mesh_keys[kind]}}
         return json.loads(json.dumps(dict(what=what, cabinet=hashlib.sha256(src.encode()).hexdigest()[:16],
                                           drivers=drivers, settings=settings, extra=extra), default=str))
 

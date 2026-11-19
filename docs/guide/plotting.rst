@@ -31,6 +31,9 @@ examples do).
 * standard sizes — ``style.figure("single" | "wide" | "square" | "tall" | "field")``
 * frequency axes — ``style.frequency_axis(ax)``: log scale with 20, 50, 100, 200, 500, 1k … ticks
 * SPL is RMS, in dB re 20 µPa, everywhere
+* tidying — ``style.tidy(fig)`` brings a figure drawn with plain matplotlib to the same look before
+  saving (Hz ticks on log frequency axes, standard labels, text scaled on figures wider than a
+  page); ``style.save`` calls it
 * saving — ``style.save(fig, path)`` creates the folder and writes next to the target before
   renaming it (safe on synced folders); ``style.pdf_pages(path)`` for multi-page PDFs; fonts are
   embedded as TrueType (editable text in vector editors)
