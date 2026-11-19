@@ -1,7 +1,7 @@
 from numba import njit
-from loudpy.Finite_Elements_formulations.FE_kernels import fct_form_T6, jacobian_T6
+from loudpy.fem.shape import fct_form_T6, jacobian_T6
 import numpy as np
-from loudpy.Finite_Elements_formulations.Gauss_Quadratures import GAUSS_TR6_7pts as gp
+from loudpy.fem.quadrature import GAUSS_TR6_7pts as gp
 
 len_gp = gp.shape[0]
 

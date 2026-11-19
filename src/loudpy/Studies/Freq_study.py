@@ -5,7 +5,10 @@ import scipy.sparse as sp
 from scipy.sparse import bmat
 from scipy.sparse.linalg import spsolve
 from loudpy.Studies.fast_linalg import SweepSolver
-from loudpy.assembly import MecaAssembler, AcouAssembler, ForceAssembler, FsiAssembler
+from loudpy.physics.structural import MecaAssembler
+from loudpy.physics.acoustic import AcouAssembler
+from loudpy.physics.forcing import ForceAssembler
+from loudpy.physics.coupling import FsiAssembler
 from loudpy.Studies.Study_class import Problem
 from loudpy.Studies.DofMapMixin import DofMapMixin
 

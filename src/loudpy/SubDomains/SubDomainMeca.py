@@ -1,28 +1,21 @@
-from loudpy.ObjectsGeo import TR6_Surfs
+"""Former structural region classes: SolidPart (loudpy.physics.parts) with their former constructors."""
+from loudpy.physics.parts import SolidPart, material_parameters
 
-class SubDomainMeca(TR6_Surfs): 
-    def __init__(self, mesh_obj: TR6_Surfs, rho: float, E: float, nu: float):
-        super().__init__(
-            node_tags=mesh_obj.node_tags,
-            node_coords=mesh_obj.node_coords,
-            tri=mesh_obj.tri,
-            name=mesh_obj.name,
-        )
-        self.rho, self.E, self.nu = rho, E, nu
+
+class SubDomainMeca(SolidPart):
+    def __init__(self, mesh_obj, rho: float, E: float, nu: float):
+        SolidPart.__init__(self, mesh_obj, rho, E, nu)
+
+    @classmethod
+    def get_params(cls, mat_name: str, mat_path):
+        return material_parameters(cls, mat_name, mat_path)
 
 
 class SubdomainMeca_Hysteretic(SubDomainMeca):
-    def __init__(self, mesh_obj: TR6_Surfs, rho: float, E: float, nu: float, eta: float):
-        super().__init__(mesh_obj, rho, E, nu)
-        self.eta = eta
+    def __init__(self, mesh_obj, rho: float, E: float, nu: float, eta: float):
+        SolidPart.__init__(self, mesh_obj, rho, E, nu, eta=eta)
+
 
 class SubdomainMeca_Rayleigh(SubDomainMeca):
-    def __init__(self, mesh_obj: TR6_Surfs, rho: float, E: float, nu: float, alpha_ray: float, beta_ray: float):
-        super().__init__(mesh_obj, rho, E, nu)
-        self.alpha_ray, self.beta_ray = alpha_ray, beta_ray
-
-
-
-
-
-
+    def __init__(self, mesh_obj, rho: float, E: float, nu: float, alpha_ray: float, beta_ray: float):
+        SolidPart.__init__(self, mesh_obj, rho, E, nu, alpha_ray=alpha_ray, beta_ray=beta_ray)

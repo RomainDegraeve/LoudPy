@@ -1,5 +1,7 @@
 from numba import njit, prange
-from loudpy.Finite_Elements_formulations import compute_H_T6, compute_M_T6, compute_Q_T6, compute_K_T6, compute_FSI_T6, compute_unit_force_T6, compute_element_TL, compute_H_T6_pml, compute_Q_T6_pml
+from loudpy.fem.elements.tri6_axi import (compute_H_T6, compute_M_T6, compute_Q_T6, compute_K_T6,
+                                         compute_FSI_T6, compute_unit_force_T6, compute_element_TL,
+                                         compute_H_T6_pml, compute_Q_T6_pml)
 
 # =============================================================================
 @njit(parallel=True, cache=True, fastmath=True, boundscheck=False)
@@ -99,7 +101,7 @@ def _batch_Q_pml(ec, c,
         
 
 # ── Fourier-mode (azimuthal order m) elasticity, 3 DOF per node ──────────────
-from loudpy.Finite_Elements_formulations.FE_functions.TR6_axi_fourier import (
+from loudpy.fem.elements.tri6_axi.fourier import (
     compute_K_T6_fourier, compute_M_T6_fourier)
 
 

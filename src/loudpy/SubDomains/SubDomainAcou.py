@@ -1,22 +1,17 @@
-from loudpy.ObjectsGeo import TR6_Surfs
-import numpy as np
-class SubDomainAcou(TR6_Surfs): 
-    def __init__(self, mesh_obj: TR6_Surfs, rho: float, c: float, orientation:float=1):
-        self.dofs_per_node = 1
-        super().__init__(
-            node_tags=mesh_obj.node_tags,
-            node_coords=mesh_obj.node_coords,
-            tri=mesh_obj.tri,
-            name=mesh_obj.name)
-        
-        self.rho = rho
-        self.c = c
-        self.orientation = orientation
+"""Former acoustic region classes: AirPart / PMLPart (loudpy.physics.parts) with their former constructors."""
+from loudpy.physics.parts import AirPart, PMLPart, material_parameters
 
-class SubDomainAcou_PML(SubDomainAcou): 
-    def __init__(self, mesh_obj: TR6_Surfs, orientation:float,rho: float, c: float, alpha: float, n:float, f_pml:float):
-        super().__init__(mesh_obj, rho, c, orientation)
-        self.alpha = alpha
-        self.n = n 
-        self.omega_pml = 2 * np.pi * f_pml
-        
+
+class SubDomainAcou(AirPart):
+    def __init__(self, mesh_obj, rho: float, c: float, orientation: float = 1):
+        AirPart.__init__(self, mesh_obj, rho, c, orientation)
+
+    @classmethod
+    def get_params(cls, mat_name: str, mat_path):
+        return material_parameters(cls, mat_name, mat_path)
+
+
+class SubDomainAcou_PML(PMLPart, SubDomainAcou):
+    def __init__(self, mesh_obj, orientation: float, rho: float, c: float, alpha: float, n: float,
+                 f_pml: float):
+        PMLPart.__init__(self, mesh_obj, orientation, rho, c, alpha, n, f_pml)

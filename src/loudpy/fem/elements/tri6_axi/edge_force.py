@@ -1,6 +1,6 @@
-from loudpy.Finite_Elements_formulations.Gauss_Quadratures import GAUSS_L3_3pts as gp
+from loudpy.fem.quadrature import GAUSS_L3_3pts as gp
 import numpy as np
-from loudpy.Finite_Elements_formulations.FE_kernels import fct_form_L3
+from loudpy.fem.shape import fct_form_L3
 from numba import njit
 
 len_gp = gp.shape[0]

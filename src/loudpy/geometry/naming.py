@@ -99,3 +99,44 @@ def parse(group: str) -> GroupInfo:
     direction = next((t for t in toks if t in DIRECTIONS), None)
     side = next((t for t in toks if t in SIDES), None)
     return GroupInfo(group, index, direction, side)
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  PML layers: geometry of a layer, written by the mesher into its surface names
+# ════════════════════════════════════════════════════════════════════════════
+_FLOAT = r"([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)"
+
+
+@dataclass(frozen=True)
+class PMLLayer:
+    """
+    Where a PML layer starts and how thick it is, along r and/or z (both for a corner):
+    the absorption grows from r0 (z0) outward, in the direction sgn_r (sgn_z), over tr (tz).
+    """
+    use_r: bool = False
+    r0: float = 0.0
+    tr: float = 0.0
+    sgn_r: float = 0.0
+    use_z: bool = False
+    z0: float = 0.0
+    tz: float = 0.0
+    sgn_z: float = 0.0
+
+
+def pml_layer(group: str) -> PMLLayer | None:
+    """The PMLLayer of a mesher PML surface name ("PML_r+_1_front__r0=…__t=…"), None if not a PML."""
+    if "PML" not in group:
+        return None
+
+    def get(key):
+        m = re.search(r"__" + key + r"=" + _FLOAT + r"(?:__|$)", group)
+        return float(m.group(1)) if m else None
+
+    kw = {}
+    if "__r0=" in group:
+        kw.update(use_r=True, r0=get("r0"), sgn_r=-1.0 if "r-" in group else 1.0,
+                  tr=get("tr") or get("t") or 0.0)
+    if "__z0=" in group:
+        kw.update(use_z=True, z0=get("z0"), sgn_z=-1.0 if "z-" in group else 1.0,
+                  tz=get("tz") or get("t") or 0.0)
+    return PMLLayer(**kw)

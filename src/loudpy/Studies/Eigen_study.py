@@ -6,7 +6,8 @@ import warnings
 import sys
 
 
-from loudpy.assembly import MecaAssembler
+from loudpy.physics.structural import MecaAssembler
+from loudpy.physics.registry import select
 from scipy.sparse.linalg import eigsh
 from loudpy.Studies.Study_class import Problem
 from loudpy.Studies.DofMapMixin import DofMapMixin
@@ -766,7 +767,7 @@ class EigenStudy(Problem, DofMapMixin):
                 f_targets=f_targets, n_modes_per_shift=n_modes_per_shift, f_min=f_min,
                 f_max=f_max, dedup_freq_tol_hz=dedup_freq_tol_hz, mac_tol=mac_tol)
 
-        from loudpy.assembly.assemblers.assembly_tri import MecaAssemblerFourier
+        from loudpy.physics.structural import MecaAssemblerFourier
         asm = MecaAssemblerFourier(self.fem_objects, m)
         K, M, C = asm.apply_blocked_boundaries(self.fem_objects, *asm.assemble())
         K, M = _to_csc_complex(K, M)
@@ -814,7 +815,8 @@ class EigenStudy(Problem, DofMapMixin):
     # ------------------------------------------------------------------ #
     def _assemble_fsi_blocks(self):
         """Structural (K, M, R), acoustic (H, Q, ρ) and coupling (Cam) blocks."""
-        from loudpy.assembly import AcouAssembler, FsiAssembler
+        from loudpy.physics.acoustic import AcouAssembler
+        from loudpy.physics.coupling import FsiAssembler
 
         fo   = self.fem_objects
         meca = MecaAssembler(fo)
@@ -855,17 +857,16 @@ class EigenStudy(Problem, DofMapMixin):
         arc's centre is (0, z of its node farthest from the axis), i.e. the
         centre of a hemisphere standing on a baffle plane.
 
-        (see loudpy.assembly.dtn for D_n(s) and its exact partial fractions).
+        (see loudpy.physics.radiation for D_n(s) and its exact partial fractions).
         Complex symmetric (z_i complex), spectrum symmetric under conjugation.
         """
-        from loudpy.assembly.dtn import dtn_boundary_vectors, dtn_orders, reverse_bessel_roots
-        from loudpy.Interfaces import InterfaceDtN
+        from loudpy.physics.radiation import dtn_boundary_vectors, dtn_orders, reverse_bessel_roots
 
         K, M, R, Cam, H, Q, rho = self._assemble_fsi_blocks()
         nm, na = K.shape[0], H.shape[0]
         c = self._acoustic_c()
 
-        arcs = [o for o in self.fem_objects if isinstance(o, InterfaceDtN)]
+        arcs = select(self.fem_objects, "radiation")
         if not arcs:
             raise ValueError("No InterfaceDtN boundary in the problem "
                              "(add InterfaceSpecDtN('dtn_boundary')).")
@@ -934,7 +935,7 @@ class EigenStudy(Problem, DofMapMixin):
     def _make_goal_check(self, Ks, Ms, Cs, nm, na, f_min, f_max, goal):
         """Build the goal-oriented stop function for _covering_core (DtN form)."""
         from scipy.sparse.linalg import spsolve
-        from loudpy.assembly import ForceAssembler
+        from loudpy.physics.forcing import ForceAssembler
 
         fo = self.fem_objects
         F_full = ForceAssembler(fo, self.meca).assemble() * float(goal.get("force", 1.0))
@@ -1099,8 +1100,7 @@ class EigenStudy(Problem, DofMapMixin):
             u(jω) = Σ_k u_k (u_kᵀF)/(jω − s_k) + conj partners
             p(jω) = Σ_k (jω/s_k) p_k (u_kᵀF)/(jω − s_k) + conj partners
         """
-        from loudpy.Interfaces import InterfaceDtN
-        if not any(isinstance(o, InterfaceDtN) for o in self.fem_objects):
+        if not select(self.fem_objects, "radiation"):
             raise ValueError("solve_fsi_eigen needs a DtN radiation boundary "
                              "(add InterfaceSpecDtN('dtn_boundary') to the problem).")
         Ks, Ms, Cs, nm, na = self._assemble_dtn_system(dtn_center, f_max, dtn_half, dtn_order)
@@ -1198,7 +1198,7 @@ class EigenStudy(Problem, DofMapMixin):
         mode_shapes  : (n, N) real pressure mode shapes
         """
         # 1. Assemble Acoustic matrices (assuming you have an AcouAssembler)
-        from loudpy.assembly import AcouAssembler
+        from loudpy.physics.acoustic import AcouAssembler
         acou = AcouAssembler(self.fem_objects)
         self.acou = acou
         H, Q, _ = acou.assemble()

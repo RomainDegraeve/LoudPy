@@ -22,8 +22,8 @@ so the element matrices are those of the full 3D body for this order.
 import numpy as np
 from numba import njit
 
-from loudpy.Finite_Elements_formulations.FE_kernels import fct_form_T6, jacobian_T6
-from loudpy.Finite_Elements_formulations.Gauss_Quadratures import GAUSS_TR6_7pts as gp
+from loudpy.fem.shape import fct_form_T6, jacobian_T6
+from loudpy.fem.quadrature import GAUSS_TR6_7pts as gp
 
 len_gp = gp.shape[0]
 _N = np.empty((len_gp, 6))

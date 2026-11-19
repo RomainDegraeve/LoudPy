@@ -19,8 +19,8 @@ from .model import (
 from .geometry import Frame, Mesh
 
 # ── former API ───────────────────────────────────────────────────────────────
-from .Finite_Elements_formulations.FE_kernels import fct_form_L3, fct_form_T6, jacobian_L3, jacobian_T6, material_matrix_D
-from .Finite_Elements_formulations.Gauss_Quadratures import GAUSS_L3_3pts, GAUSS_TR6_7pts
+from .fem.shape import fct_form_L3, fct_form_T6, jacobian_L3, jacobian_T6, material_matrix_D
+from .fem.quadrature import GAUSS_L3_3pts, GAUSS_TR6_7pts
 from .Meshing.MeshManager import MeshManager
 from .PhysicalEntitiesManager import PhysicalEntitiesManager
 from .SimObjects import (DomainSpec, DomainSpecAcou, DomainSpecMeca, DomainSpecMecaHysteretic,

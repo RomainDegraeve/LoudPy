@@ -3,9 +3,9 @@ from scipy.sparse import bmat
 from scipy.sparse.linalg import spsolve
 from loudpy.Studies.fast_linalg import factorize
 
-from loudpy.assembly import MecaAssembler, AcouAssembler, ForceAssembler, FsiAssembler, MecaAssemblerNL
-from loudpy.Interfaces.InterfaceForced import InterfaceForced
-from loudpy.Finite_Elements_formulations import compute_unit_force_T6 as TR6_unit
+from loudpy.physics.structural import MecaAssembler, MecaAssemblerNL
+from loudpy.physics.registry import select
+from loudpy.fem.elements.tri6_axi import compute_unit_force_T6 as TR6_unit
 from loudpy.Studies.Study_class import Problem      
 from loudpy.Studies.DofMapMixin import DofMapMixin  # ← direct
 
@@ -37,8 +37,7 @@ class TimeStudy(Problem, DofMapMixin):                  #
 
     def assemble_init(self):
         self.assembler_nl = MecaAssemblerNL(self.fem_objects)
-        self.forced_iface = next(s for s in self.fem_objects
-                                 if isinstance(s, InterfaceForced))
+        self.forced_iface = select(self.fem_objects, "coil")[0]
 
         self.forced_elements = [
             [self.assembler_nl.tag_to_local[tag] for tag in edge]

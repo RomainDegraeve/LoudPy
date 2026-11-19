@@ -217,7 +217,7 @@ The refactor proceeds by strangling the old code: build the new layers next to t
 |---|---|---|
 | 0 ✅ | Test harness: pytest + regression fixtures from the current code (`tests/`, see below) | the tests reproduce today's numbers |
 | 1 ✅ | `model/` (Model, regions, boundaries, materials, damping, drives) + `geometry/` (Mesh, gmsh session, naming, meshing2d moved, meshing3d, Frame) | the tests build their models through `lp.Model` |
-| 2 | `fem/` (move kernels, assembly, dofs) + `physics/` with the contribution registry | the assembled matrices are bit-identical to the old ones |
+| 2 ✅ | `fem/` (move kernels, assembly, dofs) + `physics/` with the role registry | the assembled matrices are identical to the old ones |
 | 3 | `solvers/` (eigen, linear, time moved out of the studies) | regression tests green |
 | 4 | `results/` (schema, save, load, old-file readers) + `plot/` on `Results` | all Loading scripts use `lp.load` |
 | 5 | `studies/` (Modes, FrequencyResponse with remesh bands, Transient) | 2D examples migrated |
@@ -255,3 +255,26 @@ New packages: `loudpy.geometry` and `loudpy.model`. The new names are exported f
 - **Scene (3D):** moved to phase 6, together with `Driver`, so that the 3D declarative API and its physics are designed together.
 
 Tests: 51 (24 regression through `lp.Model`, 27 for the model layer), all passing. The committed meshes and references are unchanged.
+
+### Phase 2 — done
+
+Two new layers. `fem` holds no physics names. `physics` holds the physics objects and their operators. All the code was moved with `git mv`, and the numerics weren't rewritten.
+
+- **`loudpy.fem`:**
+  - `quadrature` and `shape` (former `Gauss_Quadratures`, `FE_kernels`).
+  - `elements/tri6_axi/`: the element kernels, renamed by what they compute (`stiffness`, `mass`, `acoustic_stiffness`, `acoustic_mass`, `pml_stiffness`, `pml_mass`, `coupling`, `edge_force`, `total_lagrangian`, `fourier`).
+  - `batch`: element loops; `sparse` / `sparse_kernels` / `indexing`: the COO → CSR scatter map.
+  - `assembly.ElementAssembler`: node numbering and CSR pattern over T6 regions.
+  - `dofs.DirichletElimination`: blocked DOFs. It was duplicated in the linear and nonlinear assemblers and is now shared.
+- **`loudpy.physics`:**
+  - `registry`: roles `solid`, `air`, `pml`, `clamped`, `coil`, `fluid_structure`, `radiation`, and `select(objects, *roles)`.
+  - `parts`: the physics objects hold their mesh group by composition (`SolidPart`, `AirPart`, `PMLPart`, `ClampedEdge`, `CoilEdge`, `CouplingEdge`, `RadiationEdge`). They no longer inherit from mesh classes.
+  - `structural`, `acoustic`, `coupling`, `forcing`, `radiation`: the assemblers. Every `isinstance` filter in the assemblers and studies became a role selection.
+- **PML metadata:** a PML part carries its layer geometry (`geometry.naming.PMLLayer`, parsed once when the part is built). The acoustic assembler no longer parses surface names.
+- **Former classes:** `SubDomain*` / `Interface*` are thin subclasses of the parts, with their former constructors. Their names stay, because the result files store the class name as the physics key (until phase 4). `material_parameters` (formerly `get_params`) lives in `physics.parts`.
+- **Shims:** `loudpy.assembly`, `loudpy.assembly.assemblers.*`, `loudpy.assembly.dtn` and `loudpy.Finite_Elements_formulations(.FE_kernels, .Gauss_Quadratures)` re-export the new modules. The 74 example imports still resolve.
+- **Removed dead code:** `FsiAssembler._build_fluid_neighbor_map_csr` (never called).
+
+Gate: `tests/test_operators.py`, 18 operators on the committed meshes. It covers K, M, C, F, H, Q (with PML), Cam, Fourier m = 1 (K, M, C, T), the nonlinear tangent (K_T, M, C, F_int), the reduced system, and the full structure + air + DtN system. The references were written by the phase-1 code. The phase-2 code reproduces them at rtol 1e-12, and a 1e-9 change of E fails exactly the stiffness-dependent ones.
+
+Tests: 69 passing.

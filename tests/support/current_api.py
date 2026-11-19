@@ -386,3 +386,97 @@ def coupled_box(cav, drivers_or_drv, center=None, eta_air=0.02):
     if isinstance(drivers_or_drv, MultiDriver):
         return DriverCavityCoupling(cav, drivers_or_drv, [rear] * drivers_or_drv.n_drivers, eta_air=eta_air)
     return DriverCavityCoupling(cav, drivers_or_drv, rear, center=center, eta_air=eta_air)
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  Assembled operators (phase 2 gate: matrices unchanged by the fem/physics refactor)
+# ════════════════════════════════════════════════════════════════════════════
+def _probes(coords, dpn):
+    """Three smooth nodal fields built from the coordinates (n_nodes, dpn) → flat DOF vectors."""
+    r, z = coords[:, 0], coords[:, 1]
+    comp = np.arange(dpn)[None, :]
+    fields = [1.0 + 3 * r[:, None] + 2 * z[:, None] + 0.5 * comp,
+              np.sin(40 * r[:, None] + comp) * np.cos(30 * z[:, None]),
+              r[:, None] ** 2 - z[:, None] + 0.3 * comp]
+    return [f.ravel() for f in fields]
+
+
+def operator_fingerprint(problem, A, row_map, col_map):
+    """
+    Order-independent fingerprint of a (sparse) operator: the 3 × 3 forms yᵢᵀ A xⱼ with probe
+    vectors from the coordinates, the product A x₁ per row node, nnz and Σ|A|.
+    row_map / col_map: (unique node tags, dofs per node).
+    """
+    rc, cc = _coords_of(problem, row_map[0]), _coords_of(problem, col_map[0])
+    ys, xs = _probes(rc, row_map[1]), _probes(cc, col_map[1])
+    forms = np.array([[y @ (A @ x) for x in xs] for y in ys])
+    Ax = np.asarray(A @ xs[0]).reshape(len(row_map[0]), row_map[1])
+    return dict(forms=forms, Ax=Ax, coords=rc, nnz=np.array(A.nnz), abs_sum=np.array(abs(A).sum()))
+
+
+def assembled_operators(mesh_dir: Path):
+    """All the operators the studies assemble, on the committed meshes, as fingerprints."""
+    from loudpy.assembly import MecaAssembler, AcouAssembler, ForceAssembler, FsiAssembler, MecaAssemblerNL
+    from loudpy.assembly.assemblers.assembly_tri import MecaAssemblerFourier
+    import scipy.sparse as sp
+    out = {}
+    p = speaker_problem(mesh_dir, acoustic=True)
+    fo = p.fem_objects
+    meca, acou = MecaAssembler(fo), AcouAssembler(fo)
+    mm, am = (meca.unique_tags, meca.dofs_per_node), (acou.unique_tags, acou.dofs_per_node)
+    K, M, C = meca.assemble()
+    F = ForceAssembler(fo, meca).assemble()
+    H, Q, rho = acou.assemble()
+    Cam = FsiAssembler(fo, meca, acou).assemble()
+    for name, A, rmap, cmap in (("K", K, mm, mm), ("M", M, mm, mm), ("C", C, mm, mm),
+                                ("H", H, am, am), ("Q", Q, am, am), ("Cam", Cam, am, mm),
+                                ("F", sp.csr_matrix(F.reshape(-1, 1)), mm, (np.array([0]), 1))):
+        out[name] = operator_fingerprint(p, A, rmap, cmap) if name != "F" else \
+            dict(forms=np.array([[y @ F for y in _probes(_coords_of(p, mm[0]), 2)]]),
+                 Ax=F.reshape(-1, 2), coords=_coords_of(p, mm[0]), nnz=np.array(np.count_nonzero(F)),
+                 abs_sum=np.array(np.abs(F).sum()))
+    out["rho"] = dict(value=np.array(rho))
+    Kr, Mr, Cr, Fr = meca.apply_blocked_boundaries(fo, K, M, C, F)
+    out["free"] = dict(value=np.array([len(meca._free), Kr.shape[0], abs(Kr).sum()]))
+
+    four = MecaAssemblerFourier(fo, 1)
+    fm = (four.unique_tags, four.dofs_per_node)
+    K1, M1, C1 = four.assemble()
+    for name, A in (("K_m1", K1), ("M_m1", M1), ("C_m1", C1)):
+        out[name] = operator_fingerprint(p, A, fm, fm)
+    T = four.constraint_matrix(fo)
+    out["T_m1"] = dict(value=np.array([T.shape[0], T.shape[1], T.nnz, T.sum()]))
+
+    nl = MecaAssemblerNL(fo)
+    u = 1e-4 * _probes(_coords_of(p, nl.unique_tags), 2)[1]
+    KT, Mn, Cn, Fint = nl.assemble_tangent(u)
+    for name, A in (("KT", KT), ("M_nl", Mn), ("C_nl", Cn)):
+        out[name] = operator_fingerprint(p, A, (nl.unique_tags, 2), (nl.unique_tags, 2))
+    out["Fint"] = dict(Ax=Fint.reshape(-1, 2), coords=_coords_of(p, nl.unique_tags))
+    return out
+
+
+DTN_GEO = "LoudPy_exemples/Geometries/Loudspeaker/HPNEW-Sketch_front_rear_dtn.geo"
+
+
+def dtn_system(mesh_dir: Path, f_max=3000.0, n_max=8):
+    """
+    Coupled structure + air + exact DtN radiation (front and rear hemispheres) of the coarse
+    speaker: the symmetric system (Ks, Ms, Cs) of EigenStudy, as order-independent invariants.
+    """
+    model = lp.Model(DTN_GEO, MATERIALS)
+    model.add([lp.Solid(n, m, mesh_size=1e-3) for n, m in SPEAKER_PARTS],
+              lp.Air("subacou", mesh_size=0.02),
+              lp.Clamped("interface_constrained"), lp.Coil("interface_forced"),
+              lp.FluidStructure("interface_acou_meca_front"), lp.FluidStructure("interface_acou_meca_rear"),
+              lp.Radiation("dtn_boundary"))
+    model.mesh(mesh_dir / "speaker_dtn.msh")
+    study = EigenStudy(model.as_problem())
+    centers = {"dtn_boundary_front": (0.0, 0.032), "dtn_boundary_rear": (0.0, 0.031)}
+    Ks, Ms, Cs, nm, na = study._assemble_dtn_system(centers, f_max, half=True, n_max=n_max)
+
+    def invariants(A):
+        A = A.tocsr()
+        return np.concatenate([[A.shape[0], A.nnz, abs(A).sum(), np.sqrt(abs(A.multiply(A.conj())).sum())],
+                               np.sort(A.diagonal().real), np.sort(np.asarray(abs(A).sum(axis=1)).ravel())])
+    return dict(Ks=invariants(Ks), Ms=invariants(Ms), Cs=invariants(Cs), sizes=np.array([nm, na]))
