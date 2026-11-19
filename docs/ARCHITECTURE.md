@@ -311,3 +311,17 @@ New layer `loudpy.results`, plus `loudpy.plot`. Both are exported as `lp.load`, 
 - **Kept for now:** the studies still write format 1 (`Files_Saver`), and the former readers (`Files_Loader`) stay. Phase 5 rebuilds the studies so that they return `Results` and write format 2, and migrates the example Loading scripts with their Running scripts (most of their result files are not in the repository, so they are migrated where they can be run).
 
 Tests: 87 passing. `tests/test_results.py` covers `lp.load` vs the former readers on the legacy files (exact), format-2 round trips, no class names in format 2, multi-file sweeps (folder, glob, list), the `Results` interface, and the plots.
+
+### Phase 5a — the new studies
+
+New package `loudpy.study`, exported as `lp.Modes`, `lp.FrequencyResponse`, `lp.PerWavelength` and `lp.Transient`. It's named `study`, not `studies`: on macOS's case-insensitive file system, `studies` is the same folder as the former `Studies`. It can be renamed when the former package goes in phase 7.
+
+- **`lp.Modes(model, physics="structure" | "coupled" | "acoustic").solve(f_max, f_min, orders=, method="multishift" | "arpack", …)`** returns a `ModeResults`. Structural azimuthal orders, coupled structure + air + exact DtN (options passed to the covering solver), and acoustic modes.
+- **`lp.FrequencyResponse(model, drive=lp.Force(…) | lp.Voltage(…)).solve(freqs, remesh=lp.PerWavelength(…))`** returns a `FrequencyResults`. It solves the structure alone, or structure + air when the model has air. With `PerWavelength` (bands= or every=, air elements per λ with a cap, PML thickness in λ and elements across it), it builds one mesh per band and one result block per band, then restores the model afterwards. That replaces the ~60-line remesh / save-block loop of the FSI scripts.
+- **`lp.Transient(model, drive=lp.Force(signal, fs=…)).solve(n_steps= | duration=)`** returns a `TimeResults`. The coil direction comes from the `Coil` boundary instead of a `"_z_"` string.
+- **`study.save(path)`** writes result format 2.
+- **Underneath:** results are built in memory (`study/records.py`: DOF vectors → node-indexed fields on per-physics meshes, the same arrays the former saver wrote). The former `EigenStudy` / `FreqStudy` / `TimeStudy` remain the engines for system building and the solve loops, through `model.as_problem()`, until they are folded in.
+- **Gate:** the regression tests (eigen, frequency, transient, files) now run through the new studies against unchanged references, and all pass. New `tests/test_study.py` covers band splitting, a remeshed coupled sweep (meshes per band, wavelengths, model restored), drive checks, the ARPACK method against multishift, and acoustic modes (the phase-3 fix, now tested).
+- **Legacy files:** `tests/data/legacy/` (format 1) is fixed data now. The update run no longer rewrites it, because the new studies write format 2.
+
+Tests: 92 passing.

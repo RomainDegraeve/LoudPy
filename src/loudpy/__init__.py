@@ -18,6 +18,7 @@ from .model import (
 )
 from .geometry import Frame, Mesh
 from .results import load, Results, FrequencyResults, ModeResults, TimeResults
+from .study import Modes, FrequencyResponse, PerWavelength, Transient
 
 
 def __getattr__(name):
@@ -43,6 +44,7 @@ __all__ = [
     "Rayleigh", "Hysteretic", "Undamped", "Force", "Voltage",
     "Material", "MaterialLibrary", "load_materials", "materials", "Frame", "Mesh",
     "load", "Results", "FrequencyResults", "ModeResults", "TimeResults",
+    "Modes", "FrequencyResponse", "PerWavelength", "Transient",
     # former API
     "PhysicalEntitiesManager", "MeshManager",
     "DomainSpec", "DomainSpecMeca", "DomainSpecMecaRayleigh",

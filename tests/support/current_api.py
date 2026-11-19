@@ -123,80 +123,73 @@ def nearest_row(coords, x):
 # ════════════════════════════════════════════════════════════════════════════
 #  Eigen studies
 # ════════════════════════════════════════════════════════════════════════════
-def plate_fourier_modes(mesh_dir: Path, orders, f_max=4000.0):
-    """{m: dict(freqs, coords, shapes (n, nodes, dpn))} of the clamped plate."""
-    p = plate_problem(mesh_dir)
-    study = EigenStudy(p)
+def _meshed(model, mesh_dir, name):
+    model.mesh(mesh_dir / f"{name}.msh")
+    return model
+
+
+def _modes_by_order(res, orders):
     out = {}
     for m in orders:
-        f, _, modes = study.solve_meca_eigen_fourier(m, f_min=10.0, f_max=f_max, n_modes_per_shift=10)
-        key = "u_meca" if m == 0 else f"u_meca_m{m}"
-        coords, shapes = nodal(p, study.dof_maps()[key], np.asarray(modes))
-        out[m] = dict(freqs=np.asarray(f), coords=coords, shapes=shapes)
+        rm = res.order(m)
+        b = rm.blocks[0]
+        out[m] = dict(freqs=rm.frequencies, zeta=rm.zeta, coords=b.mesh_of("u").coords, shapes=b.fields["u"])
     return out
 
 
+def plate_fourier_modes(mesh_dir: Path, orders, f_max=4000.0):
+    """{m: dict(freqs, coords, shapes (n, nodes, dpn))} of the clamped plate (lp.Modes)."""
+    model = _meshed(plate_model(), mesh_dir, "plate")
+    res = lp.Modes(model).solve(f_max=f_max, f_min=10.0, orders=list(orders), n_per_shift=10)
+    return _modes_by_order(res, orders)
+
+
 def speaker_modes(mesh_dir: Path, f_max=3000.0, orders=(0,)):
-    """In-vacuo modes of the coarse loudspeaker: multishift (m = 0) and Fourier orders m ≥ 1."""
-    p = speaker_problem(mesh_dir)
-    study = EigenStudy(p)
-    out = {}
-    for m in orders:
-        if m == 0:
-            f, z, modes = study.solve_meca_eigen_multishift(f_min=20.0, f_max=f_max, n_modes_per_shift=20)
-            key = "u_meca"
-        else:
-            f, z, modes = study.solve_meca_eigen_fourier(m, f_min=20.0, f_max=f_max, n_modes_per_shift=20)
-            key = f"u_meca_m{m}"
-        coords, shapes = nodal(p, study.dof_maps()[key], np.asarray(modes))
-        out[m] = dict(freqs=np.asarray(f), zeta=np.asarray(z), coords=coords, shapes=shapes)
-    return out, study
+    """In-vacuo modes of the coarse loudspeaker, azimuthal orders `orders` (lp.Modes)."""
+    model = _meshed(speaker_model(), mesh_dir, _speaker_tag(1e-3, False, False))
+    study = lp.Modes(model)
+    res = study.solve(f_max=f_max, f_min=20.0, orders=list(orders), n_per_shift=20)
+    return _modes_by_order(res, orders), study
 
 
 # ════════════════════════════════════════════════════════════════════════════
 #  Frequency studies
 # ════════════════════════════════════════════════════════════════════════════
 def speaker_freq_meca(mesh_dir: Path, freqs, force=1.0):
-    """In-vacuo forced response (unit force on the coil): coords, u (n_f, nodes, 2)."""
-    p = speaker_problem(mesh_dir)
-    study = FreqStudy(p)
-    study.assemble_meca()
-    u = [study.solve_meca(freq=f, force=force) for f in freqs]
-    coords, U = nodal(p, study.dof_maps()["u_meca"], np.array(u))
-    return dict(coords=coords, u=U), study
+    """In-vacuo forced response, force on the coil (lp.FrequencyResponse): coords, u (n_f, nodes, 2)."""
+    model = _meshed(speaker_model(), mesh_dir, _speaker_tag(1e-3, False, False))
+    study = lp.FrequencyResponse(model, drive=lp.Force(force))
+    res = study.solve(freqs)
+    b = res.blocks[0]
+    return dict(coords=b.mesh_of("u").coords, u=b.fields["u"]), study
 
 
 def speaker_fsi(mesh_dir: Path, freq, voltage=None):
     """
-    Coupled structure + air + PML at one frequency. voltage None: unit force on the coil;
-    else dict(Re, Le, n, Bl, u): voice-coil circuit. Returns nodal u, p and the coil current.
+    Coupled structure + air + PML at one frequency (lp.FrequencyResponse). voltage None: 1 N on
+    the coil; else dict(Re, Le, n, Bl, u): voice-coil circuit. Nodal u, p and the coil current.
     """
-    p = speaker_problem(mesh_dir, acoustic=True)
-    study = FreqStudy(p)
-    study.assemble_domains()
-    if voltage is None:
-        u, pa, I = study.solve_fsi(freq=freq, force=True)
-    else:
-        u, pa, I = study.solve_fsi(freq=freq, **voltage)
-    dm = study.dof_maps()
-    cu, U = nodal(p, dm["u_meca"], u)
-    cp, P = nodal(p, dm["p_acou"], pa)
-    return dict(coords_u=cu, u=U, coords_p=cp, p=P, I_coil=np.array(0j if I is None else I))
+    model = _meshed(speaker_model(acoustic=True), mesh_dir, _speaker_tag(1e-3, True, False))
+    drive = lp.Force(1.0) if voltage is None else lp.Voltage(voltage["u"], Re=voltage["Re"], Bl=voltage["Bl"],
+                                                             Le=voltage["Le"], n=voltage["n"])
+    res = lp.FrequencyResponse(model, drive=drive).solve([freq])
+    b = res.blocks[0]
+    I = res.extra("I_coil")[0] if "I_coil" in b.extra else 0j
+    return dict(coords_u=b.mesh_of("u").coords, u=b.fields["u"][0], coords_p=b.mesh_of("p").coords,
+                p=b.fields["p"][0][:, None], I_coil=np.array(I))
 
 
 # ════════════════════════════════════════════════════════════════════════════
 #  Time study
 # ════════════════════════════════════════════════════════════════════════════
 def speaker_transient(mesh_dir: Path, n_steps=200, fs=48_000.0, f0=200.0, amplitude=1.0):
-    """Nonlinear (total Lagrangian) transient, sine force on the coil: time, coords, U (n_t, nodes, 2)."""
-    p = speaker_problem(mesh_dir)
-    study = TimeStudy(p)
-    study.assemble_init()
-    sig = np.sin(2 * np.pi * f0 * np.arange(n_steps + 1) / fs)
-    t, U, _, _ = study.solve_time_domain_rayleigh_nl(force_amplitude=amplitude, force_direction="_z_",
-                                                     force_signal=sig, dt=1.0 / fs, n_steps=n_steps)
-    coords, Un = nodal(p, study.dof_maps()["u_meca"], np.asarray(U))
-    return dict(time=np.asarray(t), coords=coords, U=Un), study
+    """Nonlinear transient, sine force on the coil (lp.Transient): time, coords, U (n_t, nodes, 2)."""
+    model = _meshed(speaker_model(), mesh_dir, _speaker_tag(1e-3, False, False))
+    sig = amplitude * np.sin(2 * np.pi * f0 * np.arange(n_steps + 1) / fs)
+    study = lp.Transient(model, drive=lp.Force(sig, fs=fs))
+    res = study.solve(n_steps=n_steps)
+    b = res.blocks[0]
+    return dict(time=res.times, coords=b.mesh_of("u").coords, U=np.real(b.fields["u"])), study
 
 
 # ════════════════════════════════════════════════════════════════════════════
