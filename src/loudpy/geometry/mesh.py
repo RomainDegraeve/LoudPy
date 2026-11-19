@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-CELL_TYPES = {"line3": (1, 3), "tri6": (2, 6), "tet10": (3, 10)}       # name: (dim, nodes per cell)
+CELL_TYPES = {"line3": (1, 3), "tri3": (2, 3), "tri6": (2, 6), "tet10": (3, 10)}   # name: (dim, nodes per cell)
 
 
 @dataclass(frozen=True)
@@ -47,6 +47,22 @@ class Mesh:
 
     def names(self, dim: int | None = None) -> list[str]:
         return [n for n, g in self.groups.items() if dim is None or g.dim == dim]
+
+    def rows_of(self, tags) -> np.ndarray:
+        """Row indices (into node_tags / coords) of node tags."""
+        pos = self._positions
+        return np.array([pos[int(t)] for t in np.asarray(tags).ravel()], dtype=np.int64).reshape(np.shape(tags))
+
+    def triangles(self, groups=None) -> np.ndarray:
+        """(n, 3) corner triangles (row indices) of the 2D groups (all, or the named ones), for plotting."""
+        names = [n for n in (groups or self.names(2)) if self.groups[n].dim == 2]
+        if not names:
+            return np.zeros((0, 3), np.int64)
+        return np.vstack([self.rows_of(self.groups[n].cells[:, :3]) for n in names])
+
+    def nearest(self, point) -> int:
+        """Row of the node nearest to `point`."""
+        return int(np.argmin(np.linalg.norm(self.coords - np.asarray(point, float)[:self.dim], axis=1)))
 
     def coords_of(self, tags) -> np.ndarray:
         """Coordinates of node tags."""

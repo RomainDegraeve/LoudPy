@@ -219,8 +219,8 @@ The refactor proceeds by strangling the old code: build the new layers next to t
 | 1 ✅ | `model/` (Model, regions, boundaries, materials, damping, drives) + `geometry/` (Mesh, gmsh session, naming, meshing2d moved, meshing3d, Frame) | the tests build their models through `lp.Model` |
 | 2 ✅ | `fem/` (move kernels, assembly, dofs) + `physics/` with the role registry | the assembled matrices are identical to the old ones |
 | 3 ✅ | `solvers/` (eigen, linear, time moved out of the studies) | regression tests green |
-| 4 | `results/` (schema, save, load, old-file readers) + `plot/` on `Results` | all Loading scripts use `lp.load` |
-| 5 | `studies/` (Modes, FrequencyResponse with remesh bands, Transient) | 2D examples migrated |
+| 4 ✅ | `results/` (schema, save, load, old-file readers) + `plot/` on `Results` | `lp.load` reads every former file to the same numbers as the former readers |
+| 5 | `studies/` (Modes, FrequencyResponse with remesh bands, Transient) returning `Results` | 2D examples (Running and Loading scripts) migrated |
 | 6 | 3D: `Scene`, `Driver`, `physics.modal`, `physics.radiation` | Coupling_3D examples migrated, results unchanged |
 | 7 | Delete the old packages, docs, ruff + CI | only the new API remains |
 
@@ -291,3 +291,23 @@ New layer `loudpy.solvers`: algebra on assembled matrices, with no physics and n
 - **Shim:** `loudpy.Studies.fast_linalg`.
 
 Tests: 77 passing. That includes `tests/test_solvers.py`, which checks the solvers layer alone on problems with known answers: undamped frequencies, Rayleigh-damped ζ and the normalisation, gap-free covering, MAC deduplication with degenerate pairs, the half-plane filter, reproducible ARPACK, the sweep solver, and second-order accuracy of generalised-α against an exact solution.
+
+### Phase 4 — done
+
+New layer `loudpy.results`, plus `loudpy.plot`. Both are exported as `lp.load`, `lp.Results` and `lp.plot`; `lp.plot` is imported on first use, so `import loudpy` doesn't load matplotlib.
+
+- **One result model:** `FrequencyResults`, `ModeResults` and `TimeResults` share one interface:
+  - `.frequencies` / `.times`, `.names` (`"u"`, `"p"`, `"v"`, `"a"`; the former `u_meca` / `p_acou` still work);
+  - `.field(name, f= / t= / index=)` returns a `FieldView` (the mesh and values at one entry);
+  - `.probe(point, name)` gives the values at the nearest node for every entry, and `.spl(at=)` (RMS by default, `rms=False` for the former peak convention);
+  - `.extra("zeta" | "I_coil" | …)` and `.save(path)`.
+  `ModeResults` adds `.zeta`, `.sets`, `.orders`, `.order(m)`, `.set(label)` and `.mode(k)`.
+- **Blocks:** a result is a list of blocks, one per mesh or per mode set. That's how a sweep remeshed per band, or several azimuthal orders, stay one object: `probe`, `spl` and `frequencies` run across the blocks, and `field` finds the right one.
+- **Format 2** (`results/schema.py`, `loudpy_format = "2.0"`): self-describing. The physics are named by role (`meshes/solid`, `meshes/air`), never by Python class name, and the written order of fields and mesh groups is kept.
+- **Format 1** (`results/legacy.py`) is read by `lp.load` (`lp.load(file | folder | glob | list)`). Several files merge into one result sorted by frequency or time, with an explicit list keeping its order.
+- **Checked on real data:** the 14-block FSI_elec sweep (347 frequencies on 14 meshes) gives probe pressures bit-identical to the former per-snapshot reader loop, about 3× faster. The coupled DtN modes (both fields, both meshes) and both in-vacuo sweeps are bit-identical too.
+- **`loudpy.plot`:** `field`, `mode`, `spl`, `response`, `history`, taking a `Results` or a `FieldView` (components `mag`, `r`, `z`, `theta`, `real`, `imag`, `phase`, `spl`). Built on the former `Plotter` functions, which stay.
+- **`geometry.Mesh`:** added the `tri3` cell type, `triangles()`, `nearest()` and `rows_of()`.
+- **Kept for now:** the studies still write format 1 (`Files_Saver`), and the former readers (`Files_Loader`) stay. Phase 5 rebuilds the studies so that they return `Results` and write format 2, and migrates the example Loading scripts with their Running scripts (most of their result files are not in the repository, so they are migrated where they can be run).
+
+Tests: 87 passing. `tests/test_results.py` covers `lp.load` vs the former readers on the legacy files (exact), format-2 round trips, no class names in format 2, multi-file sweeps (folder, glob, list), the `Results` interface, and the plots.

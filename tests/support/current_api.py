@@ -480,3 +480,29 @@ def dtn_system(mesh_dir: Path, f_max=3000.0, n_max=8):
         return np.concatenate([[A.shape[0], A.nnz, abs(A).sum(), np.sqrt(abs(A.multiply(A.conj())).sum())],
                                np.sort(A.diagonal().real), np.sort(np.asarray(abs(A).sum(axis=1)).ravel())])
     return dict(Ks=invariants(Ks), Ms=invariants(Ms), Cs=invariants(Cs), sizes=np.array([nm, na]))
+
+
+# ── the same files through lp.load (results layer, phase 4) ────────────────────
+def load_freq_file(path):
+    """[(f, coords, u (nodes, 2))] through lp.load."""
+    r = lp.load(path)
+    return [(f, r.field("u", index=i).mesh.coords, r.field("u", index=i).values)
+            for i, f in enumerate(r.frequencies)]
+
+
+def load_eigen_file(path):
+    """{order m: (freqs, coords, shapes (n, nodes, dpn))} through lp.load."""
+    r = lp.load(path)
+    out = {}
+    for m in r.orders:
+        rm = r.order(m)
+        b = rm.blocks[0]
+        out[m] = (rm.frequencies, b.mesh_of("u").coords, b.fields["u"])
+    return out
+
+
+def load_time_file(path):
+    """(time, coords, U (n_t, nodes, 2)) through lp.load."""
+    r = lp.load(path)
+    b = r.blocks[0]
+    return r.times, b.mesh_of("u").coords, np.real(b.fields["u"])
