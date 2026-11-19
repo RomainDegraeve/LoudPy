@@ -2,7 +2,9 @@
 Running_script.py — Structural modal analysis of a loudspeaker.
 
 Computes the damped natural frequencies and mode shapes of the full
-mechanical structure using an ARPACK shift-invert eigensolver.
+mechanical structure in vacuo, with ARPACK shift-invert at several shifts
+spread over the band. These in-vacuo modes are also used to identify the
+air-loaded structural modes of the coupled DtN study (FSI_DtN/).
 
 What this produces
 ------------------
@@ -22,9 +24,9 @@ from loudpy import (
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 geo_path = "LoudPy_exemples/Geometries/Loudspeaker/HPNEW-Sketch.geo"
-msh_path = "LoudPy_exemples/Geometries/Loudspeaker/HPNEW-Sketch.msh"
+msh_path = "LoudPy_exemples/Eigen_study/Meca/Results/Files/mesh.msh"     # own mesh, reused on reruns
 mat_path = "src/loudpy/Materials_Bank/materials.json"
-out_path = "LoudPy_exemples/Eigen_study/Results/Files/eigen_study.h5"
+out_path = "LoudPy_exemples/Eigen_study/Meca/Results/Files/eigen_study.h5"
 
 # ── Problem definition ─────────────────────────────────────────────────────────
 # Each DomainSpecMecaRayleigh assigns a material and a target element size to
@@ -49,21 +51,18 @@ problem.add_interface(
     InterfaceSpecAcouMeca("interface_acou_meca_front"),
 )
 
-
-
 # ── Meshing ────────────────────────────────────────────────────────────────────
 # Set show_mesh_gui=True to preview the mesh in GMSH before solving.
-problem.mesh(show_mesh_gui=True)
+problem.mesh(show_mesh_gui=True, reuse_mesh=True)   # loads msh_path if built from the same geo/specs
 
 # ── Modal solve ────────────────────────────────────────────────────────────────
-# ARPACK shift-invert finds n_modes eigenvalues near f_target [Hz].
-# Increasing n_modes captures more resonances at the cost of memory and time.
+# ARPACK shift-invert at ~1 shift per octave over [f_min, f_max] (or at the
+# shifts given by f_targets [Hz]); duplicates between shifts are removed.
 study = EigenStudy(problem)
 study.solve_meca_eigen_multishift(
     f_min=20.0,
     f_max=40000.0,
-    n_modes_per_shift=20,       # 20 modes locaux par shift
-    # f_targets=[100, 300, 800, 2000, 4000, 6000],  # ou laisse None pour auto
+    n_modes_per_shift=30,       # eigenvalues requested per shift
 )
 study.save(out_path)
 print(f"Saved → {out_path}")

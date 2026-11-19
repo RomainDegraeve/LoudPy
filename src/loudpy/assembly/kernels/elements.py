@@ -97,3 +97,19 @@ def _batch_Q_pml(ec, c,
             alpha, n, omega, sign_val
         ).ravel()
         
+
+# ── Fourier-mode (azimuthal order m) elasticity, 3 DOF per node ──────────────
+from loudpy.Finite_Elements_formulations.FE_functions.TR6_axi_fourier import (
+    compute_K_T6_fourier, compute_M_T6_fourier)
+
+
+@njit(parallel=True, cache=True, fastmath=True, boundscheck=False)
+def _batch_K_fourier(ec, D6, m, out):
+    for e in prange(ec.shape[0]):
+        out[e] = compute_K_T6_fourier(ec[e], D6, m).ravel()
+
+
+@njit(parallel=True, cache=True, fastmath=True, boundscheck=False)
+def _batch_M_fourier(ec, rho, m, out):
+    for e in prange(ec.shape[0]):
+        out[e] = compute_M_T6_fourier(ec[e], rho, m).ravel()

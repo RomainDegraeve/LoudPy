@@ -9,7 +9,8 @@ class Problem:
                  mat_path: str = "", 
                  subdomains_key: str = "sub", 
                  orientations_key: Optional[dict] = None,  
-                 directions_key: Optional[dict] = None):
+                 directions_key: Optional[dict] = None,
+                 mesh_grading: Optional[float] = 0.3):
         
         # Specs
         self.specs_dom: list = []
@@ -24,6 +25,10 @@ class Problem:
         self.msh_path = msh_path
         self.mat_path = mat_path
         
+        # Mesh grading: element size = min(domain size, structural size + mesh_grading · distance
+        # to the structure), gmsh boundary extension off (see MeshManager). None: gmsh default.
+        self.mesh_grading = mesh_grading
+
         # Keys 
         self.subdomains_key = subdomains_key
         self.orientations_key = orientations_key if orientations_key is not None else {
@@ -52,6 +57,10 @@ class Problem:
                 self.specs_interf.append(s)
 
 
+    def set_mesh_grading(self, grading: Optional[float]):
+        """Growth rate of the element size away from the structure (None or 0: gmsh default)."""
+        self.mesh_grading = grading
+
     def set_mesh_sizes(self, sizes:dict):
     
         for domain in self.specs_dom:
@@ -59,7 +68,16 @@ class Problem:
                 domain.size = sizes[domain.name]
 
 
-    def mesh(self, show_mesh_gui: bool = True, write_mesh_file : bool = False):
+    def mesh(self, show_mesh_gui: bool = True, write_mesh_file : bool = True,
+             reuse_mesh: bool = False):
+        """
+        Mesh the geometry (loudpy MeshManager); the mesh is written to msh_path (with its
+        signature msh_path + ".json") unless write_mesh_file=False.
+
+        reuse_mesh=True: load the mesh saved at msh_path instead of remeshing, if it was built
+        from the same .geo (and merged files), domain specs (sizes, PML thickness), mesh order
+        and grading; otherwise remesh (and write) and print why.
+        """
         entities = PhysicalEntitiesManager(
             self.specs_dom, 
             self.specs_interf,
@@ -68,10 +86,11 @@ class Problem:
             mat_path=self.mat_path, 
             subdomains_key = self.subdomains_key, 
             directions_key = self.directions_key, 
-            orientations_key = self.orientations_key 
+            orientations_key = self.orientations_key,
+            mesh_grading = self.mesh_grading,
             )
         
-        self.fem_objects, self.nodes = entities.create_meshed_objs(show_gui = show_mesh_gui, write_mesh_file = write_mesh_file)
+        self.fem_objects, self.nodes = entities.create_meshed_objs(show_gui = show_mesh_gui, write_mesh_file = write_mesh_file, reuse_mesh = reuse_mesh)
 
 
     def specs_dict(self) -> dict:

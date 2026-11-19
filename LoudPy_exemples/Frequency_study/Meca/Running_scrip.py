@@ -32,7 +32,7 @@ from loudpy import (
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 geo_path = "LoudPy_exemples/Geometries/Loudspeaker/HPNEW-Sketch.geo"
-msh_path = "LoudPy_exemples/Geometries/Loudspeaker/HPNEW-Sketch.msh"
+msh_path = "LoudPy_exemples/Frequency_study/Meca/Results/Files/mesh.msh"   # own mesh, reused on reruns
 mat_path = "src/loudpy/Materials_Bank/materials.json"
 out_path = "LoudPy_exemples/Frequency_study/Meca/Results/Files/"
 
@@ -65,7 +65,7 @@ problem.add_interface(
 
 
 # ── Mesh ───────────────────────────────────────────────────────────────────────
-problem.mesh(show_mesh_gui=False)
+problem.mesh(show_mesh_gui=False, reuse_mesh=True)  # loads msh_path if built from the same geo/specs
 
 # ── Frequency sweep ────────────────────────────────────────────────────────────
 # assemble_meca() builds K, M, C once.

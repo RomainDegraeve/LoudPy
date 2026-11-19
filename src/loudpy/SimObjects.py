@@ -6,7 +6,7 @@ from loudpy.SubDomains import (
     SubDomainAcou, SubDomainAcou_PML,
 )
 from loudpy.Interfaces import (
-    InterfaceAcouMeca, InterfaceConstrained, InterfaceForced,
+    InterfaceAcouMeca, InterfaceConstrained, InterfaceForced, InterfaceDtN,
 )
 
 # ── Domain specs ─────────────────────────────────────────────────────────────
@@ -87,10 +87,15 @@ class InterfaceSpecClamped(InterfaceSpec):
 class InterfaceSpecForced(InterfaceSpec):
     physics : ClassVar[type] = InterfaceForced
 
+@dataclass(eq=False)
+class InterfaceSpecDtN(InterfaceSpec):
+    """Exact non-reflecting boundary on a circular arc (sphere in 3-D)."""
+    physics : ClassVar[type] = InterfaceDtN
+
 
 __all__ = [
     "DomainSpec", "DomainSpecMeca", "DomainSpecMecaRayleigh",
     "DomainSpecMecaHysteretic", "DomainSpecAcou", "DomainSpecPML",
     "InterfaceSpec", "InterfaceSpecAcouMeca",
-    "InterfaceSpecClamped", "InterfaceSpecForced",
+    "InterfaceSpecClamped", "InterfaceSpecForced", "InterfaceSpecDtN",
 ]

@@ -5,6 +5,8 @@ from .field_plots import (
     plot_interface_deformed,
     animate_field,
     load_sweep_frames, 
+    load_mode_frames,
+    plot_coupled_modes_grid,
     animate_pressure_displacement,
     STYLE,
 )

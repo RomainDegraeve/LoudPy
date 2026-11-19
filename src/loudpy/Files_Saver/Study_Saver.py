@@ -91,6 +91,9 @@ class StudySaver:
     def save_eigen_modes(self, results: list, dmaps: dict, mesh_id: str):
         """Scatter + write modal results."""
         for r in results:
+            if "fields" in r:                       # coupled: several fields
+                self._save_multi_field_modes(r, dmaps, mesh_id)
+                continue
             dm       = dmaps[r["dof_key"]]
             dpn      = dm["dofs_per_node"]
             asm_tags = np.asarray(dm["unique_tags"])
@@ -115,6 +118,28 @@ class StudySaver:
                 },
             )
             self._store.save_interfaces(r["interfaces"])
+
+    def _save_multi_field_modes(self, r: dict, dmaps: dict, mesh_id: str):
+        """Coupled modes: r["fields"] = {field_name: (n_modes, n_dofs)}."""
+        shapes, attrs = {}, {"complex": True}
+        for name, raw in r["fields"].items():
+            dm  = dmaps[name]
+            dpn = dm["dofs_per_node"]
+            shapes[name] = self._scatter_mode_shapes(
+                np.asarray(raw), np.asarray(dm["unique_tags"]), dpn)
+            attrs[f"dofs_per_node_{name}"] = dpn
+            attrs[f"n_dof_full_{name}"]    = dm["n_dof_full"]
+        self._store.save_modes(
+            kind         = r["kind"],
+            freqs        = r["freqs"],
+            shapes       = shapes,
+            zeta         = r["zeta"],
+            mesh_id      = mesh_id,
+            node_indexed = True,
+            attrs        = attrs,
+            extras       = r.get("extras"),
+        )
+        self._store.save_interfaces(r["interfaces"])
 
     def save_time_runs(self, results: list, dmaps: dict, mesh_id: str,
                        chunk_size: int = 256):

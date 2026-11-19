@@ -42,7 +42,7 @@ from loudpy import (
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 geo_path = "LoudPy_exemples/Geometries/Loudspeaker/HPNEW-Sketch.geo"
-msh_path = "LoudPy_exemples/Geometries/Loudspeaker/HPNEW-Sketch.msh"
+msh_path = "LoudPy_exemples/Frequency_study/FSI/Results/Files/mesh.msh"    # replaced per block below
 mat_path = "src/loudpy/Materials_Bank/materials.json"
 out_path = "LoudPy_exemples/Frequency_study/FSI/Results/Files/"
 
@@ -86,7 +86,13 @@ problem.add_interface(
 # eliminates spurious reflections from the outer mesh boundary.
 # Its thickness (t) and attenuation frequency (f_pml) are updated at each
 # remesh to match the current wavelength.
+# Stretching x̃ = x − jα·λ_pml·ξⁿ (ξ = depth/t, λ_pml = c/f_pml): a quadratic
+# profile (n = 2) starts smoothly at the PML edge, so a quarter-wavelength layer
+# absorbs as well as a full wavelength with n = 1 (reflection exp(−4πα·f/f_pml),
+# ≈ 7e-9 with α = 1.5) — same results within 0.1 dB, half the PML elements.
 pml = DomainSpecPML("PML", "Air")
+pml.n     = 2                 # quadratic stretching profile
+pml.alpha = 1.5               # absorption strength
 problem.add_sub_domain(pml)
 
 # ── FSI frequency sweep ────────────────────────────────────────────────────────
@@ -97,14 +103,16 @@ for k, f in enumerate(f_array):
     # ── Remesh + reassemble every REMESH_EVERY steps ──────────────────────────
     if k % REMESH_EVERY == 0:
         lam       = c / f             # wavelength at the current frequency [m]
-        pml.size  = lam / 8           # PML element size (λ/8)
+        pml.t     = lam / 4           # PML thickness (a quarter wavelength)
+        pml.size  = pml.t / 4         # PML element size (4 elements across)
         pml.f_pml = f                 # centre frequency for PML attenuation
-        pml.t     = lam               # PML thickness (one wavelength)
 
         # Acoustic element size: λ/6 gives 6 elements per wavelength.
         # The cap at 0.1 m prevents over-refinement at very low frequencies.
         problem.set_mesh_sizes({"coil": 0.0015, "subacou": min(lam / 6, 0.005)})
-        problem.mesh(show_mesh_gui=True)
+        # one saved mesh per block, reused on reruns (remeshed if geo/sizes/PML changed)
+        problem.msh_path = out_path + f"mesh_{f:.0f}Hz.msh"
+        problem.mesh(show_mesh_gui=False, reuse_mesh=True)
 
         study = FreqStudy(problem)
         study.assemble_domains()

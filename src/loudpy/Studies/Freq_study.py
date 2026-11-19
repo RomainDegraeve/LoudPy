@@ -4,6 +4,7 @@ from pathlib import Path
 import scipy.sparse as sp
 from scipy.sparse import bmat
 from scipy.sparse.linalg import spsolve
+from loudpy.Studies.fast_linalg import SweepSolver
 from loudpy.assembly import MecaAssembler, AcouAssembler, ForceAssembler, FsiAssembler
 from loudpy.Studies.Study_class import Problem
 from loudpy.Studies.DofMapMixin import DofMapMixin
@@ -21,6 +22,9 @@ class FreqStudy(Problem, DofMapMixin):
         self._assemblers: dict = {}
         self._results: list[dict] = []
         self.specs_interf  = problem.specs_interf
+        # frequency-sweep solvers: fast ordering + reuse of a nearby factorisation (fast_linalg)
+        self.reuse_factorization = True
+        self._sweep = {"meca": SweepSolver(), "fsi": SweepSolver()}
 
          # ── collect interface node tags ────────────────────────────────────
         self._interface_meta = {}
@@ -79,7 +83,7 @@ class FreqStudy(Problem, DofMapMixin):
         rhs = np.zeros(self.n_dof_meca, dtype=complex)
         rhs[:self.n_dof_meca] = self.F * force
 
-        sol      = spsolve(A_meca.tocsc(), rhs)
+        sol      = self._solve("meca", A_meca, rhs)
         sol_full = self.meca_asm.expand(sol)
 
         if record:
@@ -94,6 +98,17 @@ class FreqStudy(Problem, DofMapMixin):
 
         return sol_full
 
+
+    def _solve(self, kind, A, rhs):
+        """A x = rhs through the sweep solver of this kind (factorisation reused across frequencies)."""
+        s = self._sweep[kind]
+        s.reuse = self.reuse_factorization and s.reuse
+        return s.solve(A, rhs)
+
+    def solver_stats(self):
+        """Factorisations / GMRES solves / GMRES iterations of each sweep solver."""
+        return {k: dict(factorizations=s.n_factor, gmres_solves=s.n_gmres, gmres_iterations=s.iters)
+                for k, s in self._sweep.items()}
 
     # ───────────────────────── solve + record ─────────────────────────
     def solve_fsi(self, freq: float, force: bool = False, *,
@@ -147,7 +162,7 @@ class FreqStudy(Problem, DofMapMixin):
             rhs = np.zeros(n_meca + n_acou, dtype=complex)
             rhs[:n_meca] = self.F * force              # unit force pattern
 
-        sol      = spsolve(system_matrix, rhs)
+        sol      = self._solve("fsi", system_matrix, rhs)
         sol_meca = sol[:n_meca]
         sol_acou = sol[n_meca:n_meca + n_acou]
         I_coil   = complex(sol[-1]) if electrical else None

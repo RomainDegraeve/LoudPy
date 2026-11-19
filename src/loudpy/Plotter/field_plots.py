@@ -514,6 +514,108 @@ def plot_modes_grid(coords: np.ndarray, tris: np.ndarray,
     return fig
 
 
+# ── coupled (fluid–structure) mode shapes ─────────────────────────────────────
+
+def load_mode_frames(path: str | Path, kind: str = "fsi") -> list[dict]:
+    """
+    Read coupled modes (EigenStudy.solve_fsi_eigen) into the same dict format
+    as load_sweep_frames, plus the modal quantities:
+        dict(freq, zeta, index, coords_a, tris_a, p, coords_m, tris_m, u, meta)
+    The list works directly with plot_coupled_modes_grid and
+    animate_pressure_displacement(pressure_mode="real").
+    """
+    from loudpy.Files_Loader import EigenReader
+
+    with EigenReader(path) as r:
+        snaps, mesh_m, mesh_a = r.load_coupled(kind)
+    coords_a = np.asarray(mesh_a.coords, float)
+    tris_a   = np.asarray(mesh_a.tris, np.int64)[:, :3]
+    coords_m = np.asarray(mesh_m.coords, float)
+    tris_m   = np.asarray(mesh_m.tris, np.int64)[:, :3]
+    return [dict(freq=s.freq, zeta=s.zeta, index=s.index,
+                 coords_a=coords_a, tris_a=tris_a, p=np.asarray(s.fields["p_acou"]),
+                 coords_m=coords_m, tris_m=tris_m, u=np.asarray(s.fields["u_meca"]),
+                 meta=s.meta)
+            for s in snaps]
+
+
+def plot_coupled_modes_grid(frames: list[dict], *,
+                            mode_indices: list[int] | None = None,
+                            n_plot: int = 6,
+                            deform_scale: float = 0.05,
+                            p_xlim: tuple | None = None,
+                            p_ylim: tuple | None = None,
+                            p_clip_pct: float = 99.0,
+                            spl_range: float = 60.0,
+                            cmap_p: str = "magma",
+                            cmap_u: str = "viridis",
+                            labels: list[str] | None = None) -> plt.Figure:
+    """
+    One row per coupled mode:
+      left  : SPL = 20·log10(|p| / 20 µPa) in the air
+      right : structure deformed by Re(u), coloured by |u|
+
+    frames       : output of load_mode_frames
+    mode_indices : 0-based indices into frames; overrides n_plot
+    deform_scale : peak displayed deformation as a fraction of the
+                   structure's size
+    p_xlim/p_ylim: visible window of the pressure panel [m]
+    p_clip_pct   : top of the SPL colour range = this percentile of the
+                   SPL (100 = true max; < 100 ignores corner singularities)
+    spl_range    : dynamic range shown [dB] below that top
+    labels       : optional name of each plotted mode (same order as
+                   mode_indices), replacing "Mode <index>" in the panel titles
+    The SPL is per unit modal amplitude, so only the spatial distribution
+    (relative levels) is meaningful, not the absolute dB value.
+    """
+    indices = (list(mode_indices) if mode_indices is not None
+               else list(range(min(n_plot, len(frames)))))
+    fig, axes = plt.subplots(len(indices), 2, figsize=(11, 4.2 * len(indices)),
+                             squeeze=False)
+
+    for row, k in enumerate(indices):
+        fr = frames[k]
+        z  = fr.get("zeta")
+        name = labels[row] if labels is not None else f"Mode {fr.get('index', k)}"
+        head = (f"{name}  {fr['freq']:.1f} Hz"
+                + (rf"  $\zeta$={z:.3g}" if z is not None else ""))
+
+        # ── pressure ───────────────────────────────────────────────────────
+        spl  = 20.0 * np.log10(np.abs(fr["p"]) / 20e-6 + 1e-30)
+        # top at a high percentile: corner singularities at the structure
+        # would otherwise set the colour range of the whole air field
+        smax = float(np.percentile(spl, p_clip_pct))
+        plot_field(fr["coords_a"], fr["tris_a"], spl,
+                   cmap=cmap_p, vmin=smax - spl_range, vmax=smax,
+                   xlim=p_xlim, ylim=p_ylim,
+                   label="SPL [dB]", title=f"{head} - SPL",
+                   ax=axes[row][0])
+
+        # ── structure ──────────────────────────────────────────────────────
+        ax  = axes[row][1]
+        cm, tm, u = fr["coords_m"], fr["tris_m"], fr["u"]
+        mag  = np.linalg.norm(np.abs(u), axis=1)
+        ur   = np.real(u)
+        L    = float(np.ptp(cm, axis=0).max())
+        s    = deform_scale * L / max(float(np.abs(ur).max()), 1e-30)
+        ax.triplot(cm[:, 0], cm[:, 1], tm, color="k", lw=0.2, alpha=0.3)
+        tpc = ax.tripcolor(cm[:, 0] + s * ur[:, 0], cm[:, 1] + s * ur[:, 1],
+                           tm, mag, shading="gouraud", cmap=cmap_u)
+        fig.colorbar(tpc, ax=ax, label=r"$|u|$ [m]")
+        # rasterise the dense mesh fields only (axes/text stay vector):
+        # keeps multi-page PDFs small
+        for a_ in axes[row]:
+            for coll in a_.collections:
+                coll.set_rasterized(True)
+        ax.set_aspect("equal")
+        ax.set_title(f"{head} - structure")
+        ax.set_xlabel("x [m]")
+        ax.set_ylabel("y [m]")
+
+    fig.tight_layout()
+    return fig
+
+
 # ── interface deformation ──────────────────────────────────────────────────────
 
 def plot_interface_deformed(x: np.ndarray, y: np.ndarray,

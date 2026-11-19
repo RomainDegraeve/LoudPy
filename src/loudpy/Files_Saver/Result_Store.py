@@ -187,18 +187,31 @@ class ResultStore:
                    mesh_id: str,
                    zeta: np.ndarray | None = None,
                    node_indexed: bool = True,
-                   attrs: Mapping | None = None):
+                   attrs: Mapping | None = None,
+                   extras: Mapping | None = None):
         """
         Write modal results. shapes must be (n_modes, n_nodes[, dpn]) —
         node-indexed, produced by StudySaver.save_eigen_modes().
+
+        shapes may also be a dict {field_name: array} (coupled modes): each
+        field goes to its own dataset "shapes_<field_name>" and the list of
+        field names is stored in the group attribute "fields".
+        extras : optional {name: (n_modes,) array} written as extra datasets.
         """
         g = self.f.require_group(f"modes/{kind}")
-        for k in ("freqs", "shapes", "zeta"):
-            if k in g: del g[k]
+        for k in list(g.keys()):
+            del g[k]
         g.create_dataset("freqs", data=np.asarray(freqs))
-        _write_complex(g, "shapes", shapes)
+        if isinstance(shapes, Mapping):
+            for name, arr in shapes.items():
+                _write_complex(g, f"shapes_{name}", arr)
+            g.attrs["fields"] = list(shapes.keys())
+        else:
+            _write_complex(g, "shapes", shapes)
         if zeta is not None:
             g.create_dataset("zeta", data=np.asarray(zeta))
+        for name, arr in (extras or {}).items():
+            g.create_dataset(name, data=np.asarray(arr))
         g.attrs["mesh_id"]      = mesh_id
         g.attrs["node_indexed"] = node_indexed
         if attrs:

@@ -19,8 +19,8 @@ from loudpy.Plotter import (
 )
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
-in_path = "LoudPy_exemples/Eigen_study/Results/Files/eigen_study.h5"
-out_dir = Path("LoudPy_exemples/Eigen_study/Results/Figures")
+in_path = "LoudPy_exemples/Eigen_study/Meca/Results/Files/eigen_study.h5"
+out_dir = Path("LoudPy_exemples/Eigen_study/Meca/Results/Figures")
 out_dir.mkdir(parents=True, exist_ok=True)
 
 # ── Inspect file contents ──────────────────────────────────────────────────────
@@ -54,7 +54,7 @@ with EigenReader(in_path) as r:
     # Extract displacement along the fluid-structure interface boundary
     # Returns: coords_iface (n_iface_nodes, 2) node coordinates
     #          u_iface      (n_iface_nodes, 2) complex displacement
-    coords_iface, u_iface = r.extract_interface(
+    coords_iface, u_iface, _ = r.extract_interface(
         snaps[k], interface="interface_acou_meca_front", field="u_meca")
 
 # ── Mode-shape grid — all modes ────────────────────────────────────────────────

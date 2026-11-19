@@ -20,7 +20,7 @@ from loudpy import (
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 geo_path = "LoudPy_exemples/Geometries/Loudspeaker/HPNEW-Sketch.geo"
-msh_path = "LoudPy_exemples/Geometries/Loudspeaker/HPNEW-Sketch.msh"
+msh_path = "LoudPy_exemples/Time_study/Multitone/Results/mesh.msh"   # own mesh, reused on reruns
 mat_path = "src/loudpy/Materials_Bank/materials.json"
 out_path = "LoudPy_exemples/Time_study/Multitone/Results/time_study_1N_bis.h5"
 
@@ -119,7 +119,7 @@ problem.add_interface(
     InterfaceSpecForced("interface_forced"),
     InterfaceSpecAcouMeca("interface_acou_meca_front"),
 )
-problem.mesh(show_mesh_gui=False)
+problem.mesh(show_mesh_gui=False, reuse_mesh=True)  # loads msh_path if built from the same geo/specs
 
 # ── Solve ─────────────────────────────────────────────────────────────────────
 study = TimeStudy(problem)

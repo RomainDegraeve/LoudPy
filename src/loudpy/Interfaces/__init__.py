@@ -3,5 +3,6 @@
 from .InterfaceAcouMeca import InterfaceAcouMeca
 from .InterfaceConstrained import InterfaceConstrained
 from .InterfaceForced import InterfaceForced
+from .InterfaceDtN import InterfaceDtN
 
-__all__ = ["InterfaceAcouMeca", "InterfaceConstrained", "InterfaceForced"]
+__all__ = ["InterfaceAcouMeca", "InterfaceConstrained", "InterfaceForced", "InterfaceDtN"]

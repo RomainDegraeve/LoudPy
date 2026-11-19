@@ -42,7 +42,7 @@ from loudpy import (
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 geo_path = "LoudPy_exemples/Geometries/Loudspeaker/HPNEW-Sketch.geo"
-msh_path = "LoudPy_exemples/Geometries/Loudspeaker/HPNEW-Sketch.msh"
+msh_path = "LoudPy_exemples/Frequency_study/FSI_elec/Results/Files/mesh.msh"   # replaced per block below
 mat_path = "src/loudpy/Materials_Bank/materials.json"
 out_path = "LoudPy_exemples/Frequency_study/FSI_elec/Results/Files/"
 
@@ -132,7 +132,9 @@ for k, f in enumerate(f_array):
         pml.f_pml = f
         pml.t     = lam
         problem.set_mesh_sizes({"coil": 0.0015, "subacou": min(lam / 6, 0.005)})
-        problem.mesh(show_mesh_gui=False)
+        # one saved mesh per block, reused on reruns (remeshed if geo/sizes/PML changed)
+        problem.msh_path = out_path + f"mesh_{f:.0f}Hz.msh"
+        problem.mesh(show_mesh_gui=False, reuse_mesh=True)
 
         study = FreqStudy(problem)
         study.assemble_domains()

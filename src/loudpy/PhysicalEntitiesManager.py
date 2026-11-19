@@ -1,7 +1,7 @@
-from loudpy.Meshing.MeshManager import MeshManager
+from loudpy.Meshing.MeshManager import MeshManager, DEFAULT_MESH_GRADING
 
 class PhysicalEntitiesManager:
-    def __init__(self, domains, interfaces, geo_path: str, msh_path: str,  mat_path : str, subdomains_key : str, directions_key : dict, orientations_key : dict):
+    def __init__(self, domains, interfaces, geo_path: str, msh_path: str,  mat_path : str, subdomains_key : str, directions_key : dict, orientations_key : dict, mesh_grading=DEFAULT_MESH_GRADING):
         self.SubDomains = domains
         self.Interfaces = interfaces
         self.geo_path = geo_path
@@ -10,8 +10,18 @@ class PhysicalEntitiesManager:
         self.subdomains_key = subdomains_key 
         self.directions_key = directions_key
         self.orientations_key = orientations_key
-    def create_meshed_objs(self, show_gui, write_mesh_file):
-        domains, boundaries, nodes  = MeshManager(self.SubDomains, self.subdomains_key).generate_mesh(self.geo_path , self.msh_path, write_mesh_file, show_gui=show_gui, extract_mesh_data=True)
+        self.mesh_grading = mesh_grading
+    def create_meshed_objs(self, show_gui, write_mesh_file, reuse_mesh=False):
+        mm = MeshManager(self.SubDomains, self.subdomains_key, grading=self.mesh_grading,
+                         interfaces=self.Interfaces)          # meshes only what the specs use
+        reuse, why = mm.can_reuse(self.geo_path, self.msh_path) if reuse_mesh else (False, "")
+        if reuse:
+            print(f"Mesh reused: {self.msh_path}")
+            domains, boundaries, nodes = mm.load_mesh(self.msh_path)
+        else:
+            if reuse_mesh:
+                print(f"Remeshing ({why})")
+            domains, boundaries, nodes  = mm.generate_mesh(self.geo_path , self.msh_path, write_mesh_file or reuse_mesh, show_gui=show_gui, extract_mesh_data=True)
     
         fem_objects = []
         for domain in domains:

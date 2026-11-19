@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.sparse import bmat
 from scipy.sparse.linalg import spsolve
+from loudpy.Studies.fast_linalg import factorize
 
 from loudpy.assembly import MecaAssembler, AcouAssembler, ForceAssembler, FsiAssembler, MecaAssemblerNL
 from loudpy.Interfaces.InterfaceForced import InterfaceForced
@@ -66,7 +67,15 @@ class TimeStudy(Problem, DofMapMixin):                  #
         nr_max_iter: int   = 10,
         nr_tol:      float = 1e-5,
         rho_inf:     float = 0.8,
+        reuse_tangent: bool = True,
+        reuse_max_iter: int = 3,
     ):
+        """
+        reuse_tangent: modified Newton — the LU of the effective matrix is kept across iterations
+        and time steps (with dt ≪ 1/f_max it is dominated by the mass term and barely changes)
+        and refactorised only when an iteration count exceeds reuse_max_iter; the convergence
+        test (nr_tol) is unchanged, so the solution has the same accuracy.
+        """
         # ── Dimensions & free DOFs ────────────────────────────────────────────────
         n_dof = self.assembler_nl.matrix_size
         free  = self.assembler_nl._free_dofs(self.fem_objects)
@@ -81,6 +90,22 @@ class TimeStudy(Problem, DofMapMixin):                  #
         K_T_zero, M_full, C_zero, F_int_zero = self.assembler_nl.assemble_tangent(u_zero)
         # Use chained slicing (same as K_red / C_red inside the loop) — NOT np.ix_
         M_red              = M_full[free, :][:, free].tocsc()
+
+        # free-DOF reduction by a precomputed index map (all matrices share one CSR pattern)
+        _tmpl = K_T_zero.tocsr().copy()
+        _tmpl.data = np.arange(1, _tmpl.nnz + 1, dtype=np.float64)
+        _red = _tmpl[free, :][:, free].tocsc()
+        _red_idx = _red.data.astype(np.int64) - 1
+
+        def reduce(A_full):
+            A_full = A_full.tocsr()
+            if A_full.nnz != _tmpl.nnz or not np.array_equal(A_full.indices, _tmpl.indices):
+                return A_full[free, :][:, free].tocsc()
+            out = _red.copy()
+            out.data = A_full.data[_red_idx]
+            return out
+
+        lu_eff, n_factor = None, 0
 
         # ── Diagnostic: compare NL tangent at u=0 with linear assembler ──────────
         _K_lin, _, _C_lin  = MecaAssembler(self.fem_objects).assemble()
@@ -158,8 +183,7 @@ class TimeStudy(Problem, DofMapMixin):                  #
                 K_T_full, _, C_full_it, F_int_full = \
                     self.assembler_nl.assemble_tangent(u_full_mid)
 
-                K_red     = K_T_full[free, :][:, free].tocsc()
-                C_red     = C_full_it[free, :][:, free].tocsc()
+                C_red     = reduce(C_full_it)
                 F_int_red = F_int_full[free]
 
                 Residual = (F_ext_mid
@@ -172,7 +196,7 @@ class TimeStudy(Problem, DofMapMixin):                  #
 
                 # ── Step-0 / iter-0 deep diagnostics ─────────────────────────────
                 if step == 0 and k == 0:
-            
+                    K_red = reduce(K_T_full)
                     K_eff_diag0 = ((1.0 - alpha_f) * K_red
                                 + (1.0 - alpha_f) * c2 * C_red
                                 + (1.0 - alpha_m) * c1 * M_red).diagonal()
@@ -181,11 +205,15 @@ class TimeStudy(Problem, DofMapMixin):                  #
                 if res_norm < nr_tol * (f_norm + 1e-12):
                     break
 
-                K_eff = (  (1.0 - alpha_f) * K_red
-                        + (1.0 - alpha_f) * c2 * C_red
-                        + (1.0 - alpha_m) * c1 * M_red)
+                if lu_eff is None or not reuse_tangent or k >= reuse_max_iter:
+                    K_red = reduce(K_T_full)
+                    K_eff = (  (1.0 - alpha_f) * K_red
+                            + (1.0 - alpha_f) * c2 * C_red
+                            + (1.0 - alpha_m) * c1 * M_red)
+                    lu_eff = factorize(K_eff)
+                    n_factor += 1
 
-                delta_u = np.real(spsolve(K_eff, Residual))
+                delta_u = np.real(lu_eff.solve(Residual))
 
                 # ── Step-0 / iter-0 correction diagnostics ───────────────────────
                 if step == 0 and k == 0:
@@ -220,7 +248,7 @@ class TimeStudy(Problem, DofMapMixin):                  #
                     f"|u|_max={np.max(np.abs(u_n)):.3e}  "
                     f"(NR iters: {k + 1})")
 
-        print("Nonlinear Generalized-Alpha sweep complete.")
+        print(f"Nonlinear Generalized-Alpha sweep complete ({n_factor} factorisations).")
 
         time_array = np.asarray(time_array)
         U = np.asarray(results_u)

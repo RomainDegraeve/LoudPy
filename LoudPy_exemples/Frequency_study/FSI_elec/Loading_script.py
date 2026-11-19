@@ -212,7 +212,7 @@ with FreqReader(fpath) as r:
     ax.figure.savefig(out_dir / f"surround_{snap.f:.0f}Hz.pdf", bbox_inches="tight")
 
     # Fluid-structure interface deformed profile
-    coords_iface, u_iface = r.extract_interface(
+    coords_iface, u_iface, edge_iface = r.extract_interface(
         snap, "interface_acou_meca_front", "u_meca")
 
 ax = plot_interface_deformed(

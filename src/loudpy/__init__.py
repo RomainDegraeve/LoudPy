@@ -4,7 +4,7 @@ from .Finite_Elements_formulations.FE_kernels import fct_form_L3, fct_form_T6, j
 from .Finite_Elements_formulations.Gauss_Quadratures import GAUSS_L3_3pts, GAUSS_TR6_7pts
 from .Meshing.MeshManager import MeshManager
 from .PhysicalEntitiesManager import PhysicalEntitiesManager
-from .SimObjects import DomainSpec, DomainSpecAcou, DomainSpecMeca, DomainSpecMecaHysteretic, DomainSpecMecaRayleigh, DomainSpecPML, InterfaceSpecAcouMeca, InterfaceSpecClamped, InterfaceSpecForced
+from .SimObjects import DomainSpec, DomainSpecAcou, DomainSpecMeca, DomainSpecMecaHysteretic, DomainSpecMecaRayleigh, DomainSpecPML, InterfaceSpecAcouMeca, InterfaceSpecClamped, InterfaceSpecForced, InterfaceSpecDtN
 
 
 __all__ = [
@@ -12,7 +12,7 @@ __all__ = [
     "DomainSpec", "DomainSpecMeca", "DomainSpecMecaRayleigh",
     "DomainSpecMecaHysteretic", "DomainSpecAcou", "DomainSpecPML",
     "InterfaceSpec", "InterfaceSpecAcouMeca",
-    "InterfaceSpecClamped", "InterfaceSpecForced",
+    "InterfaceSpecClamped", "InterfaceSpecForced", "InterfaceSpecDtN",
     "GAUSS_L3_3pts",
     "GAUSS_TR6_7pts",
     "fct_form_L3",

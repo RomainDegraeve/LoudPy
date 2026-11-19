@@ -389,6 +389,85 @@ class EigenReader(BaseReader):
 
         return snaps, mesh, dpn
 
+    def fourier_orders(self) -> list[int]:
+        """Azimuthal orders m stored in the file ("meca" = 0, "meca_m<m>" = m)."""
+        out = []
+        for k in self._h5.get("modes", {}).keys():
+            if k == "meca":
+                out.append(0)
+            elif k.startswith("meca_m") and k[6:].isdigit():
+                out.append(int(k[6:]))
+        return sorted(out)
+
+    def load_fourier(self, m: int) -> tuple[list[ModeSnapshot], Mesh, int]:
+        """
+        Modes of azimuthal order m (EigenStudy.solve_meca_eigen_fourier) on the meridian
+        mesh: fields["u_meca"] is (n_nodes, 2) = (U_r, U_z) for m = 0 and
+        (n_nodes, 3) = (U_r, U_z, U_θ) for m ≥ 1, with the 3D displacement
+        u_r = U_r cos mθ, u_z = U_z cos mθ, u_θ = U_θ sin mθ. Returns (snaps, mesh, dpn).
+        """
+        m = int(m)
+        key = "meca" if m == 0 else f"meca_m{m}"
+        if f"modes/{key}" not in self._h5:
+            raise KeyError(f"no modes of order m = {m} in {self.path} "
+                           f"(stored orders: {self.fourier_orders()})")
+        g = self._h5[f"modes/{key}"]
+        freqs = g["freqs"][:]
+        shapes = self._decode_complex(g["shapes"][:])
+        if shapes.shape[0] != len(freqs):
+            shapes = shapes.T
+        attrs = dict(g.attrs)
+        attrs["azimuthal_order"] = m
+        mesh_id = attrs.get("mesh_id", next(iter(self._h5["meshes"])))
+        dpn = int(attrs.get("dofs_per_node", 2 if m == 0 else 3))
+        zeta = g["zeta"][:] if "zeta" in g else [None] * len(freqs)
+        mesh = self.mesh(mesh_id, Domain.MECA)
+        snaps = [ModeSnapshot(label=f"m={m} mode {k + 1} ({f_k:.1f} Hz)",
+                              fields={"u_meca": shapes[k]}, dof_maps={}, mesh_id=mesh_id,
+                              meta=attrs, freq=float(f_k), zeta=zeta[k], index=k)
+                 for k, f_k in enumerate(freqs)]
+        return snaps, mesh, dpn
+
+    def load_coupled(self, kind: str = "fsi") -> tuple[list[ModeSnapshot], Mesh, Mesh]:
+        """
+        Load coupled modes (several fields per mode, e.g. from
+        EigenStudy.solve_fsi_eigen).
+
+        Returns
+        -------
+        snaps     : one ModeSnapshot per mode, fields = {"u_meca": (n_meca_nodes, 2),
+                    "p_acou": (n_acou_nodes,)}; meta carries per-mode extras
+                    (e.g. "pml_frac").
+        mesh_meca : Mesh of the mechanical domain (rows match u_meca)
+        mesh_acou : Mesh of the acoustic domain   (rows match p_acou)
+        """
+        g = self._h5[f"modes/{kind}"]
+        if "fields" not in g.attrs:
+            raise KeyError(f"modes/{kind} is a single-field group — use load().")
+        names   = [str(n) for n in g.attrs["fields"]]
+        freqs   = g["freqs"][:]
+        zeta    = g["zeta"][:] if "zeta" in g else [None] * len(freqs)
+        attrs   = dict(g.attrs)
+        mesh_id = attrs.get("mesh_id", self._first_mesh_id())
+        shapes  = {n: self._decode_complex(g[f"shapes_{n}"][:]) for n in names}
+        skip    = {"freqs", "zeta"} | {f"shapes_{n}" for n in names}
+        extras  = {n: g[n][:] for n in g.keys() if n not in skip}
+
+        snaps = [
+            ModeSnapshot(
+                label    = f"mode {k+1} ({f_k:.1f} Hz)",
+                fields   = {n: shapes[n][k] for n in names},
+                dof_maps = {},
+                mesh_id  = mesh_id,
+                meta     = {**attrs, **{n: v[k] for n, v in extras.items()}},
+                freq     = float(f_k),
+                zeta     = zeta[k],
+                index    = k,
+            )
+            for k, f_k in enumerate(freqs)
+        ]
+        return snaps, self.mesh(mesh_id, Domain.MECA), self.mesh(mesh_id, Domain.ACOU)
+
     def _inspect_specific(self) -> None:
         if not self.kinds:
             print("╠══ modes: (none)")
@@ -399,17 +478,25 @@ class EigenReader(BaseReader):
             freqs   = g["freqs"][:]
             zeta    = g["zeta"][:] if "zeta" in g else None
             dof_map = g["dof_map"][:] if "dof_map" in g else None
-            dpn     = int(g.attrs.get("dofs_per_node", Domain.coerce(k).default_dpn))
             mesh_id = g.attrs.get("mesh_id", next(iter(self._h5["meshes"])))
-            shapes  = g["shapes"]
+            if "fields" in g.attrs:                       # coupled, multi-field
+                shape_keys = [f"shapes_{n}" for n in g.attrs["fields"]]
+                dpn = {str(n): int(g.attrs.get(f"dofs_per_node_{n}", 0))
+                       for n in g.attrs["fields"]}
+            else:
+                shape_keys = ["shapes"]
+                dpn = int(g.attrs["dofs_per_node"] if "dofs_per_node" in g.attrs
+                          else Domain.coerce(k).default_dpn)
 
             print(f"║")
             print(f"║  ── kind = '{k}' ──────────────────────────────────────")
             print(f"║      mesh_id   : {mesh_id}")
             print(f"║      dofs/node : {dpn}")
             print(f"║      n_modes   : {len(freqs)}")
-            print(f"║      shapes    : shape={shapes.shape}, dtype={shapes.dtype}")
-            print(f"║                  stats: {self._stats(self._decode_complex(shapes[:]))}")
+            for sk in shape_keys:
+                shapes = g[sk]
+                print(f"║      {sk:<9} : shape={shapes.shape}, dtype={shapes.dtype}")
+                print(f"║                  stats: {self._stats(self._decode_complex(shapes[:]))}")
             print(f"║      freqs     : shape={freqs.shape}, dtype={freqs.dtype}")
             print(f"║                  range=[{freqs[0]:.4f}, {freqs[-1]:.4f}] Hz")
             print(f"║                  stats: {self._stats(freqs)}")
@@ -427,7 +514,7 @@ class EigenReader(BaseReader):
 
             # all extra datasets in this group
             extras = [n for n in g.keys()
-                      if n not in {"freqs", "zeta", "shapes", "dof_map"}]
+                      if n not in {"freqs", "zeta", "dof_map", *shape_keys}]
             if extras:
                 print(f"║      extra datasets:")
                 for n in extras:
@@ -446,7 +533,7 @@ class EigenReader(BaseReader):
             for i, f in enumerate(freqs):
                 z_str = f"{zeta[i]:14.6g}" if zeta is not None else f"{'—':>14}"
                 print(f"║        {i:>4}  {f:14.4f}  {z_str}")
-        print("╠══ extractors: .kinds, .info(), .load(kind)")
+        print("╠══ extractors: .kinds, .info(), .load(kind), .load_coupled(kind)")
 
 class TimeReader(BaseReader):
     """Transient results."""

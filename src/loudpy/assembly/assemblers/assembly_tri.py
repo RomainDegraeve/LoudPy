@@ -412,10 +412,9 @@ class MecaAssemblerNL(_SparseAssemblerBase):
             Mv[s0:s1] = Me_out.ravel()
             Cv[s0:s1] = Ce_out.ravel()
 
-            # Scatter internal forces (no atomics needed – serial loop)
-            for e in range(n_e):
-                for i in range(self.ndof_e):
-                    F_full[gdofs[e, i]] += Fe_out[e, i]
+            # Scatter internal forces (vectorised accumulation)
+            F_full += np.bincount(np.asarray(gdofs).ravel(), weights=Fe_out.ravel(),
+                                  minlength=self.matrix_size)
 
         K_T = self._to_csr(Kv)
         M = self._to_csr(Mv)
@@ -492,3 +491,128 @@ class MecaAssemblerNL(_SparseAssemblerBase):
 
 
 
+
+
+class MecaAssemblerFourier(Assembler):
+    """
+    Structural matrices of azimuthal order m (see TR6_axi_fourier), 3 DOF per node
+    ordered (U_r, U_z, U_θ), with the constraints of order m eliminated by a
+    transformation u_full = T u_red:
+
+      - axis nodes (r = 0), exact regularity of the 3D field, set automatically:
+            m = 0 : U_r = U_θ = 0
+            m = 1 : U_z = 0 and U_θ = −U_r   (lateral motion of the axis)
+            m ≥ 2 : U_r = U_z = U_θ = 0
+        constrained interfaces are ignored on the axis (their "_r_" axis condition only
+        holds for m = 0);
+      - constrained interfaces elsewhere: the components of their direction key are
+        blocked; an interface blocking both r and z ("_rz_", a clamp) also blocks U_θ.
+    """
+    PTS_PER_TRI = 6
+    dofs_per_node = 3
+
+    def __init__(self, subdomains, m: int, axis_tol: float = 1e-9):
+        subdomains = [s for s in subdomains if isinstance(s, SubDomainMeca)]
+        if not subdomains:
+            raise ValueError("MecaAssemblerFourier: no SubDomainMeca found.")
+        if int(m) != m or m < 0:
+            raise ValueError(f"azimuthal order m must be a non-negative integer, got {m}")
+        self.m = int(m)
+        self.subdomains = subdomains
+        self.ndof_e = self.PTS_PER_TRI * self.dofs_per_node
+        self.block = self.ndof_e ** 2
+        self.unique_tags = np.unique(np.concatenate([sd.node_tags for sd in subdomains]))
+        self.tag_to_local = {int(t): i for i, t in enumerate(self.unique_tags)}
+        self.matrix_size = len(self.unique_tags) * self.dofs_per_node
+        r = np.zeros(len(self.unique_tags))
+        for sd in subdomains:
+            idx = np.searchsorted(self.unique_tags, sd.node_tags)
+            r[idx] = np.asarray(sd.node_coords)[:, 0]
+        self.node_r = r
+        self.axis_tol = axis_tol * max(1.0, float(np.abs(r).max()))
+        self._build_topology()
+        self._free = None
+        self.T = None
+
+    def assemble(self):
+        from loudpy.assembly.kernels.elements import _batch_K_fourier, _batch_M_fourier
+        from loudpy.Finite_Elements_formulations.FE_functions.TR6_axi_fourier import \
+            material_matrix_D6
+        Kv = np.zeros(self.V_size, dtype=np.complex128)
+        Mv = np.zeros(self.V_size, dtype=np.float64)
+        Cv = np.zeros(self.V_size, dtype=np.float64)
+        for sd, ec, s0, s1, n_e in self.prep:
+            Ke = np.empty((n_e, self.block))
+            Me = np.empty((n_e, self.block))
+            _batch_K_fourier(ec, material_matrix_D6(sd.E, sd.nu), self.m, Ke)
+            _batch_M_fourier(ec, sd.rho, self.m, Me)
+            eta = getattr(sd, "eta", 0.0)
+            alpha = getattr(sd, "alpha_ray", 0.0)
+            beta = getattr(sd, "beta_ray", 0.0)
+            Ke_flat, Me_flat = Ke.ravel(), Me.ravel()
+            Kv[s0:s1] = Ke_flat * (1 + 1j * eta)
+            Mv[s0:s1] = Me_flat
+            Cv[s0:s1] = alpha * Me_flat + beta * Ke_flat
+        return self._to_csr(Kv), self._to_csr(Mv), self._to_csr(Cv)
+
+    # ------------------------------------------------------------------
+    def constraint_matrix(self, interfaces):
+        """Sparse T (n_full x n_red) with u_full = T u_red (see the class docstring)."""
+        from scipy.sparse import csr_matrix
+        from loudpy.Interfaces.InterfaceConstrained import InterfaceConstrained
+        on_axis = np.abs(self.node_r) < self.axis_tol
+        blocked, slaves = set(), {}                 # slave dof -> (master dof, factor)
+        for i in np.flatnonzero(on_axis):
+            dr, dz, dt = 3 * i, 3 * i + 1, 3 * i + 2
+            if self.m == 0:
+                blocked |= {dr, dt}
+            elif self.m == 1:
+                blocked.add(dz)
+                slaves[dt] = (dr, -1.0)
+            else:
+                blocked |= {dr, dz, dt}
+        for iface in interfaces:
+            if not isinstance(iface, InterfaceConstrained):
+                continue
+            comps = set(iface.direction)
+            if {0, 1} <= comps:
+                comps.add(2)                         # a clamp also holds the azimuthal motion
+            for tag in iface.node_tags:
+                i = self.tag_to_local.get(int(tag))
+                if i is None or on_axis[i]:
+                    continue
+                blocked |= {3 * i + c for c in comps}
+        masters = [d for d in range(self.matrix_size) if d not in blocked and d not in slaves]
+        col = {d: k for k, d in enumerate(masters)}
+        rows, cols, vals = list(masters), list(range(len(masters))), [1.0] * len(masters)
+        for s, (mdof, fac) in slaves.items():
+            if mdof in col:
+                rows.append(s)
+                cols.append(col[mdof])
+                vals.append(fac)
+        self._free = np.array(masters, dtype=np.int64)
+        return csr_matrix((vals, (rows, cols)), shape=(self.matrix_size, len(masters)))
+
+    def apply_blocked_boundaries(self, interfaces, *operators):
+        """Reduce square operators (Tᵀ A T) and vectors (Tᵀ v); stores T for expand()."""
+        T = self.constraint_matrix(interfaces)
+        self.T = T
+        n = self.matrix_size
+
+        def reduce_one(A):
+            if A is None:
+                return None
+            if issparse(A) and A.shape == (n, n):
+                return (T.T @ A @ T).tocsr()
+            arr = np.asarray(A)
+            if arr.ndim == 1 and arr.shape[0] == n:
+                return T.T @ arr
+            return A
+
+        out = tuple(reduce_one(A) for A in operators)
+        return out[0] if len(out) == 1 else out
+
+    def expand(self, u_red):
+        if self.T is None:
+            raise RuntimeError("expand() called before apply_blocked_boundaries().")
+        return self.T @ u_red

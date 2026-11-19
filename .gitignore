@@ -219,3 +219,16 @@ __marimo__/
 *.h5
 .DS_Store
 **/.DS_Store
+
+# Generated meshes (rebuilt automatically: reuse_mesh / generate_meshes.py)
+*.msh
+*.msh.json
+
+# Generated results of the new examples (rebuilt by their Running/Loading scripts)
+*.npz
+LoudPy_exemples/Benchmarks/Results/
+LoudPy_exemples/Coupling_3D/**/Results/
+LoudPy_exemples/Eigen_study/Fourier/Results/
+
+# Claude Code local session data
+**/.claude/

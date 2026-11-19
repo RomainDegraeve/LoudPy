@@ -1,5 +1,8 @@
 import gmsh
+import hashlib
+import json
 import os
+import re
 import multiprocessing
 import numpy as np
 import math
@@ -7,11 +10,42 @@ from typing import List, Tuple, Dict, Any, Optional
 from loudpy.ObjectsGeo import Nodes, L3_Edges, TR6_Surfs
 
 
+DEFAULT_MESH_GRADING = 0.3
+
+
 class MeshManager:
-    def __init__(self, SimObjects: List[Any], subdomains_key: str, mesh_order: int = 2):
+    """
+    Builds the surfaces from the physical curve groups and meshes them.
+
+    Mesh sizes: each domain spec has its own size (``spec.size``, restricted to its surfaces).
+    With ``grading`` (default ``DEFAULT_MESH_GRADING``), the element size also grows linearly
+    with the distance d to every structural domain (``DomainSpecMeca*``),
+
+        h = min( size of the region,  size of the structural domain + grading · d ),
+
+    and gmsh does not extend the boundary sizes into the neighbouring domains
+    (``Mesh.MeshSizeExtendFromBoundary = 0``). The fine structural size then stays local to
+    the fluid–structure interfaces instead of spreading far into the air: for a loudspeaker,
+    about half the air nodes of the default gmsh mesh for the same element quality.
+    ``grading=None`` (or 0) gives the previous behaviour (gmsh extension from the boundary).
+
+    Only what the simulation uses is meshed (``prune_unused``, default True, when the
+    interface specs are given): a domain group is built only if a domain spec matches it
+    (PML layers only with a PML spec), a curve group is kept only if an interface spec matches
+    it, and every curve / point that does not bound a built surface is removed before meshing.
+    E.g. a structural study on a .geo that also draws the air meshes and stores only the
+    structure.
+    """
+
+    def __init__(self, SimObjects: List[Any], subdomains_key: str, mesh_order: int = 2,
+                 grading: Optional[float] = DEFAULT_MESH_GRADING,
+                 interfaces: Optional[List[Any]] = None, prune_unused: bool = True):
         self.SimObjects = SimObjects
         self.subdomains_key = subdomains_key
         self.mesh_order = mesh_order
+        self.grading = grading
+        self.interfaces = interfaces
+        self.prune_unused = prune_unused and interfaces is not None
 
     # =========================================================================
     # CORE MESH GENERATION
@@ -34,14 +68,18 @@ class MeshManager:
             normal_surfaces = self._build_normal_surfaces(phys_curves, surfaces_by_obj)
             pml_surfaces = self._build_pml_surfaces(phys_curves, surfaces_by_obj)
 
-            # Step 2: Assign Physical Groups
+            # Step 2: Assign Physical Groups (and drop what the simulation does not use)
             self._assign_physical_groups(normal_surfaces + pml_surfaces)
+            if self.prune_unused:
+                self._prune_unused(normal_surfaces + pml_surfaces)
 
             # Step 3: Set mesh sizes
             self._apply_mesh_sizes(surfaces_by_obj)
 
             # Step 4: Generate & Save Mesh
             self._configure_and_generate_mesh(msh_path, write_mesh_file)
+            if write_mesh_file:
+                self._write_signature(geo_path, msh_path)
 
             if show_gui:
                 gmsh.fltk.run()
@@ -53,6 +91,64 @@ class MeshManager:
             # Ensures gmsh is closed properly even if an error occurs
             if not extract_mesh_data:
                 gmsh.finalize()
+
+    # =========================================================================
+    # REUSING A SAVED MESH
+    # =========================================================================
+    # Every written mesh gets a signature file <msh_path>.json describing what it was built
+    # from: the .geo (and the files it merges), every domain spec (name, class, size, PML
+    # thickness), the subdomain key, the mesh order and the grading. A saved mesh is reused
+    # only if that signature equals the one of the current problem.
+
+    @staticmethod
+    def signature_path(msh_path: str) -> str:
+        return msh_path + ".json"
+
+    def mesh_signature(self, geo_path: str) -> Dict[str, Any]:
+        """What the mesh depends on (see the section comment)."""
+        def digest(path):
+            with open(path, "rb") as fh:
+                return hashlib.sha256(fh.read()).hexdigest()
+
+        geo_dir = os.path.dirname(os.path.abspath(geo_path))
+        with open(geo_path) as fh:
+            merged = re.findall(r'Merge\s+"([^"]+)"', fh.read())
+        files = {os.path.basename(geo_path): digest(geo_path)}
+        for m in merged:
+            mp = m if os.path.isabs(m) else os.path.join(geo_dir, m)
+            files[m] = digest(mp) if os.path.exists(mp) else "missing"
+        domains = sorted(
+            [obj.name, type(obj).__name__, getattr(obj, "size", None), getattr(obj, "t", None)]
+            for obj in self.SimObjects)
+        interfaces = sorted(i.name for i in self.interfaces) if self.interfaces is not None else None
+        return dict(files=files, domains=domains, interfaces=interfaces,
+                    prune_unused=self.prune_unused, subdomains_key=self.subdomains_key,
+                    mesh_order=self.mesh_order, grading=self.grading)
+
+    def _write_signature(self, geo_path: str, msh_path: str) -> None:
+        with open(self.signature_path(msh_path), "w") as fh:
+            json.dump(self.mesh_signature(geo_path), fh, indent=1)
+
+    def can_reuse(self, geo_path: str, msh_path: str) -> Tuple[bool, str]:
+        """(True, "") if msh_path was written from this geometry and these specs."""
+        sig = self.signature_path(msh_path)
+        if not os.path.exists(msh_path):
+            return False, "no saved mesh"
+        if not os.path.exists(sig):
+            return False, f"no signature file {os.path.basename(sig)}"
+        with open(sig) as fh:
+            stored = json.load(fh)
+        current = json.loads(json.dumps(self.mesh_signature(geo_path)))   # same JSON types
+        changed = [k for k in current if stored.get(k) != current[k]]
+        return (not changed), ("" if not changed else "changed: " + ", ".join(changed))
+
+    def load_mesh(self, msh_path: str) -> Tuple[List[TR6_Surfs], List[L3_Edges], "Nodes"]:
+        """Read a mesh written by generate_mesh (same data as generate_mesh(..., extract_mesh_data=True))."""
+        if not os.path.exists(msh_path):
+            raise FileNotFoundError(f"The file {msh_path} could not be found.")
+        self._initialize_gmsh(False)
+        gmsh.open(msh_path)
+        return self.extract_mesh_data()          # finalizes gmsh
 
     # =========================================================================
     # DATA EXTRACTION
@@ -211,6 +307,8 @@ class MeshManager:
             name = gmsh.model.getPhysicalName(1, pg_tag)
             if self.subdomains_key not in name or "PML" in name.upper():
                 continue
+            if self.prune_unused and self._get_matched_obj(name) is None:
+                continue                       # domain drawn in the .geo, not in the simulation
 
             gmsh.model.setPhysicalName(1, pg_tag, name.replace(self.subdomains_key, "cl"))
             curve_tags = list(gmsh.model.getEntitiesForPhysicalGroup(1, pg_tag))
@@ -248,6 +346,8 @@ class MeshManager:
             name = gmsh.model.getPhysicalName(1, pg_tag)
             if "PML" not in name.upper():
                 continue
+            if self.prune_unused and self._get_matched_obj(name) is None:
+                continue                       # no PML spec: no PML layer
 
             thickness = self._get_pml_thickness(name)
             curve_tags = gmsh.model.getEntitiesForPhysicalGroup(1, pg_tag)
@@ -474,6 +574,57 @@ class MeshManager:
             pg = gmsh.model.addPhysicalGroup(2, [s])
             gmsh.model.setPhysicalName(2, pg, name)
 
+    def _prune_unused(self, surfaces_list: List[Tuple[int, str]]) -> None:
+        """Keep only the built surfaces, the curve groups an interface spec matches, and the
+        curves / points bounding the built surfaces (see the class docstring)."""
+        kept_surfaces = [s for s, _ in surfaces_list]
+        kept_curves = {abs(c) for _, c in gmsh.model.getBoundary(
+            [(2, s) for s in kept_surfaces], combined=False, oriented=False)} if kept_surfaces else set()
+        kept_points = {abs(p) for _, p in gmsh.model.getBoundary(
+            [(1, c) for c in kept_curves], combined=False, oriented=False)} if kept_curves else set()
+
+        # curve groups: matched by an interface spec, restricted to curves that are kept
+        for _, pg in gmsh.model.getPhysicalGroups(1):
+            name = gmsh.model.getPhysicalName(1, pg)
+            curves = [c for c in gmsh.model.getEntitiesForPhysicalGroup(1, pg) if c in kept_curves]
+            matched = any(i.name in name for i in self.interfaces)
+            gmsh.model.removePhysicalGroups([(1, pg)])
+            if matched and curves:
+                gmsh.model.addPhysicalGroup(1, curves, pg, name)
+        for _, pg in gmsh.model.getPhysicalGroups(0):
+            gmsh.model.removePhysicalGroups([(0, pg)])
+
+        # geometry not bounding a kept surface: never meshed nor stored
+        unused = ([(2, s) for _, s in gmsh.model.getEntities(2) if s not in set(kept_surfaces)]
+                  + [(1, c) for _, c in gmsh.model.getEntities(1) if c not in kept_curves]
+                  + [(0, p) for _, p in gmsh.model.getEntities(0) if p not in kept_points])
+        if unused:
+            gmsh.model.occ.remove(unused)
+            gmsh.model.occ.synchronize()
+
+    @staticmethod
+    def _is_structure(obj: Any) -> bool:
+        """Structural domain spec (DomainSpecMeca, DomainSpecMecaRayleigh, DomainSpecMecaHysteretic)."""
+        return type(obj).__name__.startswith("DomainSpecMeca")
+
+    def _grading_fields(self, surfaces_by_obj: Dict) -> List[int]:
+        """One field per structural domain: its size + grading · (distance to its boundary)."""
+        if not self.grading:
+            return []
+        fields = []
+        for obj, s_list in surfaces_by_obj.items():
+            if not s_list or not self._is_structure(obj):
+                continue
+            curves = sorted({abs(c) for _, c in gmsh.model.getBoundary(
+                [(2, s) for s in s_list], combined=False, oriented=False)})
+            f_dist = gmsh.model.mesh.field.add("Distance")
+            gmsh.model.mesh.field.setNumbers(f_dist, "CurvesList", curves)
+            gmsh.model.mesh.field.setNumber(f_dist, "Sampling", 200)
+            f_ramp = gmsh.model.mesh.field.add("MathEval")
+            gmsh.model.mesh.field.setString(f_ramp, "F", f"{obj.size} + {self.grading}*F{f_dist}")
+            fields.append(f_ramp)
+        return fields
+
     def _apply_mesh_sizes(self, surfaces_by_obj: Dict):
         restrict_fields = []
         for obj, s_list in surfaces_by_obj.items():
@@ -488,9 +639,10 @@ class MeshManager:
             gmsh.model.mesh.field.setNumbers(f_restrict, "SurfacesList", s_list)
             restrict_fields.append(f_restrict)
 
-        if restrict_fields:
+        size_fields = restrict_fields + self._grading_fields(surfaces_by_obj)
+        if size_fields:
             min_field = gmsh.model.mesh.field.add("Min")
-            gmsh.model.mesh.field.setNumbers(min_field, "FieldsList", restrict_fields)
+            gmsh.model.mesh.field.setNumbers(min_field, "FieldsList", size_fields)
             gmsh.model.mesh.field.setAsBackgroundMesh(min_field)
 
     def _configure_and_generate_mesh(self, msh_path: str, write_mesh_file:bool):
@@ -499,9 +651,14 @@ class MeshManager:
         gmsh.option.setNumber("Mesh.Optimize", 1)
         gmsh.option.setNumber("Mesh.ElementOrder", self.mesh_order)
         gmsh.option.setNumber("Mesh.SecondOrderLinear", 0)
+        if self.grading:
+            # sizes come from the fields only (see the class docstring)
+            gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
 
         gmsh.model.mesh.generate(2)
         if write_mesh_file:
+            if os.path.dirname(msh_path):
+                os.makedirs(os.path.dirname(msh_path), exist_ok=True)
             gmsh.write(msh_path)
             print(f"Mesh generated and saved: {msh_path}")
 
