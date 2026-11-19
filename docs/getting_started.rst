@@ -1,0 +1,65 @@
+Getting started
+===============
+
+Installation
+------------
+
+.. code-block:: bash
+
+   pip install loudpy                 # release
+   pip install -e .                   # from a clone of the repository (development)
+
+loudpy needs Python ≥ 3.10, NumPy, SciPy, Numba, h5py, gmsh (meshing) and matplotlib; the 3D
+views of the examples use PyVista.
+
+.. tip::
+
+   On macOS with the repository in an iCloud-synced folder, set ``NUMBA_CACHE_DIR`` to a local
+   folder (``export NUMBA_CACHE_DIR=/tmp/numba_cache``): Numba's cache next to the sources can
+   stall on synced folders.
+
+A first model: the modes of a driver
+------------------------------------
+
+The geometry is a gmsh ``.geo`` file of the meridian half-plane (``r ≥ 0``, ``z`` along the
+axis) whose physical groups follow the :doc:`naming convention <guide/conventions>`
+(``submeca_membranne``, ``interface_constrained_rz_1``, ``subacou``…). Regions and boundaries
+pick groups by name:
+
+.. code-block:: python
+
+   import loudpy as lp
+
+   model = lp.Model("LoudPy_exemples/Geometries/Loudspeaker/HPNEW-Sketch.geo")
+   model.add(
+       lp.Solid("membranne", "Paper", mesh_size=0.0005),
+       lp.Solid("coil", "Copper"),
+       lp.Solid("surround", "Rubber"),
+       lp.Solid("spider", "PhenolicCloth"),
+       lp.Solid("former", "Kapton"),
+       lp.Solid("glue", "SolidGlue"),
+       lp.Solid("dustcap", "Polypropylene"),
+       lp.Clamped("interface_constrained"),
+       lp.Coil("interface_forced"),
+   )
+   model.mesh("Results/Files/mesh.msh")            # reused while the inputs are unchanged
+
+   study = lp.Modes(model)
+   modes = study.solve(f_max=20000)
+   study.save("Results/Files/modes.h5")
+
+   modes = lp.load("Results/Files/modes.h5")      # later, in another script
+   print(modes.frequencies[:5], modes.zeta[:5])
+   lp.plot.mode(modes, 0)
+
+The same pattern holds for every study: build the model, ``solve``, ``save``; then ``lp.load``
+and plot in a separate script. The examples follow it with a ``Running_*.py`` (computation, writes
+``Results/Files``) and a ``Loading_*.py`` / ``Plot_*.py`` (figures in ``Results/Figures``).
+
+Where to go next
+----------------
+
+* :doc:`guide/models` — regions, boundaries, materials, damping, drives, meshing
+* :doc:`guide/studies` — modes, frequency responses (with remeshing per wavelength), transients
+* :doc:`guide/results` — reading fields, probes, SPL, saving and loading
+* :doc:`guide/scenes` — 3D enclosures with one or several drivers

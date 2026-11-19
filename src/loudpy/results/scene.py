@@ -9,6 +9,8 @@ expansion outside the hemisphere ("dtn") and, with cavity modes, the modal press
     res.drivers                          names of the drivers
     res.driver("top").excursion()        axial displacement of the dust-cap centre over frequency
     res.driver("top").surface(f=500)     deformed 3D surface of the driver (pyvista)
+    res.driver("top").in_vacuo()         modal amplitudes of the same drive without air
+    res.driver("top").kinetic_energy(by_order=True)
     res.far_field(points)                pressure outside the hemisphere, from the DtN expansion
     res.spl(at=point)                    SPL: far field outside the hemisphere, FE field inside
     res.cavity_pressure(point)           pressure in the cavity (cavity modes)
@@ -23,9 +25,27 @@ from loudpy.results.results import FrequencyResults, spl as _spl
 class DriverResponse:
     """One driver of a scene: its modal amplitudes over frequency and its modal basis."""
 
-    def __init__(self, name, modes, frame, q, freqs, coil_nodes):
+    def __init__(self, name, modes, frame, q, freqs, coil_nodes, force=None):
         self.name, self.modes, self.frame = name, modes, frame
         self.q, self.frequencies, self.coil_nodes = q, freqs, coil_nodes
+        self.force = force                                     # modal force of the drive (or None)
+
+    def in_vacuo(self) -> np.ndarray:
+        """Modal amplitudes (n_f, n_modes) of the same driver under the same drive, without air."""
+        if self.force is None:
+            raise ValueError("these results do not store the drive (re-run the study)")
+        w = 2 * np.pi * np.asarray(self.frequencies)[:, None]
+        wk = 2 * np.pi * self.modes.freq[None, :]
+        return self.force[None, :] / (wk ** 2 + 2j * self.modes.zeta[None, :] * wk * w - w ** 2)
+
+    def kinetic_energy(self, q=None, by_order: bool = False):
+        """Kinetic energy ½ω²|q|² over frequency (mass-normalised modes); by_order: {m: E_m}."""
+        q = self.q if q is None else q
+        w2 = (2 * np.pi * np.asarray(self.frequencies)) ** 2
+        if not by_order:
+            return 0.5 * w2 * np.sum(np.abs(q) ** 2, axis=1)
+        return {int(m): 0.5 * w2 * np.sum(np.abs(q[:, self.modes.m == m]) ** 2, axis=1)
+                for m in np.unique(self.modes.m)}
 
     def node(self, at=None) -> int:
         """Meridian node nearest `at` (r, z); default: on the axis at the top (dust-cap centre)."""
@@ -96,8 +116,11 @@ class SceneResults(FrequencyResults):
         modes = DriverModes(a["xy"], a["tris"], a["m"], np.asarray(a["family"]).astype(str), a["freq"], a["zeta"],
                             np.asarray(a["U"]))
         frame = Frame(d["origin"], np.asarray(d["rotation"]))
-        q = self.q[:, d["offset"]:d["offset"] + len(modes)]
-        return DriverResponse(name, modes, frame, q, self.frequencies, np.asarray(a["coil_nodes"]))
+        sl = slice(d["offset"], d["offset"] + len(modes))
+        q = self.q[:, sl]
+        F = self.attachments.get("drive", {}).get("F")
+        return DriverResponse(name, modes, frame, q, self.frequencies, np.asarray(a["coil_nodes"]),
+                              None if F is None else np.asarray(F)[sl])
 
     # ── pressure ───────────────────────────────────────────────────────────
     def _dtn(self):
@@ -122,6 +145,14 @@ class SceneResults(FrequencyResults):
         for i, f in enumerate(self.frequencies):
             out[i] = dtn.pressure(pts, C[i, :n_h[i]], 2 * np.pi * f / c)
         return out
+
+    @property
+    def cavity_frequencies(self) -> np.ndarray:
+        """Rigid-wall frequencies of the cavity modes [Hz]."""
+        cav = self.attachments.get("cavity")
+        if cav is None:
+            raise ValueError("these results have no cavity modes")
+        return self.scene["c"] * np.sqrt(np.maximum(np.asarray(cav["kappa2"]), 0.0)) / (2 * np.pi)
 
     def cavity_pressure(self, point) -> np.ndarray:
         """Pressure over frequency at the cavity node nearest `point` (cavity modes)."""

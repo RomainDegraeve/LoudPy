@@ -22,9 +22,10 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 
-from loudpy.Studies.Cavity_coupling import DriverModes, MultiDriver, C_AIR
-from loudpy.Studies.Exterior_dtn import HalfSpaceDtN, _h2
-from column import eig_path, X0, Y0S, Z_F, Z_BACK, WALL_T, MOUTH_H, CENTERS, NAMES, ORDERS, DRV_F_MAX
+import loudpy as lp
+from column import X0, Y0S, Z_F, Z_BACK, WALL_T, MOUTH_H, NAMES, quarter_wave
+
+lp.plot.style.use()                       # loudpy figure style (fonts, colours, SPL in dB RMS)
 
 files = Path("LoudPy_exemples/Coupling_3D/Column_labyrinth/Results/Files")
 out_dir = Path("LoudPy_exemples/Coupling_3D/Column_labyrinth/Results/Figures")
@@ -32,36 +33,15 @@ out_dir.mkdir(parents=True, exist_ok=True)
 DIST = 1.0                                       # distance of the probes from the middle driver [m]
 POLAR_F = [50, 100, 200, 400, 700, 1000]         # [Hz] (nearest computed frequency)
 
-d = np.load(files / "column.npz", allow_pickle=True)
-drivers = MultiDriver(DriverModes.from_eigen_h5(eig_path, ORDERS, f_max=DRV_F_MAX), CENTERS, names=NAMES)
-n_s = int(d["n_s"])
-assert len(drivers) == n_s, "driver modes changed since Running_column.py"
-f, q, C = d["freqs"], d["y"][:, :n_s], d["coefs"]
-dtn = HalfSpaceDtN(d["center"], float(d["radius"]), int(d["up"]))
-f_qw = float(d["f_quarter_wave"])
-drive = d["drive"]
-drv = drivers.modes[0]
-axis_node = int(np.argmax(drv.xy[:, 1] * (drv.xy[:, 0] < 1e-9)))         # dust-cap centre
+res = lp.load(files / "column.h5")
+print(res)
+f = res.frequencies
+f_qw = quarter_wave()
+pressure = res.far_field                         # exact DtN expansion outside the hemisphere
+drivers = [res.driver(n) for n in NAMES]
 
 
-def pressure(points):
-    """Pressure (n_f, n_points) outside the hemisphere, from the DtN coefficients."""
-    n_max = int(round((np.sqrt(8 * C.shape[1] + 1) - 3) / 2))
-    n_of = dtn.harmonics(n_max)[:, 0]
-    r, th, ph = dtn.local(points)
-    if np.any(r < dtn.R):
-        raise ValueError("probe inside the DtN hemisphere: increase DIST")
-    Y = dtn.Y(th, ph, n_max)
-    out = np.zeros((len(f), len(points)), complex)
-    for i, fi in enumerate(f):
-        k = 2 * np.pi * fi / C_AIR
-        nh = np.count_nonzero(C[i])
-        ratio = _h2(n_of[None, :nh], k * r[:, None]) / _h2(n_of[:nh], k * dtn.R)[None, :]
-        out[i] = (Y[:, :nh] * ratio) @ C[i, :nh]
-    return out
-
-
-spl = lambda p: 20 * np.log10(np.maximum(np.abs(p) / np.sqrt(2), 1e-12) / 2e-5)       # RMS
+spl = lambda p: lp.spl(np.maximum(np.abs(p), 1e-12))                                  # dB re 20 µPa RMS
 src = np.array([X0, Y0S[1], Z_F])                                                     # middle driver
 up30 = np.array([0, np.sin(np.pi / 6), np.cos(np.pi / 6)])
 pts = {"front axis (middle driver)": src + [0, 0, DIST],
@@ -70,9 +50,8 @@ pts = {"front axis (middle driver)": src + [0, 0, DIST],
        "behind, at the mouth": np.array([X0, 0.5 * MOUTH_H, Z_BACK - WALL_T - DIST])}
 P = np.array(list(pts.values()))
 Pp = pressure(P)
-qs = drivers.split(q)                                                  # per-driver amplitudes
-x = np.array([qj @ drv.U[:, axis_node, 1] for qj in qs])                # (3, n_f) dust-cap excursion
-drive_txt = ", ".join(f"{n} {abs(a):.2g} N∠{np.degrees(np.angle(a)):.0f}°" for n, a in zip(NAMES, drive))
+x = np.array([d.excursion() for d in drivers])                         # (3, n_f) dust-cap excursion
+drive_txt = "1 N on each coil, in phase"
 
 figs = []
 fig, ax = plt.subplots(2, 1, figsize=(13, 10), sharex=True)
@@ -134,8 +113,8 @@ figs.append(fig)
 # per driver: m ≥ 1 share of the kinetic energy (unit modal mass: E ∝ Σ |ω q|²), phase re middle
 fig, ax = plt.subplots(2, 1, figsize=(13, 9), sharex=True)
 for j, (name, c) in enumerate(zip(NAMES, ["C3", "C0", "C2"])):
-    E = np.abs(qs[j]) ** 2
-    ax[0].semilogx(f, 100 * E[:, drv.m >= 1].sum(1) / E.sum(1), color=c, lw=1.2, label=f"{name} driver")
+    E = np.abs(drivers[j].q) ** 2
+    ax[0].semilogx(f, 100 * E[:, drivers[j].modes.m >= 1].sum(1) / E.sum(1), color=c, lw=1.2, label=f"{name} driver")
     ax[1].semilogx(f, np.degrees(np.angle(x[j] / x[1])), color=c, lw=1.2, label=f"{name} driver")
 ax[0].set_ylabel("m ≥ 1 share of the driver's kinetic energy [%]")
 ax[0].set_title("Non-axisymmetric motion (rocking m = 1, …): only driven by the non-uniform air load", fontsize=10)

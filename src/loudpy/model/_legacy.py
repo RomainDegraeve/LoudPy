@@ -100,7 +100,7 @@ def boundary_object(boundary: Boundary, group):
 #  Former specs (mesher signature, studies)
 # ════════════════════════════════════════════════════════════════════════════
 def region_spec(region: Region, lib: MaterialLibrary):
-    from loudpy import DomainSpecMecaRayleigh, DomainSpecMecaHysteretic, DomainSpecAcou, DomainSpecPML
+    from loudpy.SimObjects import DomainSpecMecaRayleigh, DomainSpecMecaHysteretic, DomainSpecAcou, DomainSpecPML
     mat = region.material.name if isinstance(region.material, Material) else region.material
     if isinstance(region, Solid):
         if isinstance(region.damping, Hysteretic):
@@ -115,7 +115,7 @@ def region_spec(region: Region, lib: MaterialLibrary):
 
 
 def boundary_spec(boundary: Boundary):
-    from loudpy import InterfaceSpecClamped, InterfaceSpecForced, InterfaceSpecAcouMeca, InterfaceSpecDtN
+    from loudpy.SimObjects import InterfaceSpecClamped, InterfaceSpecForced, InterfaceSpecAcouMeca, InterfaceSpecDtN
     cls = {Clamped: InterfaceSpecClamped, Coil: InterfaceSpecForced, FluidStructure: InterfaceSpecAcouMeca,
            Radiation: InterfaceSpecDtN}[type(boundary)]
     return cls(boundary.name)

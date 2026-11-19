@@ -1,5 +1,5 @@
 from typing import Optional, List
-from loudpy import PhysicalEntitiesManager
+from loudpy.PhysicalEntitiesManager import PhysicalEntitiesManager
 from loudpy.ObjectsGeo import Nodes  # adjust import path
 import numpy as np
 class Problem:

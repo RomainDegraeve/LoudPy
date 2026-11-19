@@ -11,14 +11,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import BoundaryNorm
 
-# ── global style (applied at import) ──────────────────────────────────────────
-plt.rc("lines",  linewidth=2)
-plt.rc("font",   size=14)
-plt.rc("axes",   linewidth=1.5, labelsize=14)
-plt.rc("legend", fontsize=14)
-plt.rcParams["font.family"]                  = "serif"
-plt.rcParams["axes.formatter.use_mathtext"]  = True
-plt.rcParams["mathtext.fontset"]             = "cm"
+# ── global style: the loudpy style (loudpy.plot.style), applied at import ───────
+from loudpy.plot.style import use as _use_style, CMAPS as _CMAPS
+
+_use_style()
 
 
 # ── SPL / phase frequency response ────────────────────────────────────────────

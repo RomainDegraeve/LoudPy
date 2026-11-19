@@ -17,6 +17,7 @@ import numpy as np
 
 @dataclass(frozen=True)
 class Force:
+    """Force on the coil: a complex amplitude [N] (harmonic), or a time signal sampled at fs [Hz] (transient)."""
     amplitude: complex | np.ndarray = 1.0       # [N], or a time signal (with fs)
     fs: float | None = None                     # sampling rate of the signal [Hz]
 
@@ -27,6 +28,8 @@ class Force:
 
 @dataclass(frozen=True)
 class Voltage:
+    """Voltage drive of an electro-mechanical coil: amplitude [V], resistance Re [Ω], force factor
+    Bl [T·m], inductance Le [H] (semi-inductance exponent n)."""
     amplitude: complex                          # [V]
     Re: float                                   # coil resistance [Ω]
     Bl: float                                   # force factor [T·m]

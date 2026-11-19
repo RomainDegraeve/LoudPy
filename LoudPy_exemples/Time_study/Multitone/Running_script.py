@@ -17,14 +17,8 @@ import numpy as np
 
 import loudpy as lp
 
-plt.rc("lines", linewidth=2)
-plt.rc("font", size=14)
-plt.rc("axes", linewidth=1.5, labelsize=14)
-plt.rc("legend", fontsize=14)
-plt.rcParams["font.family"] = "serif"
-plt.rcParams["font.serif"] = "cmr10"
-plt.rcParams["axes.formatter.use_mathtext"] = True
-plt.rcParams["mathtext.fontset"] = "stix"
+lp.plot.style.use()                       # loudpy figure style (fonts, colours, SPL in dB RMS)
+
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 geometry = "LoudPy_exemples/Geometries/Loudspeaker/HPNEW-Sketch.geo"

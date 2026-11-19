@@ -1,5 +1,5 @@
 """
-Loading_script.py — the coupled FSI sweep (Running_scrip.py first).
+Loading_script.py — the coupled FSI sweep (Running_script.py first).
 
 The sweep has one block per mesh; lp.load returns them as one result and the probes find the
 nearest node on each block's mesh.
@@ -20,6 +20,8 @@ import numpy as np
 import loudpy as lp
 from loudpy.Plotter import (plot_fields_grid, plot_meca_sweep, plot_spl_angle_map, plot_spl_sweep_multi,
                             STYLE)
+
+lp.plot.style.use()                       # loudpy figure style (fonts, colours, SPL in dB RMS)
 
 in_path = "LoudPy_exemples/Frequency_study/FSI/Results/Files/sweep.h5"
 out_dir = Path("LoudPy_exemples/Frequency_study/FSI/Results/Figures")

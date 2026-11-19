@@ -1,5 +1,5 @@
 """
-Loading_script.py — the structural frequency sweep (Running_scrip.py first).
+Loading_script.py — the structural frequency sweep (Running_script.py first).
 
 What this produces (in Results/Figures/)
 -----------------------------------------
@@ -17,6 +17,8 @@ import numpy as np
 
 import loudpy as lp
 from loudpy.Plotter import plot_field, plot_meca_sweep, plot_impulse_response, STYLE
+
+lp.plot.style.use()                       # loudpy figure style (fonts, colours, SPL in dB RMS)
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 in_path = "LoudPy_exemples/Frequency_study/Meca/Results/Files/sweep.h5"

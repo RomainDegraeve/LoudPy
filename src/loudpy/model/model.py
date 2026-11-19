@@ -36,6 +36,11 @@ def _is_domain_group(name: str) -> bool:
 
 
 class Model:
+    """An axisymmetric loudspeaker model: a geometry (.geo), regions, boundaries and materials.
+
+        model = lp.Model("speaker.geo")
+        model.add(lp.Solid("membrane", "Paper"), lp.Clamped("interface_constrained"), lp.Coil("interface_forced"))
+        model.mesh("mesh.msh")                 # gmsh, P2 triangles; reused while the inputs are unchanged"""
     def __init__(self, geometry, materials=None, *, mesh_order: int = 2,
                  grading: float | None = DEFAULT_MESH_GRADING):
         """

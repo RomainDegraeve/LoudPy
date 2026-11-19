@@ -15,6 +15,8 @@ import matplotlib.pyplot as plt
 
 import loudpy as lp
 
+lp.plot.style.use()                       # loudpy figure style (fonts, colours, SPL in dB RMS)
+
 # ── Paths ──────────────────────────────────────────────────────────────────────
 in_path = "LoudPy_exemples/Eigen_study/Meca/Results/Files/modes.h5"
 out_dir = Path("LoudPy_exemples/Eigen_study/Meca/Results/Figures")

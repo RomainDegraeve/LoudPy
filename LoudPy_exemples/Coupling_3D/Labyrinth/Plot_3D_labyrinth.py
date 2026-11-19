@@ -16,7 +16,6 @@ What this produces (in Results/Figures/)
 import os
 from pathlib import Path
 
-import h5py
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -24,8 +23,10 @@ from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 import pyvista as pv
 
-from loudpy.Studies.Cavity_coupling import DriverModes, driver_surface
-from labyrinth import (eig_path, X0, Y0, Z_F, W_IN as W, H_IN as H, WALL_T, Z_BACK, ORDERS, DRV_F_MAX, mouth)
+import loudpy as lp
+from labyrinth import X0, Y0, Z_F, W_IN as W, H_IN as H, WALL_T, Z_BACK, ORDERS, mouth, quarter_wave
+
+lp.plot.style.use()                       # loudpy figure style (fonts, colours, SPL in dB RMS)
 
 files = Path("LoudPy_exemples/Coupling_3D/Labyrinth/Results/Files")
 out_dir = Path("LoudPy_exemples/Coupling_3D/Labyrinth/Results/Figures")
@@ -35,12 +36,9 @@ DEFORMATION, NEAR_FIELD, RANGE = 0.10, 0.08, 60.0
 CONTOUR_DB = 3.0                              # iso-SPL lines every CONTOUR_DB [dB]
 IMG = (1000, 760)
 
-d = np.load(files / "labyrinth.npz", allow_pickle=True)
-freqs, n_s = d["freqs"], int(d["n_s"])
-q = d["y"][:, :n_s]
-drv = DriverModes.from_eigen_h5(eig_path, ORDERS, f_max=DRV_F_MAX)
-assert len(drv) == n_s
-h5 = h5py.File(files / "labyrinth_field.h5", "r", locking=False)
+res = lp.load(files / "labyrinth.h5")
+freqs = res.frequencies
+hp = res.driver("main")
 back_z = lambda y: Z_BACK
 yb_m, yt_m = mouth()
 PORT_X, PORT_Y = X0, 0.5 * (yb_m + yt_m)                       # centre of the mouth
@@ -92,17 +90,17 @@ OUTLINE = pv.merge([dashed(a, b) for a, b in _edges])
 meshes = {}
 
 
-def band_mesh(b):
-    if b not in meshes:
-        g = h5[f"band{b}"]
-        nodes, tets = g["nodes"][()], g["tets"][()]
+def band_mesh(mesh):
+    """pyvista grid, wall / ground surfaces and far nodes of a band mesh (cached)."""
+    if id(mesh) not in meshes:
+        nodes, tets = mesh.coords, mesh.groups["air"].cells
         grid = pv.UnstructuredGrid({pv.CellType.TETRA: tets[:, _SUB_TET].reshape(-1, 4)}, nodes)
-        faces = {k: surf(nodes, g[f"faces/{k}"][()]) for k in ("ground", "walls", "port_walls")
-                 if f"faces/{k}" in g and len(g[f"faces/{k}"])}
+        faces = {k: surf(nodes, mesh.groups[k].cells) for k in ("ground", "walls", "openings")
+                 if k in mesh.groups and len(mesh.groups[k].cells)}
         corner = np.unique(tets[:, :4])
         far = corner[np.linalg.norm(nodes[corner] - np.array([X0, Y0, Z_F]), axis=1) > NEAR_FIELD]
-        meshes[b] = (grid, faces, far)
-    return meshes[b]
+        meshes[id(mesh)] = (grid, faces, far)
+    return meshes[id(mesh)]
 
 
 def keep_mask(pts):
@@ -113,10 +111,10 @@ def keep_mask(pts):
 
 
 def scene(i):
-    f, b, r = freqs[i], int(d["band_of"][i]), int(d["row_of"][i])
-    grid, faces, far = band_mesh(b)
-    p = h5[f"band{b}/p"][r].astype(complex)
-    L = 20 * np.log10(np.maximum(np.abs(p) / np.sqrt(2), 1e-12) / 2e-5)
+    view = res.field("p", index=i)
+    f = view.coordinate
+    grid, faces, far = band_mesh(view.mesh)
+    L = lp.spl(np.maximum(np.abs(np.asarray(view.values, complex)), 1e-12))
     top = L[far].max()
     grid["p"] = L
     cut = grid.slice(normal=nrm, origin=o_cut)
@@ -139,7 +137,7 @@ def scene(i):
                                                  non_manifold_edges=False) for m in ms])
     walls_cut = [s.clip(normal=nrm, origin=o_cut) for k, s in faces.items() if k != "ground"]
     walls_full = [s for k, s in faces.items() if k != "ground"]
-    drv_s, _ = driver_surface(drv, q[i], (X0, Y0, 0.0), (0.0, 2 * np.pi), 97, DEFORMATION)
+    drv_s, _ = hp.surface(f, n_theta=97, deformation=DEFORMATION)
     return dict(cut=dict(parts=parts, lines=iso(parts), edges=feat(walls_cut)),
                 full=dict(parts=full, lines=iso(full), edges=feat(walls_full)), drv=drv_s), top, f
 
@@ -189,9 +187,9 @@ for fq in FREQS:
     for a, (name, cam) in zip(axs.ravel(), CAMERAS.items()):
         a.imshow(render(sc, top, cam))
         a.set_title(name, fontsize=10)
-    E = np.array([np.sum(np.abs(q[i, drv.m == m]) ** 2) for m in ORDERS])
+    E = np.array([np.sum(np.abs(hp.q[i, hp.modes.m == m]) ** 2) for m in ORDERS])
     share = "  ".join(f"m{m} {100 * e / E.sum():.0f}%" for m, e in zip(ORDERS, E))
-    fig.suptitle(f"HPNEW labyrinth on a rigid ground — {f:.0f} Hz (line quarter-wave ≈ {float(d['f_quarter_wave']):.0f} Hz), "
+    fig.suptitle(f"HPNEW labyrinth on a rigid ground — {f:.0f} Hz (line quarter-wave ≈ {quarter_wave():.0f} Hz), "
                  f"1 N on the coil.  SPL inside the line, at the mouth and outside: one air domain, one scale "
                  f"(max {top:.0f} dB beyond {100 * NEAR_FIELD:.0f} cm, {RANGE:.0f} dB range, iso-lines every {CONTOUR_DB:.0f} dB; dB re 20 µPa RMS);\ndeformed driver "
                  f"(colour |u|, max 10 % of the diameter), driver kinetic energy {share}.  Cut through the "
@@ -206,5 +204,4 @@ with PdfPages(tmp) as pdf:
         pdf.savefig(fg, dpi=110)
         plt.close(fg)
 os.replace(tmp, target)
-h5.close()
 print(f"✓ {target}")

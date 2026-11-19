@@ -19,7 +19,6 @@ What this produces (in Results/Figures/exterior_3d/)
 import os
 from pathlib import Path
 
-import h5py
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -27,8 +26,11 @@ from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 import pyvista as pv
 
-from loudpy.Studies.Cavity_coupling import CavityModes, DriverModes, driver_surface, cavity_grid, C_AIR, RHO_AIR
-from enclosure import eig_path, X0, Y0, Z_F
+import loudpy as lp
+from loudpy.Studies.Cavity_coupling import CavityModes, driver_surface, cavity_grid
+from enclosure import X0, Y0, Z_F
+
+lp.plot.style.use()                       # loudpy figure style (fonts, colours, SPL in dB RMS)
 
 files = Path("LoudPy_exemples/Coupling_3D/Driver_in_cavity/Results/Files")
 out_dir = Path("LoudPy_exemples/Coupling_3D/Driver_in_cavity/Results/Figures/exterior_3d")
@@ -42,30 +44,26 @@ IMG = (640, 560)
 CAM_V = [(-1.25, 0.45, 0.25), (0.125, 0.22, -0.03), (0.0, 1.0, 0.0)]     # vertical cut, from −x
 CAM_H = [(0.125, 2.2, -0.03), (0.125, 0.0, -0.03), (0.0, 0.0, 1.0)]       # from above, front up
 
-d = np.load(files / "exterior.npz", allow_pickle=True)
-cp = np.load(files / "coupled.npz", allow_pickle=True)
-freqs, q = d["freqs"], d["q"]
+res = lp.load(files / "exterior.h5")
+freqs = res.frequencies
+hp = res.driver("main")
+drv, q, P_cav = hp.modes, hp.q, res.extra("P_cavity")
 cav = CavityModes.load(files / "cavity_modes.h5")
-drv = DriverModes.from_eigen_h5(eig_path, list(d["orders"]), f_max=float(cp["freq"].max()) + 1.0)
-assert len(drv) == q.shape[1]
-S, kappa2, eta = cp["S"], cav.kappa2, float(cp["eta_air"])
-m_of, orders = d["m"], list(d["orders"])
-h5 = h5py.File(files / "exterior_field.h5", "r")
+m_of, orders = drv.m, [int(m) for m in np.unique(drv.m)]
 
 cgrid = cavity_grid(cav)
 c_corner = np.unique(cav.tets[:, :4])
 egrids = {}
 
 
-def ext_grid(b):
-    if b not in egrids:
-        g = h5[f"band{b}"]
-        tets = g["tets"][()]
-        grid = pv.UnstructuredGrid({pv.CellType.TETRA: tets[:, :4]}, g["nodes"][()])
+def ext_grid(mesh):
+    if id(mesh) not in egrids:
+        nodes, tets = mesh.coords, mesh.groups["air"].cells
+        grid = pv.UnstructuredGrid({pv.CellType.TETRA: tets[:, :4]}, nodes)
         corner = np.unique(tets[:, :4])
-        far = corner[np.linalg.norm(g["nodes"][()][corner] - np.array([X0, Y0, Z_F]), axis=1) > NEAR_FIELD]
-        egrids[b] = (grid, far)
-    return egrids[b]
+        far = corner[np.linalg.norm(nodes[corner] - np.array([X0, Y0, Z_F]), axis=1) > NEAR_FIELD]
+        egrids[id(mesh)] = (grid, far)
+    return egrids[id(mesh)]
 
 
 def clip(grid, values, normal, origin):
@@ -91,12 +89,11 @@ UU = dict(scalars="|u|", cmap="viridis", clim=(0, 1), smooth_shading=True)
 
 
 def row(axs, i):
-    f, b, r = freqs[i], int(d["band_of"][i]), int(d["row_of"][i])
-    w, k = 2 * np.pi * f, 2 * np.pi * f / C_AIR
-    grid, e_corner = ext_grid(b)
-    p_ext = h5[f"band{b}/p"][r].astype(complex)
-    Dc = 1.0 / (kappa2 - k * k + 1j * eta * np.sqrt(kappa2) * k)
-    p_cav = cav.psi @ (-RHO_AIR * w ** 2 * Dc * (S.T @ q[i]))
+    view = res.field("p", index=i)
+    f = view.coordinate
+    grid, e_corner = ext_grid(view.mesh)
+    p_ext = np.asarray(view.values, complex)
+    p_cav = cav.psi @ P_cav[i]
     drv_v, ph = driver_surface(drv, q[i], (X0, Y0, 0.0), (-np.pi / 2, np.pi / 2), 37, DEFORMATION)
     drv_h, _ = driver_surface(drv, q[i], (X0, Y0, 0.0), (np.pi, 2 * np.pi), 37, DEFORMATION, ph)
     drv_f, _ = driver_surface(drv, q[i], (0.0, 0.0, 0.0), (0.0, 2 * np.pi), 73, DEFORMATION, ph)
@@ -113,8 +110,8 @@ def row(axs, i):
     E = np.array([np.sum(np.abs(q[i, m_of == m]) ** 2) for m in orders])
     share = "  ".join(f"m{m} {100 * e / E.sum():.0f}%" for m, e in zip(orders, E))
     axs[0].set_title(f"{f:.0f} Hz — vertical cut: outside (beyond {100 * NEAR_FIELD:.0f} cm) max |p| = {e_max:.3g} Pa/N "
-                     f"({20 * np.log10(e_max / 2e-5):.0f} dB), inside {c_max:.3g} Pa/N "
-                     f"({20 * np.log10(c_max / 2e-5):.0f} dB)", fontsize=8)
+                     f"({lp.spl(e_max):.0f} dB RMS), inside {c_max:.3g} Pa/N "
+                     f"({lp.spl(c_max):.0f} dB RMS)", fontsize=8)
     axs[1].set_title(f"horizontal cut at the driver height ({Y0:.2f} m), from above", fontsize=8)
     axs[2].set_title(f"driver, front view\nkinetic energy  {share}", fontsize=8)
 
@@ -142,4 +139,3 @@ for b0 in np.arange(lo, freqs[-1], BAND):
             plt.close(fig)
     os.replace(tmp, out_dir / name)
     print(f"  ✓ {out_dir / name}  ({len(sel)} frequencies)")
-h5.close()

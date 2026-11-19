@@ -44,10 +44,21 @@ RHO_AIR, C_AIR = 1.2, 343.0
 
 @dataclass
 class Cabinet:
+    """
+    What a cabinet builder returns (OCC volume tags):
+      inner         the air inside the cabinet (before the drivers are cut out)
+      cuts          solids removed from the inside air (braces, panels, port tube walls…)
+      outer         the outer envelope of the cabinet (exterior and merged air)
+      openings      solids joining the inside air to the outside (ports, slots; merged air)
+      opening_size  mesh size on the walls around the openings [m] (None: the default sizes);
+                    those faces form the group "openings" (within opening_margin of an opening)
+    """
     inner: int | None = None
     cuts: list = field(default_factory=list)
     outer: int | None = None
     openings: list = field(default_factory=list)
+    opening_size: float | None = None
+    opening_margin: float = 0.005
 
 
 @dataclass
@@ -76,6 +87,11 @@ class _OpenAir:
 
 
 class Scene:
+    """Drivers placed in a 3D cabinet, with the air as cavity modes, exterior FE/DtN, or one merged domain.
+
+        scene = lp.Scene(cabinet, [hp.place("main", at=(x0, y0))])
+        scene.cavity(...) / scene.exterior(...) / scene.merged(...)
+        scene.mesh(folder)"""
     def __init__(self, cabinet, drivers, rho: float = RHO_AIR, c: float = C_AIR):
         """cabinet: callable(occ) → Cabinet;  drivers: PlacedDriver list (Driver.place)."""
         self.cabinet = cabinet
@@ -291,6 +307,8 @@ class Scene:
             mesh_exterior(path, vols[0], self.dtn(), self._frames(), r_f[0] if self._single() else r_f,
                           z_f[0] if self._single() else z_f, o.driver_size, h_far, o.near[0], o.near[1])
         else:
+            boxes = [np.array(occ.getBoundingBox(3, t)).reshape(2, 3) for t in cab.openings]
+            boxes = [(b[0] - cab.opening_margin, b[1] + cab.opening_margin) for b in boxes]
             cuts = [add_driver_cutout(d.driver.rear_cutout, center=d.frame) for d in self.drivers]
             inside = [(3, t) for t in carve_drivers(cab.inner, cuts, extra_cuts=list(cab.cuts))]
             ext = self._exterior_air(occ, cab)
@@ -317,8 +335,14 @@ class Scene:
                 if abs(lo_hi[1, up] - level) < 1e-6 and abs(lo_hi[0, up] - level) < 1e-6:
                     return "ground"
                 j = classify_driver_faces([t], frames, r_f, z_planes, atol=1e-6, extra_planes=z_bafs)[0]
-                return names[j] if j >= 0 else "walls"
+                if j >= 0:
+                    return names[j]
+                if cab.opening_size and any(np.all(lo_hi[0] >= lo) and np.all(lo_hi[1] <= hi) for lo, hi in boxes):
+                    return "openings"
+                return "walls"
             refine = {n: (o.driver_size, o.near[0], o.near[1]) for n in names}
+            if cab.opening_size:
+                refine["openings"] = (cab.opening_size, o.near[0], o.near[1])
             mesh_volume(path, vols[0], classify, refine, h_far)
         g.clear()
 

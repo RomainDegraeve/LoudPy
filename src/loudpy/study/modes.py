@@ -22,6 +22,10 @@ PHYSICS = ("structure", "coupled", "acoustic")
 
 
 class Modes(Study):
+    """Eigenmodes of a Model (physics "structure", "acoustic" or "coupled") or of an lp.Scene
+    (coupled driver + cavity modes).
+
+        modes = lp.Modes(model).solve(f_max=20000)"""
     accepts_scene = True
 
     def __init__(self, model, physics: str = "structure"):

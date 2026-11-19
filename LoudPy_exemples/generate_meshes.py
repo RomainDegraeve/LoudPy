@@ -21,9 +21,9 @@ EXAMPLES = [
     "Eigen_study/Meca/Running_script.py",
     "Eigen_study/Fourier/Running_script.py",
     "Eigen_study/FSI_DtN/Running_script.py",
-    "Frequency_study/Meca/Running_scrip.py",
-    "Frequency_study/FSI/Running_scrip.py",
-    "Frequency_study/FSI_elec/Running_scrip.py",
+    "Frequency_study/Meca/Running_script.py",
+    "Frequency_study/FSI/Running_script.py",
+    "Frequency_study/FSI_elec/Running_script.py",
     "Time_study/Multitone/Running_script.py",
 ]
 

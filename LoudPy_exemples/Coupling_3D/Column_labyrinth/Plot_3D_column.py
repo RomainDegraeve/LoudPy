@@ -18,7 +18,6 @@ What this produces (in Results/Figures/)
 import os
 from pathlib import Path
 
-import h5py
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -26,9 +25,10 @@ from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 import pyvista as pv
 
-from loudpy.Studies.Cavity_coupling import DriverModes, MultiDriver
-from column import (eig_path, X0, Y0S, Z_F, Z_BACK, W_IN as W, H_IN as H, WALL_T, CENTERS, NAMES,
-                    ORDERS, DRV_F_MAX)
+import loudpy as lp
+from column import X0, Y0S, Z_F, Z_BACK, W_IN as W, H_IN as H, WALL_T, NAMES, quarter_wave
+
+lp.plot.style.use()                       # loudpy figure style (fonts, colours, SPL in dB RMS)
 
 files = Path("LoudPy_exemples/Coupling_3D/Column_labyrinth/Results/Files")
 out_dir = Path("LoudPy_exemples/Coupling_3D/Column_labyrinth/Results/Figures")
@@ -38,13 +38,9 @@ DEFORMATION, NEAR_FIELD, RANGE = 0.10, 0.08, 50.0
 CONTOUR_DB = 3.0                              # iso-SPL lines every CONTOUR_DB [dB]
 IMG = (900, 900)
 
-d = np.load(files / "column.npz", allow_pickle=True)
-freqs, n_s = d["freqs"], int(d["n_s"])
-q = d["y"][:, :n_s]
-drivers = MultiDriver(DriverModes.from_eigen_h5(eig_path, ORDERS, f_max=DRV_F_MAX), CENTERS, names=NAMES)
-assert len(drivers) == n_s, "driver modes changed since Running_column.py"
-drv = drivers.modes[0]
-h5 = h5py.File(files / "column_field.h5", "r", locking=False)
+res = lp.load(files / "column.h5")
+freqs = res.frequencies
+drivers = [res.driver(n) for n in NAMES]
 
 nrm = np.array([-1.0, 0.0, 0.0])                    # cut x = X0, cameras on the −x side
 o_cut = np.array([X0, Y0S[1], 0.0])
@@ -81,34 +77,33 @@ OUTLINE = pv.merge([dashed(a, b) for a, b in _edges])
 meshes = {}
 
 
-def band_mesh(b):
-    if b not in meshes:
-        g = h5[f"band{b}"]
-        nodes, tets = g["nodes"][()], g["tets"][()]
+def band_mesh(mesh):
+    """pyvista grid, wall / ground surfaces and far nodes of a band mesh (cached)."""
+    if id(mesh) not in meshes:
+        nodes, tets = mesh.coords, mesh.groups["air"].cells
         grid = pv.UnstructuredGrid({pv.CellType.TETRA: tets[:, _SUB_TET].reshape(-1, 4)}, nodes)
-        faces = {k: surf(nodes, g[f"faces/{k}"][()]) for k in ("ground", "walls")
-                 if f"faces/{k}" in g and len(g[f"faces/{k}"])}
+        faces = {k: surf(nodes, mesh.groups[k].cells) for k in ("ground", "walls") if k in mesh.groups}
         corner = np.unique(tets[:, :4])
         dist = np.min([np.linalg.norm(nodes[corner] - np.array([X0, y0, Z_F]), axis=1) for y0 in Y0S], axis=0)
-        meshes[b] = (grid, faces, corner[dist > NEAR_FIELD])
-    return meshes[b]
+        meshes[id(mesh)] = (grid, faces, corner[dist > NEAR_FIELD])
+    return meshes[id(mesh)]
 
 
-def driver_surfaces(qi):
+def driver_surfaces(f):
     """The three deformed drivers at one instant and one scale (that of the largest displacement)."""
-    first = [drivers.surface(j, qi, n_theta=97, deformation=DEFORMATION) for j in range(3)]
+    first = [d.surface(f, n_theta=97, deformation=DEFORMATION) for d in drivers]
     j_big = int(np.argmax([s["|u| [m]"].max() for s, _ in first]))
     ph = first[j_big][1]
-    u_max = max(drivers.surface(j, qi, n_theta=13, phase=ph)[0]["|u| [m]"].max() for j in range(3))
-    return [drivers.surface(j, qi, n_theta=97, deformation=DEFORMATION, phase=ph, u_max=u_max)[0]
-            for j in range(3)]
+    u_max = max(d.surface(f, n_theta=13, phase=ph)[0]["|u| [m]"].max() for d in drivers)
+    return [d.surface(f, n_theta=97, deformation=DEFORMATION, phase=ph, u_max=u_max)[0] for d in drivers]
 
 
 def scene(i):
-    f, b, r = freqs[i], int(d["band_of"][i]), int(d["row_of"][i])
-    grid, faces, far = band_mesh(b)
-    p = h5[f"band{b}/p"][r].astype(complex)
-    L = 20 * np.log10(np.maximum(np.abs(p) / np.sqrt(2), 1e-12) / 2e-5)
+    view = res.field("p", index=i)
+    f = view.coordinate
+    grid, faces, far = band_mesh(view.mesh)
+    p = np.asarray(view.values, complex)
+    L = lp.spl(np.maximum(np.abs(p), 1e-12))
     top = L[far].max()
     grid["p"] = L
     cut = grid.slice(normal=nrm, origin=o_cut)
@@ -131,7 +126,7 @@ def scene(i):
     walls_full = [s for k, s in faces.items() if k != "ground"]
     return dict(cut=dict(parts=parts, lines=iso(parts), edges=feat(walls_cut)),
                 full=dict(parts=full, lines=iso(full), edges=feat(walls_full)),
-                drv=driver_surfaces(q[i])), top, f
+                drv=driver_surfaces(f)), top, f
 
 
 BASE = pv.Disc(center=(X0, -5e-4, -0.08), inner=0.0, outer=0.8, normal=(0, 1, 0), c_res=90)
@@ -183,11 +178,11 @@ for fq in FREQS:
         a.imshow(render(sc, top, cam))
         a.set_title(name, fontsize=11)
     shares = []
-    for name, qj in zip(NAMES, drivers.split(q[i])):
-        E = np.abs(qj) ** 2
-        shares.append(f"{name} {100 * E[drv.m >= 1].sum() / E.sum():.2g}%")
+    for name, d in zip(NAMES, drivers):
+        E = np.abs(d.q[i]) ** 2
+        shares.append(f"{name} {100 * E[d.modes.m >= 1].sum() / E.sum():.2g}%")
     fig.suptitle(f"Column, 3 × HPNEW + folded line on a rigid ground — {f:.0f} Hz (line quarter-wave ≈ "
-                 f"{float(d['f_quarter_wave']):.0f} Hz), drivers in phase.\nSPL inside the line, at the mouth and "
+                 f"{quarter_wave():.0f} Hz), drivers in phase.\nSPL inside the line, at the mouth and "
                  f"outside, one air domain, one scale (max {top:.0f} dB beyond {100 * NEAR_FIELD:.0f} cm of the drivers, "
                  f"{RANGE:.0f} dB range, iso-lines every {CONTOUR_DB:.0f} dB).\nDrivers at one instant and one scale; "
                  f"m ≥ 1 share of each driver's kinetic energy: {', '.join(shares)}. Rigid walls, no stuffing.",
@@ -202,5 +197,4 @@ with PdfPages(tmp) as pdf:
         pdf.savefig(fg, dpi=110)
         plt.close(fg)
 os.replace(tmp, target)
-h5.close()
 print(f"✓ {target}")

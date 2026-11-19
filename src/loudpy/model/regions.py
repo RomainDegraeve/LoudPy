@@ -25,6 +25,10 @@ class Region:
 
 @dataclass
 class Solid(Region):
+    """Elastic structure (axisymmetric solid) on the physical groups selected by `name`.
+
+    material: a name of the material library or an lp.Material; damping: Rayleigh (default),
+    Hysteretic or Undamped; mesh_size [m]; rho, E, nu…: overrides of the material properties."""
     material: str | Material
     damping: Damping = field(default_factory=Rayleigh)
     mesh_size: float = 0.002            # element size [m]
@@ -35,6 +39,7 @@ class Solid(Region):
 
 @dataclass
 class Air(Region):
+    """Acoustic fluid (linear acoustics) on the groups selected by `name`; rho, c override the material."""
     material: str | Material = "Air"
     mesh_size: float = 0.01
     rho: float | None = None

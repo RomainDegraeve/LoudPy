@@ -1,6 +1,9 @@
 """
 enclosure.py — shared definition of the demo enclosure, its driver and the ground
-(imported by Build_cavity.py, Build_exterior.py and the running / plotting scripts).
+(imported by the running / plotting scripts).
+
+Builders for lp.Scene: sealed_cabinet (inside air with the brace, outer box = the inside up to the
+front face), vented_cabinet (walls WALL_T thick, port through the front face) and driver().
 
 Frame: driver axis along z (front +z), y vertical (the box stands on the ground y = 0),
 x across. Rear baffle plane z = Z_B (inside), front face of the box z = Z_F.
@@ -14,7 +17,8 @@ eig_path = "LoudPy_exemples/Eigen_study/Fourier/Results/Files/eigen_fourier.h5"
 Z_B, Z_F = 0.031, 0.032                       # rear baffle plane, front face of the box [m]
 REAR_CURVES, REAR_START = [14, 7, 8, 33, 32], (0.05435, Z_B)        # wet rear profile
 FRONT_CURVES, FRONT_START = [5, 4, 3, 2, 1, 113, 22, 21, 20], (0.05735, Z_F)  # wet front profile
-COIL_CURVE = 37
+ORDERS = [0, 1, 2, 3]                         # azimuthal orders of the driver modes
+DRV_F_MAX = 10000.0                           # driver modes kept [Hz]
 
 # ── enclosure ──────────────────────────────────────────────────────────────────
 W, H = 0.20, 0.30                             # width (x), height (y) [m]
@@ -66,3 +70,86 @@ def port_tuning(volume, c=343.0):
     """Helmholtz estimate f_b = c/2π √(S / (V L')), L' = L + 0.85a (flanged) + 0.6a (unflanged)."""
     S = np.pi * PORT_A ** 2
     return c / (2 * np.pi) * np.sqrt(S / (volume * (PORT_L + 1.45 * PORT_A)))
+
+
+# ── lp.Scene builders ──────────────────────────────────────────────────────────
+def add_brace(occ):
+    return occ.addBox(0.0, BRACE_Y, back_z(BRACE_Y + BRACE_T) - 0.01, W, BRACE_T, BRACE_DEPTH + 0.01)
+
+
+def sealed_cabinet(occ):
+    """Sealed box: the inside (slanted back, brace) and the box up to its front face (no wall thickness)."""
+    import loudpy as lp
+    return lp.Cabinet(inner=add_box(occ, Z_B), cuts=[add_brace(occ)], outer=add_box(occ, Z_F))
+
+
+def vented_cabinet(occ, port_size=0.005):
+    """Vented box: walls WALL_T thick, brace, port tube (wall PORT_T inside the box) through the front."""
+    import loudpy as lp
+    z_in = Z_F - PORT_L
+    tube_out = occ.addCylinder(PORT_X, PORT_Y, z_in, 0, 0, Z_B - z_in, PORT_A + PORT_T)
+    tube_in = occ.addCylinder(PORT_X, PORT_Y, z_in, 0, 0, Z_B - z_in, PORT_A)
+    wall, _ = occ.cut([(3, tube_out)], [(3, tube_in)])
+    port = occ.addCylinder(PORT_X, PORT_Y, z_in, 0, 0, PORT_L, PORT_A)
+    return lp.Cabinet(inner=add_box(occ, Z_B), cuts=[add_brace(occ)] + [t for d, t in wall if d == 3],
+                      outer=add_outer_box(occ), openings=[port], opening_size=port_size)
+
+
+def driver():
+    """The HPNEW driver (its azimuthal-order modes, ../../Eigen_study/Fourier) and its wet profiles."""
+    import loudpy as lp
+    return lp.Driver.from_modes(eig_path, ORDERS, f_max=DRV_F_MAX, geometry=geo_path,
+                                rear=lp.Profile(REAR_CURVES, REAR_START),
+                                front=lp.Profile(FRONT_CURVES, FRONT_START))
+
+
+FILES = "LoudPy_exemples/Coupling_3D/Driver_in_cavity/Results/Files"
+CAV_F_MAX, ETA_AIR = 6000.0, 0.02             # cavity modes kept [Hz], their loss factor
+
+
+def sealed_scene(hp=None):
+    """The driver in the sealed box, front in vacuo (cavity modes): configured and meshed."""
+    import loudpy as lp
+    hp = hp or driver()
+    scene = lp.Scene(sealed_cabinet, [hp.place("main", at=(X0, Y0))])
+    scene.cavity(mesh_size=(0.003, 0.012), f_max=CAV_F_MAX, eta=ETA_AIR, file="cavity.msh")
+    scene.mesh(FILES)
+    return scene
+
+
+BANDS = [(20.0, 1000.0), (1000.0, 2000.0), (2000.0, 3000.0)]   # one exterior mesh each [Hz]
+
+
+def exterior_scene(hp=None):
+    """The sealed box on a rigid ground: cavity modes (rear) + exterior FE/DtN (front), meshed."""
+    import loudpy as lp
+    hp = hp or driver()
+    scene = lp.Scene(sealed_cabinet, [hp.place("main", at=(X0, Y0))])
+    scene.cavity(mesh_size=(0.003, 0.012), f_max=CAV_F_MAX, eta=ETA_AIR, file="cavity.msh")
+    scene.exterior(ground="y", bands=BANDS, points_per_wavelength=4.5, max_size=0.06, driver_size=0.003,
+                   margin=0.05)
+    scene.mesh(FILES)
+    return scene
+
+
+def vented_scene(hp=None):
+    """The vented box on a rigid ground: ONE air domain (inside + port + outside), meshed."""
+    import loudpy as lp
+    hp = hp or driver()
+    scene = lp.Scene(vented_cabinet, [hp.place("main", at=(X0, Y0))])
+    scene.merged(ground="y", bands=BANDS, points_per_wavelength=4.0, max_size=0.06, driver_size=0.003,
+                 margin=0.05, file="vented_merged_{f_hi:.0f}Hz.msh")
+    scene.mesh(FILES)
+    return scene
+
+
+def vented_volume():
+    """Air volume inside the vented box (brace, port tube and port air removed) [m³]."""
+    from loudpy.geometry import gmsh_session
+    with gmsh_session() as g:
+        g.model.add("volume")
+        occ = g.model.occ
+        cab = vented_cabinet(occ)
+        vol, _ = occ.cut([(3, cab.inner)], [(3, t) for t in cab.cuts + cab.openings])
+        occ.synchronize()
+        return sum(occ.getMass(d, t) for d, t in vol if d == 3)

@@ -15,8 +15,8 @@ from pathlib import Path
 import numpy as np
 
 import loudpy as lp
-from loudpy import (DomainSpecMecaRayleigh, DomainSpecAcou, DomainSpecPML, InterfaceSpecClamped,
-                    InterfaceSpecForced, InterfaceSpecAcouMeca)
+from loudpy.SimObjects import (DomainSpecMecaRayleigh, DomainSpecAcou, DomainSpecPML, InterfaceSpecClamped,
+                              InterfaceSpecForced, InterfaceSpecAcouMeca)
 from loudpy.Studies import Problem, EigenStudy, FreqStudy, TimeStudy
 
 SPEAKER_GEO = "LoudPy_exemples/Geometries/Loudspeaker/HPNEW-Sketch.geo"

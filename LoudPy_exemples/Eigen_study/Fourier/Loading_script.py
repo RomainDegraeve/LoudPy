@@ -17,6 +17,8 @@ import numpy as np
 
 import loudpy as lp
 
+lp.plot.style.use()                       # loudpy figure style (fonts, colours, SPL in dB RMS)
+
 in_path = "LoudPy_exemples/Eigen_study/Fourier/Results/Files/eigen_fourier.h5"
 out_dir = Path("LoudPy_exemples/Eigen_study/Fourier/Results/Figures")
 out_dir.mkdir(parents=True, exist_ok=True)

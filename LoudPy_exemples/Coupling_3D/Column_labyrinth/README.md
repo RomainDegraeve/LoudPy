@@ -1,6 +1,6 @@
 # Coupling_3D/Column_labyrinth — three HPNEW drivers in a column with a folded transmission line
 
-A column loudspeaker on a rigid ground: three identical drivers stacked on the front, loaded at the rear by a folded transmission line (labyrinth). It is the multi-driver version of `../Labyrinth`, built with `MultiDriver` (`loudpy.Studies.Cavity_coupling`).
+A column loudspeaker on a rigid ground: three identical drivers stacked on the front, loaded at the rear by a folded transmission line (labyrinth). It is the multi-driver version of `../Labyrinth`, built with `lp.Scene` (one `lp.Driver` placed three times).
 
 - **Air:** one domain, made of the inside of the line, its mouth and the exterior half-space. The exterior uses 3D quadratic FE with the exact half-space DtN on a hemisphere.
 - **Drivers:** the same Fourier modes (m = 0…3, cos and sin families) are used three times, each placed on its own axis. Their modal coordinates are stacked as top, middle, bottom. Each driver is wet on both faces by the same pressure field, and the drivers interact through it. No extra coupling term is needed.
@@ -18,30 +18,32 @@ A column loudspeaker on a rigid ground: three identical drivers stacked on the f
 | tuning | quarter-wave estimate 42 Hz |
 | mouth | back wall, at ground level, 14 × 5 cm |
 
-## How the drivers are set up (the multi-driver API)
+## How the scene is set up (`lp.Driver` + `lp.Scene`)
 ```python
-drivers = MultiDriver(drv, CENTERS, names=NAMES)          # one DriverModes, three axes
-ext = ExteriorFE(msh, dtn, f_max, front="interface_driver")   # reads interface_driver_0, _1, _2
-ext.couple_driver(drivers, [(front, rear)] * 3)           # both faces of each driver
-F = drivers.coil_forces(coil_nodes, [1, 1, 1])            # Σ a_j F_j
-q_top, q_mid, q_bot = drivers.split(q)                    # per-driver modal amplitudes
-drivers.surface(j, q, phase=ph, u_max=u)                  # driver j in its frame, common scale
+hp = lp.Driver.from_modes(eig_path, [0, 1, 2, 3], f_max=6000, geometry=geo_path,
+                          rear=lp.Profile(REAR_CURVES, REAR_START),
+                          front=lp.Profile(FRONT_CURVES, FRONT_START))
+scene = lp.Scene(cabinet, [hp.place(n, at=c) for n, c in zip(NAMES, CENTERS)])
+scene.merged(ground="y", bands=BANDS, points_per_wavelength=4, max_size=0.07, driver_size=0.004)
+scene.mesh(files)                                   # meshes built once, reused afterwards
+res = lp.FrequencyResponse(scene, drive={"top": lp.Force(1), "middle": lp.Force(1),
+                                         "bottom": lp.Force(1)}).solve(FREQS, store=files / "column.h5")
+res = lp.load(files / "column.h5")                  # SceneResults
+res.far_field(points); res.driver("top").excursion(); res.field("p", index=i)
 ```
-In the build, the air around the three drivers is made with `carve_drivers`. Each wet surface is its own physical group, `interface_driver_<j>`, so every surface point is mapped to its own driver.
+`cabinet(occ)` (in `column.py`) is a builder: it adds the OCC solids and returns an `lp.Cabinet(inner, cuts, outer, openings)`. The air around the three drivers is carved by the scene; each wet surface is its own physical group, so every surface point is mapped to its own driver.
 
 ## Files
 | file | does |
 |---|---|
 | `column.py` | Parameters, the folded-line geometry, and the line-length and tuning estimates. |
-| `Build_column.py` | Writes one air mesh per frequency band (`column_<f>Hz.msh`) plus `column.json`. |
-| `Running_column.py` | Coupled sweep, 20 Hz to `F_MAX`. Steps are 2 Hz below 300 Hz, then 10 Hz. Writes `column.npz` (saved after every band) and `column_field.h5` (flushed after every frequency). `python3 Running_column.py 40,100,300` runs a quick test into `column_test.*`. |
+| `Running_column.py` | Coupled sweep, 20 Hz to `F_MAX`. Steps are 2 Hz below 300 Hz, then 10 Hz. Builds the air mesh of each band on the first run (`air_<f>Hz.msh`), then writes `column.h5` (loudpy result format 2; the pressure field is streamed to the file frequency by frequency). `python3 Running_column.py 40,100,300` runs a quick test into `column_test.h5`. |
 | `Loading_column.py` | `column_response.pdf`: SPL at 1 m (front axis, 30° up and down, behind at the mouth), the excursion of each driver, vertical and horizontal directivity maps and polars, and the m ≥ 1 share and excursion phase of each driver. |
 | `Plot_3D_column.py` | `column_views_3d.pdf`: the column cut through the driver axes, showing the line in section. Shows SPL inside and outside with iso-lines, and the three deformed drivers at one instant and one scale. |
 
 ## Running
 ```bash
 python3 LoudPy_exemples/Eigen_study/Fourier/Running_script.py
-python3 LoudPy_exemples/Coupling_3D/Column_labyrinth/Build_column.py
 python3 LoudPy_exemples/Coupling_3D/Column_labyrinth/Running_column.py
 python3 LoudPy_exemples/Coupling_3D/Column_labyrinth/Loading_column.py
 python3 LoudPy_exemples/Coupling_3D/Column_labyrinth/Plot_3D_column.py

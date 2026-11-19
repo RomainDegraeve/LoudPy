@@ -38,6 +38,7 @@ class Profile:
 
 
 class Driver:
+    """An axisymmetric driver described by its modes (lp.Driver.from_modes), placed in 3D scenes with .place()."""
     def __init__(self, modes, rear, front, coil_nodes, name: str = "driver", source=None):
         """
         modes      : DriverModes (meridian mesh, real mass-normalised modes, both families)

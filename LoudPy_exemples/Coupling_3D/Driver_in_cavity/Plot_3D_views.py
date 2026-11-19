@@ -20,7 +20,6 @@ What this produces (in Results/Figures/)
 import os
 from pathlib import Path
 
-import h5py
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -28,9 +27,11 @@ from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 import pyvista as pv
 
-from loudpy.Studies.Cavity_coupling import (CavityModes, DriverModes, driver_surface,
-                                            C_AIR, RHO_AIR)
-from enclosure import eig_path, X0, Y0, Z_F, H, back_z
+import loudpy as lp
+from loudpy.Studies.Cavity_coupling import CavityModes
+from enclosure import X0, Y0, Z_F, H, back_z
+
+lp.plot.style.use()                       # loudpy figure style (fonts, colours, SPL in dB RMS)
 
 files = Path("LoudPy_exemples/Coupling_3D/Driver_in_cavity/Results/Files")
 out_dir = Path("LoudPy_exemples/Coupling_3D/Driver_in_cavity/Results/Figures")
@@ -50,13 +51,11 @@ CAMERAS = {                                   # position, view up
     "close-up on the driver (cut side)": ((-0.30, 0.36, 0.30), (0, 1, 0), (X0, Y0, 0.0), 30),
 }
 
-d = np.load(files / "exterior.npz", allow_pickle=True)
-cp = np.load(files / "coupled.npz", allow_pickle=True)
-freqs, q = d["freqs"], d["q"]
+res = lp.load(files / "exterior.h5")
+freqs = res.frequencies
+hp = res.driver("main")
+P_cav = res.extra("P_cavity")
 cav = CavityModes.load(files / "cavity_modes.h5")
-drv = DriverModes.from_eigen_h5(eig_path, list(d["orders"]), f_max=float(cp["freq"].max()) + 1.0)
-assert len(drv) == q.shape[1]
-h5 = h5py.File(files / "exterior_field.h5", "r")
 
 # P2 fields drawn on linear sub-elements through the mid-edge nodes (smooth colours):
 # TET10 → 8 tetrahedra, TRI6 → 4 triangles (gmsh node order)
@@ -104,23 +103,21 @@ floor = cwalls.extract_cells(np.where(_cc[:, 1] < WALL_OFFSET + 0.004)[0]).extra
 
 
 def scene(i):
-    f, b, r = freqs[i], int(d["band_of"][i]), int(d["row_of"][i])
-    w, k = 2 * np.pi * f, 2 * np.pi * f / C_AIR
-    g = h5[f"band{b}"]
-    nodes, tets = g["nodes"][()], g["tets"][()]
-    p_ext = g["p"][r].astype(complex)
-    Dc = 1.0 / (cav.kappa2 - k * k + 1j * float(cp["eta_air"]) * np.sqrt(cav.kappa2) * k)
-    p_cav = cav.psi @ (-RHO_AIR * w ** 2 * Dc * (cp["S"].T @ q[i]))
-    drv_s, ph = driver_surface(drv, q[i], (X0, Y0, 0.0), (0.0, 2 * np.pi), 97, DEFORMATION)
-    spl = lambda p: 20 * np.log10(np.maximum(np.abs(p) / np.sqrt(2), 1e-12) / 2e-5)   # RMS, dB re 20 µPa
+    view = res.field("p", index=i)
+    f, mesh = view.coordinate, view.mesh
+    nodes, tets = mesh.coords, mesh.groups["air"].cells
+    p_ext = np.asarray(view.values, complex)
+    p_cav = cav.psi @ P_cav[i]
+    drv_s, ph = hp.surface(f, n_theta=97, deformation=DEFORMATION)
+    spl = lambda p: lp.spl(np.maximum(np.abs(p), 1e-12))                       # RMS, dB re 20 µPa
     pe, pc = spl(p_ext), spl(p_cav)
     corner = np.unique(tets[:, :4])
     far = corner[np.linalg.norm(nodes[corner] - np.array([X0, Y0, Z_F]), axis=1) > NEAR_FIELD]
     e_max, c_max = pe[far].max(), pc[c_corner].max()
     egrid = p2_grid(nodes, tets)
     egrid["p"] = pe
-    ground = surf(nodes, g["faces/ground"][()])
-    walls = surf(nodes, g["faces/walls"][()])
+    ground = surf(nodes, mesh.groups["ground"].cells)
+    walls = surf(nodes, mesh.groups["walls"].cells)
     for s in (ground, walls):
         s["p"] = pe
     cgrid["p"] = pc
@@ -166,8 +163,9 @@ for fq in FREQS:
     for a, (name, cam) in zip(axs.ravel(), CAMERAS.items()):
         a.imshow(render(parts, e_max, c_max, cam))
         a.set_title(name, fontsize=10)
-    E = np.array([np.sum(np.abs(q[i, d["m"] == m]) ** 2) for m in d["orders"]])
-    share = "  ".join(f"m{m} {100 * e / E.sum():.0f}%" for m, e in zip(d["orders"], E))
+    orders = [int(m) for m in np.unique(hp.modes.m)]
+    E = np.array([np.sum(np.abs(hp.q[i, hp.modes.m == m]) ** 2) for m in orders])
+    share = "  ".join(f"m{m} {100 * e / E.sum():.0f}%" for m, e in zip(orders, E))
     fig.suptitle(f"HPNEW in its enclosure on a rigid ground — {f:.0f} Hz, 1 N on the coil.  SPL inside "
                  f"(max {c_max:.0f} dB) and outside (max {e_max:.0f} dB beyond {100 * NEAR_FIELD:.0f} cm), same "
                  f"scale, dB re 20 µPa RMS;\ndeformed driver (colour |u|, max deformation 10 % of the diameter), "
@@ -183,5 +181,4 @@ with PdfPages(tmp) as pdf:
         pdf.savefig(fig, dpi=110)
         plt.close(fig)
 os.replace(tmp, target)
-h5.close()
 print(f"✓ {target}")

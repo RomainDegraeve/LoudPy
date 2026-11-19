@@ -19,6 +19,9 @@ from loudpy.study.base import Study
 
 
 class Transient(Study):
+    """Time response (generalised-alpha, Newton–Raphson for the nonlinear coil) to a Force signal.
+
+        res = lp.Transient(model, drive=lp.Force(signal, fs=48000)).solve(duration=0.1)"""
     def __init__(self, model, drive: Force, nonlinear: bool = True, rho_inf: float = 0.8,
                  nr_tol: float = 1e-5, nr_max_iter: int = 10):
         super().__init__(model)

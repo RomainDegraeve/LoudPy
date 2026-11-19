@@ -2,7 +2,7 @@
 Plot_3D_coupled.py — coupled acoustic + mechanical 3D views every DF Hz (Running_script.py first).
 
 At each frequency (1 N on the voice coil) the forced response of the coupled system is
-recomputed from the saved modal data, and one row shows:
+recomputed on a regular grid (fast: the cavity mesh and modes are cached), and one row shows:
   - left : the enclosure cut through the driver axis, coloured by the acoustic pressure, with the
            deformed driver in place (half of it, on the same side as the cut);
   - right: the deformed driver seen from the front, along the axis, the whole revolution —
@@ -24,11 +24,13 @@ from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 import pyvista as pv
 
-from loudpy.Studies.Cavity_coupling import (CavityModes, DriverModes, solve_forced, driver_surface,
-                                            cavity_grid, RHO_AIR, C_AIR)
+import loudpy as lp
+from loudpy.Studies.Cavity_coupling import CavityModes, cavity_grid, driver_surface
+from enclosure import X0, sealed_scene
+
+lp.plot.style.use()                       # loudpy figure style (fonts, colours, SPL in dB RMS)
 
 here = Path("LoudPy_exemples/Coupling_3D/Driver_in_cavity")
-eig_path = "LoudPy_exemples/Eigen_study/Fourier/Results/Files/eigen_fourier.h5"
 out_dir = here / "Results/Figures/coupled_3d"
 out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -40,15 +42,12 @@ IMG_L, IMG_R = (820, 620), (520, 520)
 CAM = [(-0.45, 0.05, 0.25), (0.125, 0.15, -0.04), (0.0, 0.0, 1.0)]   # inside the enclosure
 
 # ── data ───────────────────────────────────────────────────────────────────────
-d = np.load(here / "Results/Files/coupled.npz", allow_pickle=True)
-cav = CavityModes.load(here / "Results/Files/cavity_modes.h5")
-drv = DriverModes.from_eigen_h5(eig_path, list(d["orders"]), f_max=float(d["freq"].max()) + 1.0)
-assert len(drv) == len(d["F"]), "driver modes changed since Running_script.py"
-m_of, orders = d["m"], list(d["orders"])
-x0, y0, z_b = d["center"]
 freqs = np.arange(F_START, F_END + 0.5 * DF, DF)
-q, P = solve_forced(freqs, d["F"], 2 * np.pi * d["freq"], d["zeta"], d["S"], d["R"], cav.kappa2,
-                    RHO_AIR, C_AIR, float(d["eta_air"]))
+res = lp.FrequencyResponse(sealed_scene(), drive=lp.Force(1.0)).solve(freqs, log=lambda *a, **k: None)
+cav = CavityModes.load(here / "Results/Files/cavity_modes.h5")
+hp = res.driver("main")
+drv, q, P = hp.modes, hp.q, res.extra("P_cavity")
+m_of, orders = drv.m, [int(m) for m in np.unique(drv.m)]
 w = 2 * np.pi * freqs
 E = np.array([[0.5 * wi ** 2 * np.sum(np.abs(qi[m_of == m]) ** 2) for m in orders] for wi, qi in zip(w, q)])
 print(f"{len(freqs)} frequencies, {len(cav.kappa2)} enclosure modes, {len(drv)} driver modes")
@@ -60,7 +59,7 @@ corner = np.unique(cav.tets[:, :4])                  # grid points carrying a va
 def cut_pressure(pn):
     """Pressure on the cut through the driver axis: set on the grid, then clipped (linear interp.)."""
     grid["p"] = pn
-    return grid.clip(normal="-x", origin=(x0, 0.0, 0.0)).extract_surface()
+    return grid.clip(normal="-x", origin=(X0, 0.0, 0.0)).extract_surface()
 
 
 def render(meshes, cam, size):
@@ -77,7 +76,7 @@ def render(meshes, cam, size):
 
 
 def row(axl, axr, i):
-    drv_half, ph = driver_surface(drv, q[i], (x0, y0, 0.0), (-np.pi / 2, np.pi / 2), 37, DEFORMATION)
+    drv_half, ph = hp.surface(freqs[i], theta=(-np.pi / 2, np.pi / 2), n_theta=37, deformation=DEFORMATION)
     drv_full, _ = driver_surface(drv, q[i], (0.0, 0.0, 0.0), (0.0, 2 * np.pi), 73, DEFORMATION, ph)
     p_nodes = cav.psi @ P[i]
     pmax = max(np.abs(p_nodes[corner]).max(), 1e-30)
@@ -90,7 +89,7 @@ def row(axl, axr, i):
     umax = np.abs(q[i] @ drv.U.reshape(len(drv), -1)).max()
     share = "  ".join(f"m{m} {100 * E[i, k] / E[i].sum():.0f}%" for k, m in enumerate(orders))
     axl.set_title(f"{freqs[i]:.0f} Hz — pressure in the enclosure (max |p| = {pmax:.3g} Pa/N, "
-                  f"{20 * np.log10(pmax / 2e-5):.0f} dB) + driver", fontsize=9)
+                  f"{lp.spl(pmax):.0f} dB RMS) + driver", fontsize=9)
     axr.set_title(f"driver, front view (max |u| ≈ {umax:.2g} m/N)\nkinetic energy  {share}",
                   fontsize=8)
 

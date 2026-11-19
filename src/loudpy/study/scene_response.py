@@ -118,6 +118,7 @@ def solve(study, freqs, store=None, chunk_hz=50.0, rtol=1e-7, log=print):
         log(f"  cavity: {len(cav.nodes)} nodes, {len(kappa2)} modes, wet areas "
             f"{np.round(np.array(cpl.wet_areas) * 1e4, 1)} cm² ({time.time() - t0:.0f} s)")
     attachments = _attachments(scene, drivers, att_extra)
+    attachments["drive"] = dict(F=np.asarray(F, complex))                # modal force, stacked drivers
     if cav is not None:
         attachments["cavity"] = dict(nodes=cav.nodes, psi=cav.psi.astype(np.float32), kappa2=cav.kappa2,
                                      meta=dict(f_max=scene._cavity.f_max, volume=float(cav.volume)))

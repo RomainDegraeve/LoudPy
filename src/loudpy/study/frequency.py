@@ -63,6 +63,10 @@ class PerWavelength:
 
 
 class FrequencyResponse(Study):
+    """Harmonic response of a Model (lp.Force or lp.Voltage on the coil) or of an lp.Scene
+    (lp.Force, or {driver name: lp.Force}).
+
+        res = lp.FrequencyResponse(model, drive=lp.Force(1.0)).solve(np.geomspace(20, 20000, 200))"""
     accepts_scene = True
 
     def __init__(self, model, drive=None, coupled: bool | None = None, reuse_factorization: bool = True):

@@ -65,7 +65,7 @@ class FieldView:
     extra: dict = dc_field(default_factory=dict)
 
     def magnitude(self) -> np.ndarray:
-        """|value| per node (Euclidean norm of the moduli for a vector field)."""
+        """Modulus per node (Euclidean norm of the moduli for a vector field)."""
         v = np.abs(self.values)
         return v if v.ndim == 1 else np.linalg.norm(v, axis=1)
 
@@ -100,6 +100,8 @@ def spl(p, rms: bool = True) -> np.ndarray:
 
 
 class Results:
+    """Results of a study: blocks (one per mesh / mode set) of fields over entries (frequencies,
+    modes, times), per-entry quantities (`extra`), metadata and attachments. Read with lp.load."""
     kind = "results"
     coordinate = "value"
 

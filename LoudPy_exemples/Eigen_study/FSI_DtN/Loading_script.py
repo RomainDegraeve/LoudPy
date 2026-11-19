@@ -21,6 +21,8 @@ import numpy as np
 
 import loudpy as lp
 
+lp.plot.style.use()                       # loudpy figure style (fonts, colours, SPL in dB RMS)
+
 # ── Paths ──────────────────────────────────────────────────────────────────────
 in_path = "LoudPy_exemples/Eigen_study/FSI_DtN/Results/Files/modes.h5"
 vacuo_path = Path("LoudPy_exemples/Eigen_study/Meca/Results/Files/modes.h5")      # ../Meca

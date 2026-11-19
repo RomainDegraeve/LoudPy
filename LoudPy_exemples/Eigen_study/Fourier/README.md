@@ -10,12 +10,12 @@ The modes of an axisymmetric structure separate into azimuthal orders m:
 | 1 | rocking | any asymmetric load: box, neighbouring drivers, off-axis mass |
 | ≥ 2 | ovalisation, circumferential modes | asymmetric acoustic loading |
 
-`EigenStudy.solve_meca_eigen_fourier(m, f_min, f_max, n_modes_per_shift)` solves order m on
-the usual meridian mesh: 3 DOF per node (U_r, U_z, U_θ) for m ≥ 1, same multishift solver,
-Rayleigh / hysteretic damping and normalisation as the axisymmetric study (m = 0 calls it).
-The axis conditions are set automatically (m = 1: U_z = 0, U_θ = −U_r; m ≥ 2: all zero);
-`_rz_` clamps also block U_θ. Results are saved as `modes/meca` (m = 0) and
-`modes/meca_m<m>`; read them with `EigenReader.load_fourier(m)` / `fourier_orders()`.
+`lp.Modes(model).solve(f_max=…, orders=[0, 1, 2, 3, 4])` solves each order on the usual
+meridian mesh: 3 DOF per node (U_r, U_z, U_θ) for m ≥ 1, same multishift solver, Rayleigh /
+hysteretic damping and normalisation as the axisymmetric study (m = 0). The axis conditions are
+set automatically (m = 1: U_z = 0, U_θ = −U_r; m ≥ 2: all zero); `_rz_` clamps also block U_θ.
+Each order is one mode set of the result file; read them back with
+`modes = lp.load(path)`, `modes.orders`, `modes.order(m)`.
 
 | file | does |
 |---|---|

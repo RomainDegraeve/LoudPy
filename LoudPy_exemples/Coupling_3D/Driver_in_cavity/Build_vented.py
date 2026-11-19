@@ -1,13 +1,10 @@
 """
-Build_vented.py — meshes of the vented (bass-reflex) version of the enclosure, standing on a
+Build_vented.py — meshes of the HYBRID model of the vented (bass-reflex) enclosure, standing on a
 rigid ground (enclosure.py: walls WALL_T thick, port of radius PORT_A and length PORT_L through
-the front face, its tube protruding into the box).
+the front face, its tube protruding into the box). Low-level toolkit (loudpy.Studies); the merged
+reference model is an lp.Scene (enclosure.vented_scene(), meshed by Running_vented.py merged).
 
-Two models:
-  1. merged (reference): ONE air domain — inside of the box + port + exterior half-space, the
-     DtN on the hemisphere. The driver is wetted on both faces by the same field.
-       Results/Files/vented_merged_<f_max>Hz.msh      (one mesh per frequency band)
-  2. hybrid (fast): the inside of the box (modal, port tube excluded, inner mouth "port_inner")
+  hybrid (fast): the inside of the box (modal, port tube excluded, inner mouth "port_inner")
      and the exterior (port outer mouth "port_outer"), joined by a 1D port model.
        Results/Files/vented_cavity.msh, vented_ext_<f_max>Hz.msh
   + Results/Files/vented.json (hemisphere, bands, volumes, port).
@@ -121,12 +118,12 @@ def build(kind, h_far, path):
 
 print(f"Hemisphere: centre {np.round(center, 3)} m, radius {R:.3f} m")
 cfg = dict(center=center.tolist(), radius=R, up=1, port=dict(x=PORT_X, y=PORT_Y, a=PORT_A, L=PORT_L),
-           merged=[], ext=[])
+           ext=[])
 v_cav, _ = build("cavity", H_CAVITY, out / "vented_cavity.msh")
 cfg["cavity"] = dict(msh=str(out / "vented_cavity.msh"), volume=v_cav)
 for f_lo, f_hi in BANDS:
     h = min(H_MAX, C_AIR / f_hi / PTS_PER_WAVELENGTH)
-    for kind in ("merged", "ext"):
+    for kind in ("ext",):
         path = out / f"vented_{kind}_{f_hi:.0f}Hz.msh"
         _, n = build(kind, h, path)
         cfg[kind].append(dict(f_lo=f_lo, f_hi=f_hi, msh=str(path), h=h, nodes=n))

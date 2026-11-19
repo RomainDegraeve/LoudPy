@@ -17,6 +17,8 @@ import numpy as np
 import loudpy as lp
 from loudpy.Plotter import plot_uva_time, plot_uva_fft, animate_field
 
+lp.plot.style.use()                       # loudpy figure style (fonts, colours, SPL in dB RMS)
+
 # ── Paths ──────────────────────────────────────────────────────────────────────
 in_path = "LoudPy_exemples/Time_study/Multitone/Results/time.h5"
 out_dir = Path("LoudPy_exemples/Time_study/Multitone/Results/Figures")

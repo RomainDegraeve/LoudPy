@@ -1,6 +1,6 @@
 """
 labyrinth.py — parameters and geometry of a folded transmission-line ("labyrinth") cabinet for
-the HPNEW driver, standing on a rigid ground (imported by the Build / Running / Loading scripts).
+the HPNEW driver, standing on a rigid ground (imported by the Running / Loading / Plot scripts).
 
 Side view (y up, z towards the listener; full inner width W_IN along x):
 
@@ -29,7 +29,6 @@ eig_path = "LoudPy_exemples/Eigen_study/Fourier/Results/Files/eigen_fourier.h5"
 Z_B, Z_F = 0.031, 0.032                       # rear baffle plane, front face of the cabinet [m]
 REAR_CURVES, REAR_START = [14, 7, 8, 33, 32], (0.05435, Z_B)
 FRONT_CURVES, FRONT_START = [5, 4, 3, 2, 1, 113, 22, 21, 20], (0.05735, Z_F)
-COIL_CURVE = 37
 ORDERS = [0, 1, 2, 3]                         # azimuthal orders of the driver modes
 DRV_F_MAX = 10000.0                           # driver modes kept [Hz]
 
@@ -96,9 +95,34 @@ def add_cabinet_solids(occ):
     return inner, pans, outer, slot
 
 
-def outer_corners():
-    return np.array([(x, y, z) for x in (-WALL_T, W_IN + WALL_T) for y in (0.0, H_IN + WALL_T)
-                     for z in (Z_F, Z_BACK - WALL_T)])
+def cabinet(occ):
+    """lp.Scene cabinet builder: inside air, panels removed, outer cabinet, mouth slot."""
+    import loudpy as lp
+    inner, pans, outer, slot = add_cabinet_solids(occ)
+    return lp.Cabinet(inner=inner, cuts=pans, outer=outer, openings=[slot])
+
+
+def driver():
+    """The HPNEW driver (its azimuthal-order modes, ../../Eigen_study/Fourier) and its wet profiles."""
+    import loudpy as lp
+    return lp.Driver.from_modes(eig_path, ORDERS, f_max=DRV_F_MAX, geometry=geo_path,
+                                rear=lp.Profile(REAR_CURVES, REAR_START),
+                                front=lp.Profile(FRONT_CURVES, FRONT_START))
+
+
+def export_cabinet(folder, r_hole):
+    """Cabinet (walls + panels, driver hole, mouth) and the air of the line as STEP files, for CAD."""
+    from loudpy.geometry import gmsh_session
+    with gmsh_session() as g:
+        g.model.add("cabinet")
+        occ = g.model.occ
+        inner, pans, outer, slot = add_cabinet_solids(occ)
+        hole = occ.addCylinder(X0, Y0, Z_B - 1e-3, 0, 0, Z_F - Z_B + 2e-3, r_hole)
+        line_air, _ = occ.cut([(3, inner)], [(3, p) for p in pans])
+        occ.cut([(3, outer)], line_air + [(3, slot), (3, hole)], removeTool=False)
+        occ.remove(line_air, recursive=True)
+        occ.synchronize()
+        g.write(str(folder / "labyrinth_cabinet.step"))
 
 
 def quarter_wave(c=343.0, end_correction=True):

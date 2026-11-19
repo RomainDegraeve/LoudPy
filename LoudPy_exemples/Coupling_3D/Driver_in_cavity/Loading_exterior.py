@@ -20,9 +20,10 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 
-from loudpy.Studies.Cavity_coupling import DriverModes, C_AIR
-from loudpy.Studies.Exterior_dtn import HalfSpaceDtN, _h2
-from enclosure import eig_path, X0, Y0, Z_F
+import loudpy as lp
+from enclosure import X0, Y0, Z_F, sealed_scene
+
+lp.plot.style.use()                       # loudpy figure style (fonts, colours, SPL in dB RMS)
 
 files = Path("LoudPy_exemples/Coupling_3D/Driver_in_cavity/Results/Files")
 out_dir = Path("LoudPy_exemples/Coupling_3D/Driver_in_cavity/Results/Figures")
@@ -30,31 +31,18 @@ DIST = 1.0                                   # measurement distance from the dri
 H_ANGLES = [0, 30, 60, 90, 180]              # horizontal angles of spl_1m.pdf [deg]
 POLAR_F = [100, 300, 1000, 2000, 3000]       # frequencies of the polar curves [Hz]
 
-d = np.load(files / "exterior.npz", allow_pickle=True)
-f, C, q, q_encl = d["freqs"], d["coefs"], d["q"], d["q_encl"]
-dtn = HalfSpaceDtN(d["center"], float(d["radius"]), int(d["up"]))
+res = lp.load(files / "exterior.h5")
+f = res.frequencies
+hp = res.driver("main")
+q = hp.q
+# the same driver and enclosure, front in vacuo (cavity modes only: fast)
+encl = lp.FrequencyResponse(sealed_scene(), drive=lp.Force(1.0)).solve(f, log=lambda *a, **k: None)
+q_encl = encl.driver("main").q
 src = np.array([X0, Y0, Z_F])
-n_max = int(round((np.sqrt(8 * C.shape[1] + 1) - 3) / 2))
-n_of = dtn.harmonics(n_max)[:, 0]
-
-
-def pressure(points):
-    """(n_f, n_points) complex pressure from the DtN coefficients (r ≥ R)."""
-    r, th, ph = dtn.local(points)
-    Y = dtn.Y(th, ph, n_max)                                         # (n_p, n_h)
-    out = np.zeros((len(f), len(points)), complex)
-    for i, fi in enumerate(f):
-        k = 2 * np.pi * fi / C_AIR
-        nh = np.count_nonzero(C[i])
-        ratio = _h2(n_of[None, :nh], k * r[:, None]) / _h2(n_of[:nh], k * dtn.R)[None, :]
-        out[i] = (Y[:, :nh] * ratio) @ C[i, :nh]
-    return out
-
-
-spl = lambda p: 20 * np.log10(np.maximum(np.abs(p), 1e-12) / 2e-5)
+pressure = res.far_field
+spl = lp.spl                                 # dB re 20 µPa RMS
 h_pts = lambda a: src + DIST * np.column_stack([np.sin(a), 0 * a, np.cos(a)])    # horizontal plane
 v_pts = lambda a: src + DIST * np.column_stack([0 * a, np.sin(a), np.cos(a)])    # vertical plane
-assert np.all(dtn.local(h_pts(np.deg2rad(np.arange(-180, 181))))[0] >= dtn.R), "points inside Γ"
 
 
 def save_pdf(name, figs):
@@ -73,7 +61,7 @@ fig, ax = plt.subplots(figsize=(13, 6))
 for j, a in enumerate(H_ANGLES):
     ax.semilogx(f, spl(P_h[:, j]), lw=1.4 if a == 0 else 0.9, label=f"{a}° (horizontal)")
 ax.set_xlabel("f [Hz]")
-ax.set_ylabel(f"SPL at {DIST:.0f} m [dB re 20 µPa / N]")
+ax.set_ylabel(f"SPL at {DIST:.0f} m [dB re 20 µPa RMS / N]")
 ax.set_title(f"HPNEW in the enclosure, standing on a rigid ground: SPL at {DIST:.0f} m from the driver "
              f"(height {Y0:.2f} m), 1 N on the coil", fontsize=10)
 ax.grid(True, which="both", alpha=0.3)
@@ -113,10 +101,8 @@ figs.append(fig)
 save_pdf("polars.pdf", figs)
 
 # ── response_change.pdf ────────────────────────────────────────────────────────
-f_drv = float(np.load(files / "coupled.npz")["freq"].max())
-drv = DriverModes.from_eigen_h5(eig_path, list(d["orders"]), f_max=f_drv + 1.0)
-m_of, orders = d["m"], list(d["orders"])
-assert len(drv) == len(m_of), "driver modes changed since Running_exterior.py"
+drv = hp.modes
+m_of, orders = drv.m, [int(m) for m in np.unique(drv.m)]
 U = drv.U
 w = 2 * np.pi * f
 axis_node = int(np.argmax(drv.xy[:, 1] * (drv.xy[:, 0] < 1e-9)))

@@ -221,8 +221,8 @@ The refactor proceeds by strangling the old code: build the new layers next to t
 | 3 ✅ | `solvers/` (eigen, linear, time moved out of the studies) | regression tests green |
 | 4 ✅ | `results/` (schema, save, load, old-file readers) + `plot/` on `Results` | `lp.load` reads every former file to the same numbers as the former readers |
 | 5 ✅ | `study/` (Modes, FrequencyResponse with remesh bands, Transient) returning `Results` | 2D examples (Running and Loading scripts) migrated |
-| 6 | 3D: `Scene`, `Driver`, `physics.modal`, `physics.radiation` | Coupling_3D examples migrated, results unchanged |
-| 7 | Delete the old packages, docs, ruff + CI | only the new API remains |
+| 6 ✅ | 3D: `Scene`, `Driver`, `physics.modal`, `physics.radiation` | Coupling_3D examples migrated, results unchanged |
+| 7 ◐ | Delete the old packages, docs, ruff + CI | only the new API remains |
 
 ### Phase 0 — done
 
@@ -368,3 +368,19 @@ New package `loudpy.scene`, exported as `lp.Driver`, `lp.Profile`, `lp.Scene` an
   - B and C on small committed scenes match a direct computation with the low-level code (`ExteriorFE` + `coupled_sweep`): amplitudes at 1e-10, the streamed field, and the far field.
 
 Tests: 99 passing.
+
+### Phase 6b — the 3D examples
+
+All three `Coupling_3D` examples run on `lp.Scene`; the `Build_*.py` scripts are gone (a scene meshes itself on the first run and reuses the meshes afterwards). Each example has one geometry module (`enclosure.py`, `labyrinth.py`, `column.py`) holding the dimensions, the cabinet builders and `driver()`; `enclosure.py` also has `sealed_scene()`, `exterior_scene()` and `vented_scene()`, shared by the running and plotting scripts.
+
+- `Driver_in_cavity`: A (`Running_script.py` → `coupled.h5`, `coupled_modes.h5`), B (`Running_exterior.py` → `exterior.h5`) and the merged vented box (`Running_vented.py merged` → `vented_merged.h5`). The hybrid vented model (modal inside + 1D port + exterior FE) stays on the low-level toolkit (`Build_vented.py`, `Running_vented.py hybrid`). `Recover_vented.py` is gone (it rebuilt results from the former field file; the pressure field is now streamed to the result file).
+- `lp.Cabinet` gained `opening_size` / `opening_margin`: the walls around the openings (ports) are the group `openings`, refined like the former `port_walls`.
+- `SceneResults`: the modal force of the drive is stored (attachment `drive`), so `driver(name).in_vacuo()` and `kinetic_energy(by_order=True)` need no recomputation; `cavity_frequencies`.
+
+### Phase 7 — public API, plotting, documentation
+
+- **Top-level namespace:** `import loudpy as lp` exports the new API only (model, geometry, studies, scenes, results, `lp.spl`, lazy `lp.plot`), with `__version__`. The former names (`DomainSpec*`, `InterfaceSpec*`, `MeshManager`, `PhysicalEntitiesManager`, FE kernels) are no longer re-exported; they stay importable from their modules because the studies' internal engines still use them.
+- **Plotting:** `loudpy.plot.style` is the one place for the figure style (serif STIX fonts, Okabe–Ito colours, a colormap per quantity, labels with units, standard sizes, log frequency axes, safe saving). `lp.plot` and the former `loudpy.Plotter` apply it (the conflicting rcParams blocks were removed); every example calls `lp.plot.style.use()`. SPL is RMS everywhere (`lp.spl`). New `lp.plot.directivity`.
+- **Documentation:** Sphinx in `docs/` (Furo theme): getting started, user guide (models, studies, results, plotting, 3D scenes, examples), reference (API via autodoc, file format, architecture, conventions). Build: `python3 -m sphinx -b html docs docs/_build/html`.
+- **Consistency:** `Running_scrip.py` → `Running_script.py` (Frequency_study); docstrings on every public class.
+- **Left for later:** deleting the old packages needs the internal engines (`Studies/*_study.py`, `SubDomains`, `Interfaces`, `Meshing`) to be ported onto `physics/` + `solvers/` first; ruff and CI are not set up yet.

@@ -24,20 +24,15 @@ import numpy as np
 
 # ── style presets the user can reference ──────────────────────────────────────
 STYLE = {
-    "acou":  dict(cmap="magma",    label="SPL [dB]"),
+    "acou":  dict(cmap="magma",    label="SPL [dB re 20 µPa RMS]"),
     "meca":  dict(cmap="viridis",  label="|u| [m]"),
     "phase": dict(cmap="twilight", label="phase [rad]", vmin=-np.pi, vmax=np.pi),
 }
 
-# ── global style (applied at import) ──────────────────────────────────────────
-plt.rc("lines",  linewidth=2)
-plt.rc("font",   size=14)
-plt.rc("axes",   linewidth=1.5, labelsize=14)
-plt.rc("legend", fontsize=14)
-plt.rcParams["font.family"]                  = "serif"
-plt.rcParams["font.serif"]                   = "cmr10"
-plt.rcParams["axes.formatter.use_mathtext"]  = True
-plt.rcParams["mathtext.fontset"]             = "stix"
+# ── global style: the loudpy style (loudpy.plot.style), applied at import ───────
+from loudpy.plot.style import use as _use_style, CMAPS as _CMAPS
+
+_use_style()
 
 # ── core primitive ─────────────────────────────────────────────────────────────
 

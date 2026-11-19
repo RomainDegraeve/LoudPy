@@ -23,10 +23,13 @@ from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 import pyvista as pv
 
-from loudpy.Studies.Cavity_coupling import CavityModes, DriverModes
+import loudpy as lp
+from loudpy.Studies.Cavity_coupling import CavityModes
+from enclosure import X0, Z_B
+
+lp.plot.style.use()                       # loudpy figure style (fonts, colours, SPL in dB RMS)
 
 here = Path("LoudPy_exemples/Coupling_3D/Driver_in_cavity")
-eig_path = "LoudPy_exemples/Eigen_study/Fourier/Results/Files/eigen_fourier.h5"
 out_dir = here / "Results/Figures"
 out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -35,13 +38,16 @@ DEFORMATION = 0.10              # max |u| = 10 % of the driver diameter
 RIM = (0.040, 0.0265)           # cone point of the rocking signature (r, z) [m]
 N_CAV_SHOWN = 8                 # enclosure modes shown
 IMG = (620, 500)
+MIC = (0.03, 0.04, Z_B - 0.08)  # pressure probe in the enclosure [m]
 
-d = np.load(here / "Results/Files/coupled.npz", allow_pickle=True)
-f, q, q0, p_mic = d["freqs"], d["q"], d["q_vacuo"], d["p_mic"]
-orders, m_of = list(d["orders"]), d["m"]
+res = lp.load(here / "Results/Files/coupled.h5")
+hp = res.driver("main")
+drv = hp.modes
+f, q, q0 = res.frequencies, hp.q, hp.in_vacuo()
+p_mic = res.cavity_pressure(MIC)
+cav_freqs = res.cavity_frequencies
+orders, m_of = [int(m) for m in np.unique(drv.m)], drv.m
 w = 2 * np.pi * f
-drv = DriverModes.from_eigen_h5(eig_path, orders, f_max=float(d["freq"].max()) + 1.0)
-assert len(drv) == q.shape[1], "driver modes changed since Running_script.py"
 
 
 def save_pdf(name, figs):
@@ -78,15 +84,15 @@ ax[1, 0].loglog(f, np.abs(v_cap), label="in the enclosure")
 ax[1, 0].loglog(f, np.abs(v_cap0), "k--", lw=0.8, label="no enclosure")
 ax[1, 0].set_ylabel("|v| dust cap, on axis [m/s / N]")
 ax[1, 0].set_title("Dust-cap axial velocity", fontsize=10)
-ax[1, 1].semilogx(f, 20 * np.log10(np.abs(p_mic) / 2e-5))
-ax[1, 1].set_ylabel("SPL in the enclosure [dB re 20 µPa / N]")
-ax[1, 1].set_title(f"Pressure at the probe {np.round(d['mic'], 3)} m", fontsize=10)
+ax[1, 1].semilogx(f, lp.spl(p_mic))
+ax[1, 1].set_ylabel("SPL in the enclosure [dB re 20 µPa RMS / N]")
+ax[1, 1].set_title(f"Pressure at the probe {np.round(MIC, 3)} m", fontsize=10)
 for a in ax.ravel():
     a.set_xlabel("f [Hz]")
     a.grid(True, which="both", alpha=0.3)
     if a.get_legend_handles_labels()[0]:
         a.legend(fontsize=8)
-for fc in d["cav_freqs"][1:]:
+for fc in cav_freqs[1:]:
     if fc < f[-1]:
         ax[1, 1].axvline(fc, color="0.85", lw=0.6, zorder=0)
 fig.suptitle("HPNEW in a non-axisymmetric enclosure (front in vacuo); grey lines: enclosure modes",
@@ -107,7 +113,8 @@ ax2.legend(fontsize=8)
 save_pdf("response.pdf", [fig, fig2])
 
 # ── coupled_modes.pdf ──────────────────────────────────────────────────────────
-s, Xq, XP = d["s"], d["Xq"], d["XP"]
+modes = lp.load(here / "Results/Files/coupled_modes.h5")
+s, Xq, XP = modes.extra("s"), modes.extra("q").T, modes.extra("P").T
 fn, zeta = np.abs(s) / (2 * np.pi), -s.real / np.abs(s)
 share = np.array([[np.sum(np.abs(Xq[m_of == m, i]) ** 2) for m in orders] for i in range(len(s))])
 dom = np.argmax(share, axis=1)
@@ -116,7 +123,7 @@ fig, (a1, a2) = plt.subplots(1, 2, figsize=(14, 5.5))
 for k, m in enumerate(orders):
     sel = dom == k
     a1.semilogy(fn[sel], zeta[sel], "o", ms=5, label=f"driver m = {m}")
-for fc in d["cav_freqs"][1:]:
+for fc in cav_freqs[1:]:
     if fc < fn.max():
         a1.axvline(fc, color="0.85", lw=0.6, zorder=0)
 a1.set_xlabel("f [Hz]")
@@ -128,7 +135,7 @@ a1.legend(fontsize=8)
 a2.axis("off")
 rows = [[f"{fn[i]:.0f}", f"{zeta[i]:.4f}", f"m = {orders[dom[i]]}",
          " ".join(f"{100 * share[i, k] / share[i].sum():.0f}" for k in range(len(orders))),
-         f"{d['cav_freqs'][cav_like[i]]:.0f}"] for i in range(min(len(s), 30))]
+         f"{cav_freqs[cav_like[i]]:.0f}"] for i in range(min(len(s), 30))]
 tab = a2.table(cellText=rows, colLabels=["f [Hz]", "ζ", "driver", "% m=0 1 2 3", "main cavity mode [Hz]"],
                loc="upper center", cellLoc="center")
 tab.auto_set_font_size(False)
@@ -171,7 +178,7 @@ for start in range(1, 1 + N_CAV_SHOWN, 4):
     for j, n in enumerate(range(start, start + 4)):
         psi = cav.psi[:, n] / np.abs(cav.psi[:, n]).max()
         surf["psi"] = psi
-        cut_ = surf.clip(normal="-x", origin=(d["center"][0], 0, 0))
+        cut_ = surf.clip(normal="-x", origin=(X0, 0, 0))
         cam = [(-0.45, 0.05, 0.25), (0.125, 0.15, -0.04), (0, 0, 1)]
         axs[0, j].imshow(shot(surf, "psi", cam, clim=(-1, 1), cmap="RdBu_r"))
         axs[1, j].imshow(shot(cut_, "psi", cam, clim=(-1, 1), cmap="RdBu_r"))

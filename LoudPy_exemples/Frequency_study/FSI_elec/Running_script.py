@@ -1,5 +1,5 @@
 """
-Running_scrip.py — coupled structure + air (FSI) frequency sweep driven by a voltage on the
+Running_script.py — coupled structure + air (FSI) frequency sweep driven by a voltage on the
 voice coil (electrical circuit Ze = Re + (jω)^n Le, force factor Bl).
 
 The air mesh follows the wavelength (lp.PerWavelength): a new mesh when the sweep crosses

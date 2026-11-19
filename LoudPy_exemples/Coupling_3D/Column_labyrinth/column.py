@@ -19,8 +19,7 @@ Side view (y up, z towards the listener; full inner width W_IN along x):
 Path: down channel 1 (front, drivers), up channel 2, down channel 3 (back), out of the mouth
 through the bottom of the back wall. The channel depth shrinks from the drivers to the mouth.
 Walls WALL_T thick (sides, top, back); front wall = the drivers' baffle (Z_B → Z_F); the floor of
-the line is the ground. Driver frames: axis +z through (X0, Y0S[j]), as in the single-driver
-examples (DriverFrame with a 2D center).
+the line is the ground. Driver axes: +z through (X0, Y0S[j]).
 """
 import numpy as np
 
@@ -31,7 +30,6 @@ eig_path = "LoudPy_exemples/Eigen_study/Fourier/Results/Files/eigen_fourier.h5"
 Z_B, Z_F = 0.031, 0.032                       # rear baffle plane, front face of the cabinet [m]
 REAR_CURVES, REAR_START = [14, 7, 8, 33, 32], (0.05435, Z_B)
 FRONT_CURVES, FRONT_START = [5, 4, 3, 2, 1, 113, 22, 21, 20], (0.05735, Z_F)
-COIL_CURVE = 37
 ORDERS = [0, 1, 2, 3]                         # azimuthal orders of the driver modes
 DRV_F_MAX = 6000.0                            # driver modes kept [Hz]
 NAMES = ["top", "middle", "bottom"]
@@ -97,6 +95,16 @@ def add_cabinet_solids(occ):
     return inner, pans, outer, slot
 
 
-def outer_corners():
-    return np.array([(x, y, z) for x in (-WALL_T, W_IN + WALL_T) for y in (0.0, H_IN + WALL_T)
-                     for z in (Z_F, Z_BACK - WALL_T)])
+def cabinet(occ):
+    """lp.Scene cabinet builder: inside air, panels removed, outer cabinet, mouth slot."""
+    import loudpy as lp
+    inner, pans, outer, slot = add_cabinet_solids(occ)
+    return lp.Cabinet(inner=inner, cuts=pans, outer=outer, openings=[slot])
+
+
+def driver():
+    """The HPNEW driver (its azimuthal-order modes, ../../Eigen_study/Fourier) and its wet profiles."""
+    import loudpy as lp
+    return lp.Driver.from_modes(eig_path, ORDERS, f_max=DRV_F_MAX, geometry=geo_path,
+                                rear=lp.Profile(REAR_CURVES, REAR_START),
+                                front=lp.Profile(FRONT_CURVES, FRONT_START))

@@ -21,19 +21,23 @@ class Boundary:
 
 @dataclass
 class Clamped(Boundary):
+    """Fixed displacement on the selected curves (dofs "r", "z" or "rz"; None: from the group names)."""
     dofs: str | None = None             # "r", "z" or "rz" (None: from each group name)
 
 
 @dataclass
 class Coil(Boundary):
+    """Where the drive acts: lp.Force (axial) or lp.Voltage (electro-mechanical coil)."""
     pass
 
 
 @dataclass
 class FluidStructure(Boundary):
+    """Fluid–structure interface between a Solid and an Air (side "front" / "rear"; None: from the names)."""
     side: str | None = None             # "front" / "rear" (None: from each group name)
 
 
 @dataclass
 class Radiation(Boundary):
+    """Exact radiation (Dirichlet-to-Neumann) condition on a spherical boundary of the air."""
     side: str | None = None
