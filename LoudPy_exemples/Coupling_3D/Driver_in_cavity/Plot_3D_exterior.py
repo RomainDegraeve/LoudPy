@@ -135,7 +135,7 @@ for b0 in np.arange(lo, freqs[-1], BAND):
                          "inside (red/blue = ± each one's max), deformation (|u|, max 10 % of the diameter), "
                          "same instant", fontsize=10)
             fig.tight_layout()
-            pdf.savefig(fig, dpi=100)
+            pdf.savefig(lp.plot.style.tidy(fig), dpi=100)
             plt.close(fig)
     os.replace(tmp, out_dir / name)
     print(f"  ✓ {out_dir / name}  ({len(sel)} frequencies)")

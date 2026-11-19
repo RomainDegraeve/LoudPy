@@ -201,7 +201,7 @@ for fq in FREQS:
 tmp, target = out_dir / "labyrinth_views_3d.pdf.tmp", out_dir / "labyrinth_views_3d.pdf"
 with PdfPages(tmp) as pdf:
     for fg in pages:
-        pdf.savefig(fg, dpi=110)
+        pdf.savefig(lp.plot.style.tidy(fg), dpi=110)
         plt.close(fg)
 os.replace(tmp, target)
 print(f"✓ {target}")

@@ -7,7 +7,7 @@ the steady-state block (after the ramp) then has no leakage.
 
 What this produces
 ------------------
-    Results/time.h5   — u, v, a at every node and time step (loudpy result format 2), with the
+    Results/Files/time.h5   — u, v, a at every node and time step (loudpy result format 2), with the
                         signal parameters in its metadata (t_ramp, freqs_tones, …)
 
 Then run Loading_script.py.
@@ -22,8 +22,8 @@ lp.plot.style.use()                       # loudpy figure style (fonts, colours,
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 geometry = "LoudPy_exemples/Geometries/Loudspeaker/HPNEW-Sketch.geo"
-mesh_path = "LoudPy_exemples/Time_study/Multitone/Results/mesh.msh"      # reused on reruns
-out_path = "LoudPy_exemples/Time_study/Multitone/Results/time.h5"
+mesh_path = "LoudPy_exemples/Time_study/Multitone/Results/Files/mesh.msh"      # reused on reruns
+out_path = "LoudPy_exemples/Time_study/Multitone/Results/Files/time.h5"
 
 # ── Signal parameters ──────────────────────────────────────────────────────────
 F_MIN, F_MAX = 20, 1000        # band of the tones [Hz]

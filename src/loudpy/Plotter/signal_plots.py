@@ -27,12 +27,12 @@ def plot_spl_sweep(freqs: np.ndarray, p_complex: np.ndarray, *,
     freqs     : (n_freq,)  frequency axis [Hz]
     p_complex : (n_freq,)  complex pressure at probe
     """
-    spl   = 20 * np.log10(np.maximum(np.abs(p_complex), 1e-30) / p_ref)
+    spl   = 20 * np.log10(np.maximum(np.abs(p_complex) / np.sqrt(2), 1e-30) / p_ref)   # RMS
     phase = np.degrees(np.unwrap(np.angle(p_complex)))
 
     fig, (a1, a2) = plt.subplots(2, 1, figsize=(8, 6), sharex=True)
     a1.semilogx(freqs, spl,'o',markersize = 0.5, color="C0")
-    a1.set_ylabel(r"SPL  [dB re 20\,$\mu$Pa]")
+    a1.set_ylabel("SPL [dB re 20 µPa RMS]")
     a1.set_title(title or "SPL and Phase Frequency Response")
     a1.grid(True, which="both", ls="--", lw=0.5, alpha=0.7)
 
@@ -74,7 +74,7 @@ def plot_spl_sweep_multi(freqs: np.ndarray, curves: dict, *,
 
     for i, (label, p) in enumerate(curves.items()):
         p     = np.asarray(p)
-        spl   = 20 * np.log10(np.maximum(np.abs(p), 1e-30) / p_ref)
+        spl   = 20 * np.log10(np.maximum(np.abs(p) / np.sqrt(2), 1e-30) / p_ref)   # RMS
         # np.angle already returns (-pi, pi] -> degrees gives (-180, 180]
         phase = np.angle(p) if wrap_phase else np.unwrap(np.angle(p))
         phase = np.degrees(phase)
@@ -83,7 +83,7 @@ def plot_spl_sweep_multi(freqs: np.ndarray, curves: dict, *,
         a1.semilogx(freqs, spl,   lw=1.2, color=color, label=label)
         a2.semilogx(freqs, phase, lw=1.2, color=color, label=label)
 
-    a1.set_ylabel(r"SPL  [dB re 20 $\mu$Pa]")
+    a1.set_ylabel("SPL [dB re 20 µPa RMS]")
     a1.set_title(title or "SPL and Phase Frequency Response")
     a1.grid(True, which="both", ls="--", lw=0.5, alpha=0.7)
 
@@ -164,14 +164,14 @@ def plot_spl_angle_map(freqs: np.ndarray, angles_deg: np.ndarray,
             f"({angles_deg.size}, {freqs.size}), got {p_complex.shape}."
         )
 
-    spl = 20 * np.log10(np.maximum(np.abs(p_complex), 1e-30) / p_ref)
+    spl = 20 * np.log10(np.maximum(np.abs(p_complex) / np.sqrt(2), 1e-30) / p_ref)   # RMS
 
     if normalize:
         on_axis = spl[int(np.argmin(np.abs(angles_deg))), :]   # per-frequency ref
         spl     = spl - on_axis[None, :]
-        cbar_lbl = r"Relative SPL  [dB re on-axis]"
+        cbar_lbl = r"Relative SPL [dB re on axis]"
     else:
-        cbar_lbl = r"SPL  [dB re 20 $\mu$Pa]"
+        cbar_lbl = "SPL [dB re 20 µPa RMS]"
 
     # Full data range by default; 0 dB is the natural ceiling once normalised.
     if vmax is None:

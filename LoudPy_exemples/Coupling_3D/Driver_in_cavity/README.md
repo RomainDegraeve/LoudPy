@@ -8,8 +8,8 @@ The driver's azimuthal-order (Fourier) modes, for m = 0 … 3, are coupled to th
 | file | does |
 |---|---|
 | `Validation_rect_cavity.py` | 3D cavity FEM vs the analytical modes of a rectangular box. Max error 0.02 % over 43 modes ≤ 3 kHz. |
-| `Build_cavity.py` | Demo enclosure: 8.4 L, slanted back, internal brace, off-centre HPNEW. The driver is cut out with its revolved wet rear profile. Writes `cavity.msh`. |
-| `Running_script.py` | Cavity modes (≤ 6 kHz), Fourier driver modes (≤ 10 kHz, cos and sin families), coupling matrix plus static correction. Then the forced response to 1 N on the coil and the coupled modes. Writes `coupled.npz`. |
+| `enclosure.py` | Demo enclosure: 8.4 L, slanted back, internal brace, off-centre HPNEW. Cabinet builders for `lp.Scene` (sealed, vented), `driver()`, and the configured scenes `sealed_scene()`, `exterior_scene()`, `vented_scene()`. |
+| `Running_script.py` | Cavity modes (≤ 6 kHz), Fourier driver modes (≤ 10 kHz, cos and sin families), coupling matrix plus static correction. Then the forced response to 1 N on the coil and the coupled modes (`lp.FrequencyResponse`, `lp.Modes` on the scene). Builds `cavity.msh` on the first run; writes `coupled.h5` and `coupled_modes.h5`. |
 | `Loading_script.py` | `response.pdf`, `coupled_modes.pdf`, `cavity_modes.pdf`, `deformation_3d.pdf`. |
 | `Plot_3D_coupled.py` | `coupled_3d/coupled_3d_<f0>-<f1>Hz.pdf`: every 10 Hz, 20–3000 Hz. Left: enclosure cut through the driver axis, coloured by pressure, with the deformed driver in place. Right: the driver from the front. Both at the same instant. |
 
@@ -46,11 +46,20 @@ The front radiates into the half-space above a perfectly reflective ground:
 |---|---|
 | `enclosure.py` | Shared geometry of the box, driver and ground. |
 | `Validation_dtn_hemisphere.py` | Exterior FE + DtN vs the analytical pulsating and oscillating hemisphere on a rigid ground. About 1 % at 100 Hz–3 kHz, on Γ and at 1 m. |
-| `Build_exterior.py` | Exterior meshes: hemisphere minus the box and the driver front, one per band. |
-| `Running_exterior.py` | Coupled sweep 20–3000 Hz every 10 Hz, about 18 min. Writes `exterior.npz` (DtN coefficients) and `exterior_field.h5` (pressure at every node). |
+| `Running_exterior.py` | Coupled sweep 20–3000 Hz every 10 Hz, about 18 min. Builds the exterior meshes (hemisphere minus the box and the driver front, one per band) on the first run; writes `exterior.h5` (DtN coefficients, cavity pressures, exterior field). |
 | `Loading_exterior.py` | `spl_1m.pdf`, `polars.pdf`, `response_change.pdf`. |
 | `Plot_3D_exterior.py` | `exterior_3d/`: every 10 Hz, a vertical cut, a horizontal cut and the driver. |
 | `Plot_3D_views.py` | `views_3d.pdf`: full 3D scenes from 6 angles at 100, 470, 1000, 1680 and 2400 Hz. Shows pressure on the ground, on the box walls and on the cuts, inside and outside, plus the deformed driver. |
 
 Check: at 50 Hz the far field is omnidirectional, and p·r is within 1.4 % of a monopole on a rigid ground, ρω²V/2π.
 
+
+## Vented box (bass reflex) on a rigid ground
+Walls 15 mm thick, a port of radius 20 mm and length 62 mm through the front face (its tube protrudes into the box). Two models:
+
+| command | model |
+|---|---|
+| `python3 Running_vented.py merged` | reference: `enclosure.vented_scene()`, ONE air domain (inside + port + outside, FE + half-space DtN), the driver wetted on both faces; the walls around the port are refined (`lp.Cabinet(opening_size=…)`). Writes `vented_merged.h5`. |
+| `python3 Running_vented.py hybrid` | fast, low-level toolkit: modal inside + 1D port (plane waves) + exterior FE/DtN. Needs `Build_vented.py` (hybrid meshes) and `Running_script.py` (drive). Writes `vented_hybrid.npz`. |
+| `Loading_vented.py` | `vented_response.pdf`: vented vs sealed SPL at 1 m, excursion (port tuning), directivity maps and polars. |
+| `Plot_3D_vented.py` | `vented_views_3d.pdf`: the box cut through the driver and port axes, SPL inside and outside, deformed driver. |

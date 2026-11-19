@@ -20,7 +20,7 @@ from loudpy.Plotter import plot_uva_time, plot_uva_fft, animate_field
 lp.plot.style.use()                       # loudpy figure style (fonts, colours, SPL in dB RMS)
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
-in_path = "LoudPy_exemples/Time_study/Multitone/Results/time.h5"
+in_path = "LoudPy_exemples/Time_study/Multitone/Results/Files/time.h5"
 out_dir = Path("LoudPy_exemples/Time_study/Multitone/Results/Figures")
 out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -35,7 +35,7 @@ t = res.times
 u, v, a = (np.real(res.probe(probe, name)[:, 1]) for name in ("u", "v", "a"))
 
 fig = plot_uva_time(t, u, v, a, title="Cone tip — time response", t_ramp=t_ramp)
-fig.savefig(out_dir / "uva_time.pdf", bbox_inches="tight")
+lp.plot.style.tidy(fig).savefig(out_dir / "uva_time.pdf", bbox_inches="tight")
 
 # FFT over the steady-state block only, the tone frequencies marked
 spectra = plot_uva_fft(t, u, v, a, t_start=t_ramp, excitation_freqs=freqs_tones, title="Cone tip — FFT")
@@ -44,9 +44,9 @@ spectra.fig.savefig(out_dir / "uva_fft.pdf", bbox_inches="tight")
 # ── |u| at the end of the ramp, whole structure and membrane ──────────────────
 view = res.field("u", t=t_ramp if t_ramp is not None else t[-1])
 ax = lp.plot.field(view, title=f"|u| at t = {view.coordinate:.4f} s")
-ax.figure.savefig(out_dir / f"field_t{view.coordinate:.3f}s.pdf", bbox_inches="tight")
+lp.plot.style.tidy(ax.figure).savefig(out_dir / f"field_t{view.coordinate:.3f}s.pdf", bbox_inches="tight")
 ax = lp.plot.field(view.restrict("membranne"), title=f"Membrane |u| at t = {view.coordinate:.4f} s")
-ax.figure.savefig(out_dir / "field_membrane.pdf", bbox_inches="tight")
+lp.plot.style.tidy(ax.figure).savefig(out_dir / "field_membrane.pdf", bbox_inches="tight")
 
 # ── Animation (pyvista + imageio) ──────────────────────────────────────────────
 # scale_factor 1 = true proportions (the large-signal motion is already visible);

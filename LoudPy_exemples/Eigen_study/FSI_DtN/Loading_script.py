@@ -88,10 +88,10 @@ a2.set_xlabel(r"$-\mathrm{Re}(\tilde s_m)/2\pi$ [Hz]")
 a2.set_ylabel(r"$\mathrm{Im}(\tilde s_m)/2\pi$ [Hz]")
 a2.set_title("Complex plane (upper half)", fontsize=10)
 for a in (a1, a2):
-    a.grid(True, which="both", alpha=0.3)
+    a.grid(True)
 fig.suptitle("Coupled fluid-structure modes, exact DtN radiation condition", fontsize=11)
 fig.tight_layout()
-fig.savefig(out_dir / "eigenvalues.pdf", bbox_inches="tight")
+lp.plot.style.tidy(fig).savefig(out_dir / "eigenvalues.pdf", bbox_inches="tight")
 plt.close(fig)
 
 # ── mode grids ─────────────────────────────────────────────────────────────────
@@ -112,7 +112,7 @@ def mode_pages(name, idx_all, title):
             fig = lp.plot.coupled_modes_grid(modes, idx, labels=[label(k) for k in idx], p_xlim=P_XLIM,
                                              p_ylim=P_YLIM, spl_range=SPL_RANGE, deform_scale=0.05)
             fig.suptitle(f"{title}: {start + 1}-{start + len(idx)} of {len(idx_all)}", fontsize=9, y=1.01)
-            pdf.savefig(fig, bbox_inches="tight", dpi=150)
+            pdf.savefig(lp.plot.style.tidy(fig), bbox_inches="tight", dpi=150)
             plt.close(fig)
     print(f"  ✓ {len(idx_all)} modes → {out_dir / name}")
 

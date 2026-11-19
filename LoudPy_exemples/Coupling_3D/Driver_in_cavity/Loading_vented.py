@@ -56,7 +56,7 @@ ax[1].set_title(f"Excursion minimum at {fb:.0f} Hz (port tuning; Helmholtz estim
                 f"{f_b_estimate:.0f} Hz)", fontsize=10)
 for a in ax:
     a.axvline(fb, color="0.6", lw=0.8, ls=":")
-    a.grid(True, which="both", alpha=0.3)
+    a.grid(True)
     a.legend(fontsize=7, ncol=2)
 fig.tight_layout()
 figs.append(fig)
@@ -106,7 +106,7 @@ figs.append(fig)
 tmp, target = out_dir / "vented_response.pdf.tmp", out_dir / "vented_response.pdf"
 with PdfPages(tmp) as pdf:
     for fg in figs:
-        pdf.savefig(fg, bbox_inches="tight", dpi=130)
+        pdf.savefig(lp.plot.style.tidy(fg), bbox_inches="tight", dpi=130)
         plt.close(fg)
 os.replace(tmp, target)
 print(f"✓ {target}   (tuning from the excursion minimum: {fb:.0f} Hz)")

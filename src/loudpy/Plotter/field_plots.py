@@ -41,7 +41,7 @@ def plot_field(coords: np.ndarray, tris: np.ndarray, values: np.ndarray, *,
                vmin=None, vmax=None,
                xlim=None, ylim=None,
                label: str = "", title: str = "",
-               xlabel: str = "x [m]", ylabel: str = "y [m]",
+               xlabel: str = "r [m]", ylabel: str = "z [m]",
                ax=None) -> plt.Axes:
     """
     Draw a scalar field on a triangular mesh.
@@ -211,7 +211,7 @@ def animate_pressure_displacement(frames: list[dict], *,
     z_off = 1e-3 * L
 
     spl_gmax = max(
-        20 * np.log10(np.abs(f["p"]).max() / 20e-6 + 1e-30) for f in frames)
+        20 * np.log10(np.abs(f["p"]).max() / np.sqrt(2) / 20e-6 + 1e-30) for f in frames)   # RMS
     p_gmax = max(float(np.abs(f["p"]).max()) for f in frames) or 1e-30
 
     # ── window / camera ───────────────────────────────────────────────────────
@@ -262,7 +262,7 @@ def animate_pressure_displacement(frames: list[dict], *,
                             macro_block_size=1) as writer:
         for f in frames:
             p      = f["p"]
-            spl    = 20 * np.log10(np.abs(p) / 20e-6 + 1e-30)
+            spl    = 20 * np.log10(np.abs(p) / np.sqrt(2) / 20e-6 + 1e-30)   # RMS
             phase  = np.angle(p)
             u_mag  = np.linalg.norm(np.abs(f["u"]), axis=1)
             u_amp  = float(np.abs(f["u"]).max()) or 1e-30
@@ -413,8 +413,8 @@ def plot_fields_grid(panels: list[dict], *,
                    ylim   = p.get("ylim"),
                    label  = p.get("label",  ""),
                    title  = p.get("title",  ""),
-                   xlabel = p.get("xlabel", "x [m]"),
-                   ylabel = p.get("ylabel", "y [m]"),
+                   xlabel = p.get("xlabel", "r [m]"),
+                   ylabel = p.get("ylabel", "z [m]"),
                    ax     = ax)
 
 
@@ -497,9 +497,9 @@ def plot_modes_grid(coords: np.ndarray, tris: np.ndarray,
 
         is_bottom = (row == nrows - 1) or (
             row == nrows - 2 and col >= (n_plot - (nrows - 1) * ncols))
-        if is_bottom:   ax.set_xlabel("x [m]")
+        if is_bottom:   ax.set_xlabel("r [m]")
         else:           ax.tick_params(labelbottom=False)
-        if col == 0:    ax.set_ylabel("y [m]")
+        if col == 0:    ax.set_ylabel("z [m]")
         else:           ax.tick_params(labelleft=False)
 
     for k in range(n_plot, nrows * ncols):
@@ -547,7 +547,7 @@ def plot_coupled_modes_grid(frames: list[dict], *,
                             labels: list[str] | None = None) -> plt.Figure:
     """
     One row per coupled mode:
-      left  : SPL = 20·log10(|p| / 20 µPa) in the air
+      left  : SPL = 20·log10(|p| / (√2 · 20 µPa)) in the air (RMS)
       right : structure deformed by Re(u), coloured by |u|
 
     frames       : output of load_mode_frames
@@ -583,7 +583,7 @@ def plot_coupled_modes_grid(frames: list[dict], *,
         plot_field(fr["coords_a"], fr["tris_a"], spl,
                    cmap=cmap_p, vmin=smax - spl_range, vmax=smax,
                    xlim=p_xlim, ylim=p_ylim,
-                   label="SPL [dB]", title=f"{head} - SPL",
+                   label="pressure level [dB, mode-shape scale]", title=f"{head} - pressure",
                    ax=axes[row][0])
 
         # ── structure ──────────────────────────────────────────────────────
@@ -604,8 +604,8 @@ def plot_coupled_modes_grid(frames: list[dict], *,
                 coll.set_rasterized(True)
         ax.set_aspect("equal")
         ax.set_title(f"{head} - structure")
-        ax.set_xlabel("x [m]")
-        ax.set_ylabel("y [m]")
+        ax.set_xlabel("r [m]")
+        ax.set_ylabel("z [m]")
 
     fig.tight_layout()
     return fig
@@ -634,7 +634,7 @@ def plot_interface_deformed(x: np.ndarray, y: np.ndarray,
             "ro", ms=3, label=rf"deformed ($\times${scale:g})")
     ax.set_aspect("equal")
     ax.grid(True, alpha=0.3)
-    ax.set_xlabel("x [m]"); ax.set_ylabel("y [m]")
+    ax.set_xlabel("r [m]"); ax.set_ylabel("z [m]")
     ax.legend()
     if title: ax.set_title(title)
     return ax

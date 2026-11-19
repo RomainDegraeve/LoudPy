@@ -38,8 +38,8 @@ ax.set_xlabel("azimuthal order m")
 ax.set_ylabel("f [Hz]")
 ax.set_title("Modes of the loudspeaker by azimuthal order")
 fig.colorbar(sc, label=r"$\zeta$")
-ax.grid(True, which="both", alpha=0.3)
-fig.savefig(out_dir / "mode_chart.pdf", bbox_inches="tight")
+ax.grid(True)
+lp.plot.style.tidy(fig).savefig(out_dir / "mode_chart.pdf", bbox_inches="tight")
 plt.close(fig)
 
 # ── meridian views per order ───────────────────────────────────────────────────
@@ -69,7 +69,7 @@ for m in modes.orders:
                 a.tick_params(labelsize=6)
             fig.suptitle(f"Order m = {m}: modes {start + 1}-{start + len(page)} of {len(om)}", fontsize=10)
             fig.tight_layout()
-            pdf.savefig(fig, bbox_inches="tight")
+            pdf.savefig(lp.plot.style.tidy(fig), bbox_inches="tight")
             plt.close(fig)
 
 print(f"✓ figures → {out_dir}")

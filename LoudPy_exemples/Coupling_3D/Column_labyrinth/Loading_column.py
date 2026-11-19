@@ -70,7 +70,7 @@ ax[1].set_title(f"Excursion of each driver; middle-driver minimum at {f_min:.0f}
                 f"(line quarter-wave estimate {f_qw:.0f} Hz)", fontsize=10)
 for a in ax:
     a.axvline(f_qw, color="0.7", lw=0.8, ls=":")
-    a.grid(True, which="both", alpha=0.3)
+    a.grid(True)
     a.legend(fontsize=8)
 fig.tight_layout()
 figs.append(fig)
@@ -122,7 +122,7 @@ ax[1].set_ylabel("excursion phase re middle driver [deg]")
 ax[1].set_xlabel("f [Hz]")
 for a in ax:
     a.axvline(f_qw, color="0.7", lw=0.8, ls=":")
-    a.grid(True, which="both", alpha=0.3)
+    a.grid(True)
     a.legend(fontsize=8)
 fig.tight_layout()
 figs.append(fig)
@@ -130,7 +130,7 @@ figs.append(fig)
 tmp, target = out_dir / "column_response.pdf.tmp", out_dir / "column_response.pdf"
 with PdfPages(tmp) as pdf:
     for fg in figs:
-        pdf.savefig(fg, bbox_inches="tight", dpi=130)
+        pdf.savefig(lp.plot.style.tidy(fg), bbox_inches="tight", dpi=130)
         plt.close(fg)
 os.replace(tmp, target)
 print(f"✓ {target}   (middle-driver excursion minimum {f_min:.0f} Hz, quarter-wave estimate {f_qw:.0f} Hz)")

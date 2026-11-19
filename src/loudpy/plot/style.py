@@ -157,6 +157,46 @@ def frequency_axis(ax, lo: float | None = None, hi: float | None = None, label: 
     return ax
 
 
+def tidy(fig):
+    """
+    Bring a figure made with plain matplotlib to the loudpy look before saving (returns fig):
+    readable Hz ticks on log frequency axes, the standard frequency label, no minor grid on
+    linear-value axes, and text scaled up on figures wider than a page (so that the fonts keep
+    their printed size relative to the page).
+    """
+    from matplotlib.text import Text
+    for ax in fig.axes:
+        if ax.name != "rectilinear":
+            continue
+        xl = ax.get_xlabel()
+        if ax.get_xscale() == "log" and ("Hz" in xl or xl.startswith("f")):
+            frequency_axis(ax, label=False)
+        if xl.strip() in ("f [Hz]", "frequency [Hz]", "Frequency [Hz]"):
+            ax.set_xlabel(LABELS["f"])
+        if ax.get_yscale() != "log":
+            ax.grid(False, which="minor", axis="y")
+        ax.grid(True, which="major", color=RC["grid.color"], linewidth=RC["grid.linewidth"])
+    k = min(fig.get_figwidth() / SIZES["wide"][0], 2.0) ** 0.6     # partial: long titles must still fit
+    if k > 1.05 and not getattr(fig, "_loudpy_scaled", False):
+        for t in fig.findobj(Text):
+            if t is not fig._suptitle:                # long suptitles already span the figure
+                t.set_fontsize(t.get_fontsize() * k)
+        for ax in fig.axes:
+            ax.tick_params(which="both", width=0.7 * k ** 0.5, length=3.5 * k ** 0.5)
+            for line in ax.get_lines():
+                line.set_linewidth(line.get_linewidth() * k ** 0.5)
+        fig._loudpy_scaled = True
+        engine = fig.get_layout_engine()
+        if engine is not None:
+            engine.execute(fig)
+        else:
+            try:
+                fig.tight_layout(rect=(0, 0, 1, 0.95) if fig._suptitle is not None else (0, 0, 1, 1), w_pad=1.5)
+            except Exception:                         # images / unusual layouts: keep as is
+                pass
+    return fig
+
+
 def label_panels(axes, x: float = -0.12, y: float = 1.04, start: str = "a") -> None:
     """(a), (b), … in the top-left corner of each axes."""
     for k, ax in enumerate(np.ravel(axes)):
@@ -169,7 +209,7 @@ def save(fig, path, close: bool = True, **kwargs) -> Path:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.stem + ".tmp" + path.suffix)
-    fig.savefig(tmp, **kwargs)
+    tidy(fig).savefig(tmp, **kwargs)
     os.replace(tmp, path)
     if close:
         plt.close(fig)
@@ -188,5 +228,5 @@ def pdf_pages(path):
     os.replace(tmp, path)
 
 
-__all__ = ["COLORS", "CMAPS", "LABELS", "SIZES", "RC", "use", "reset", "context", "figure", "frequency_axis",
+__all__ = ["COLORS", "CMAPS", "LABELS", "SIZES", "RC", "use", "reset", "context", "figure", "frequency_axis", "tidy",
            "label_panels", "save", "pdf_pages"]

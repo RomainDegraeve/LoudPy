@@ -54,7 +54,7 @@ def save_pdf(name, figs):
     tmp, target = out_dir / (name + ".tmp"), out_dir / name   # new file then rename (synced folder)
     with PdfPages(tmp) as pdf:
         for fig in figs:
-            pdf.savefig(fig, bbox_inches="tight", dpi=130)
+            pdf.savefig(lp.plot.style.tidy(fig), bbox_inches="tight", dpi=130)
             plt.close(fig)
     os.replace(tmp, target)
     print(f"  ✓ {target}")
@@ -89,7 +89,7 @@ ax[1, 1].set_ylabel("SPL in the enclosure [dB re 20 µPa RMS / N]")
 ax[1, 1].set_title(f"Pressure at the probe {np.round(MIC, 3)} m", fontsize=10)
 for a in ax.ravel():
     a.set_xlabel("f [Hz]")
-    a.grid(True, which="both", alpha=0.3)
+    a.grid(True)
     if a.get_legend_handles_labels()[0]:
         a.legend(fontsize=8)
 for fc in cav_freqs[1:]:
@@ -108,7 +108,7 @@ ax2.set_xlabel("f [Hz]")
 ax2.set_ylabel("|u_z| [m / N]")
 ax2.set_title(f"Rocking signature: axial displacement of the cone at r = {drv.xy[rim, 0] * 1e3:.0f} mm, "
               f"four angles (identical without the enclosure)", fontsize=10)
-ax2.grid(True, which="both", alpha=0.3)
+ax2.grid(True)
 ax2.legend(fontsize=8)
 save_pdf("response.pdf", [fig, fig2])
 
@@ -130,7 +130,7 @@ a1.set_xlabel("f [Hz]")
 a1.set_ylabel(r"$\zeta$")
 a1.set_title("Coupled modes, coloured by the dominant driver order (grey: rigid-wall enclosure modes)",
              fontsize=9)
-a1.grid(True, which="both", alpha=0.3)
+a1.grid(True)
 a1.legend(fontsize=8)
 a2.axis("off")
 rows = [[f"{fn[i]:.0f}", f"{zeta[i]:.4f}", f"m = {orders[dom[i]]}",

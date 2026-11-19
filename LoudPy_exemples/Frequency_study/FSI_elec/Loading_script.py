@@ -45,41 +45,41 @@ def point(theta_deg):
 curves = {rf"$\theta$ = {a}$^\circ$": res.probe(point(a), "p") for a in (0, 10, 30, 45, 60)}
 Z = res.extra("U") / res.extra("I_coil")                 # drive voltage / coil current, per frequency
 fig = plot_spl_sweep_multi(f, curves, title=rf"SPL and phase at $R$ = {R} m", Z_elec=Z)
-fig.savefig(out_dir / "spl_sweep_angles.pdf", bbox_inches="tight")
+lp.plot.style.tidy(fig).savefig(out_dir / "spl_sweep_angles.pdf", bbox_inches="tight")
 
 # ── directivity map: frequency × angle → SPL ──────────────────────────────────
 angles = np.linspace(0, 80, 50)
 p_map = np.array([res.probe(point(a), "p") for a in angles])           # (n_angle, n_freq)
 fig = plot_spl_angle_map(f, angles, p_map, title=rf"Directivity at $R$ = {R} m")
-fig.savefig(out_dir / "spl_angle_map.pdf", bbox_inches="tight")
+lp.plot.style.tidy(fig).savefig(out_dir / "spl_angle_map.pdf", bbox_inches="tight")
 fig = plot_spl_angle_map(f, angles, p_map, normalize=True, dynamic_range=30,
                          levels=[-24, -18, -12, -9, -6, -3, -1],
                          title=rf"Directivity at $R$ = {R} m (normalised to on-axis)")
-fig.savefig(out_dir / "spl_angle_map_norm.pdf", bbox_inches="tight")
+lp.plot.style.tidy(fig).savefig(out_dir / "spl_angle_map_norm.pdf", bbox_inches="tight")
 
 # ── cone tip: u, v = jωu, a = −ω²u ─────────────────────────────────────────────
 u = res.probe((0.0, 0.0), "u")[:, 1]
 w = 2 * np.pi * f
 fig = plot_meca_sweep(f, u, 1j * w * u, -w ** 2 * u, title="Cone tip - mechanical sweep")
-fig.savefig(out_dir / "meca_sweep.pdf", bbox_inches="tight")
+lp.plot.style.tidy(fig).savefig(out_dir / "meca_sweep.pdf", bbox_inches="tight")
 
-# ── field maps at a few frequencies (SPL peak amplitude, as plot_spl_sweep_multi) ──
+# ── field maps at a few frequencies (SPL, RMS as everywhere) ──
 for f_target in (20, 1000, 5000, 15000):
     p, u = res.field("p", f=f_target), res.field("u", f=f_target)
     fk = p.coordinate
     fig = plot_fields_grid([
-        dict(coords=p.mesh.coords, tris=p.triangles(), values=p.spl(rms=False),
+        dict(coords=p.mesh.coords, tris=p.triangles(), values=p.spl(),
              title=f"SPL @ {fk:.0f} Hz", **STYLE["acou"], vmin=20, xlim=(0, 0.30), ylim=(-0.1, 0.5)),
         dict(coords=u.mesh.coords, tris=u.triangles(), values=u.magnitude(),
              title=f"|u| @ {fk:.0f} Hz", **STYLE["meca"]),
     ], ncols=2)
-    fig.savefig(out_dir / f"fields_{fk:.0f}Hz.pdf", bbox_inches="tight")
+    lp.plot.style.tidy(fig).savefig(out_dir / f"fields_{fk:.0f}Hz.pdf", bbox_inches="tight")
 
 # ── surround and interface at the last of them ────────────────────────────────
 ax = lp.plot.field(u.restrict("surround"), title=f"Surround |u| @ {fk:.0f} Hz")
-ax.figure.savefig(out_dir / f"surround_{fk:.0f}Hz.pdf", bbox_inches="tight")
+lp.plot.style.tidy(ax.figure).savefig(out_dir / f"surround_{fk:.0f}Hz.pdf", bbox_inches="tight")
 ax = lp.plot.deformed_boundary(u, res.boundary("interface_acou_meca_front"), scale=1e4,
                                title=f"Interface deformation @ {fk:.0f} Hz")
-ax.figure.savefig(out_dir / f"interface_{fk:.0f}Hz.pdf", bbox_inches="tight")
+lp.plot.style.tidy(ax.figure).savefig(out_dir / f"interface_{fk:.0f}Hz.pdf", bbox_inches="tight")
 
 plt.show()

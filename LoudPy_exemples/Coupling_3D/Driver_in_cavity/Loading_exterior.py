@@ -49,7 +49,7 @@ def save_pdf(name, figs):
     tmp, target = out_dir / (name + ".tmp"), out_dir / name
     with PdfPages(tmp) as pdf:
         for fig in figs:
-            pdf.savefig(fig, bbox_inches="tight", dpi=130)
+            pdf.savefig(lp.plot.style.tidy(fig), bbox_inches="tight", dpi=130)
             plt.close(fig)
     os.replace(tmp, target)
     print(f"  ✓ {target}")
@@ -64,7 +64,7 @@ ax.set_xlabel("f [Hz]")
 ax.set_ylabel(f"SPL at {DIST:.0f} m [dB re 20 µPa RMS / N]")
 ax.set_title(f"HPNEW in the enclosure, standing on a rigid ground: SPL at {DIST:.0f} m from the driver "
              f"(height {Y0:.2f} m), 1 N on the coil", fontsize=10)
-ax.grid(True, which="both", alpha=0.3)
+ax.grid(True)
 ax.legend(fontsize=8)
 save_pdf("spl_1m.pdf", [fig])
 
@@ -119,7 +119,7 @@ ax[1].set_ylabel("|v| dust cap [m/s / N]")
 ax[1].set_title("Dust-cap axial velocity", fontsize=10)
 for a in ax:
     a.set_xlabel("f [Hz]")
-    a.grid(True, which="both", alpha=0.3)
+    a.grid(True)
     a.legend(fontsize=7, ncol=2 if a is ax[0] else 1)
 fig.suptitle("Effect of the exterior air (radiation loading of the front) on the driver", fontsize=11)
 fig.tight_layout()

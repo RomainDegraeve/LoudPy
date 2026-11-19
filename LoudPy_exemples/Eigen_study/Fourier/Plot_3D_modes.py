@@ -124,7 +124,7 @@ for m in [m for m in ORDERS if m in modes.orders]:
                          f"{len(om)}   (deformed shape, max |u| = {100 * DEFORMATION:.0f} % "
                          f"of the diameter; colour = |u|)", fontsize=11)
             fig.tight_layout()
-            pdf.savefig(fig, dpi=110)
+            pdf.savefig(lp.plot.style.tidy(fig), dpi=110)
             plt.close(fig)
     os.replace(tmp, target)
     print(f"✓ m = {m}: {len(om)} modes → {target}")
