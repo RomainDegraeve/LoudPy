@@ -5,7 +5,7 @@
 
 LoudPy is an open-source Python API dedicated to loudspeaker finite element simulation, released under the [GPL-3.0 license](https://www.gnu.org/licenses/gpl-3.0.html).
 
-> ⚠️ **Beta version** — The API is still under active development. Proper documentation will be provided soon.
+> ⚠️ **Beta version** — The API is still under active development. Documentation: `docs/` (Sphinx, see [Documentation](#documentation)).
 ## Overview
 
 Designing a loudspeaker with FEM means choosing between complex general-purpose tools that
@@ -36,17 +36,51 @@ pip install loudpy
 
 For development installation, see the [Developer Setup](#developer-setup) section below.
 
+## Quick start
+
+```python
+import numpy as np
+import loudpy as lp
+
+model = lp.Model("LoudPy_exemples/Geometries/Loudspeaker/HPNEW-Sketch.geo")
+model.add(lp.Solid("membranne", "Paper"), lp.Solid("surround", "Rubber"), lp.Solid("coil", "Copper"),
+          lp.Clamped("interface_constrained"), lp.Coil("interface_forced"))
+model.mesh("mesh.msh")
+
+modes = lp.Modes(model).solve(f_max=20000)            # eigenmodes
+res = lp.FrequencyResponse(model, drive=lp.Force(1.0)).solve(np.geomspace(20, 20000, 200))
+lp.plot.mode(modes, 0)
+```
+
+A model (or a 3D `lp.Scene`) goes into a study (`Modes`, `FrequencyResponse`, `Transient`); the
+study returns results, saved with `study.save(path)`, read back with `lp.load(path)` and plotted
+with `lp.plot`.
+
 ## Examples
 
-The `LoudPy_exemples/` folder contains ready-to-run scripts:
+The `LoudPy_exemples/` folder contains ready-to-run scripts (run them from the repository root).
+Each example has a `Running_*.py` (writes `Results/Files/`) and `Loading_*.py` / `Plot_*.py`
+scripts (write `Results/Figures/`).
 
 | Example | Description |
 |---|---|
-| `Frequency_study/FSI` | Coupled structural–acoustic frequency sweep |
+| `Eigen_study/Meca` | Structural modes of the driver in vacuo |
+| `Eigen_study/Fourier` | Azimuthal-order (non-axisymmetric) modes, 3D views, plate validation |
+| `Eigen_study/FSI_DtN` | Coupled structure + air modes with an exact radiation condition |
 | `Frequency_study/Meca` | Mechanical-only frequency sweep |
-| `Eigen_study` | Complex eigenfrequency analysis |
-| `Time_study/Single_tone` | Nonlinear time-domain simulation, single tone |
+| `Frequency_study/FSI` | Coupled structural–acoustic sweep, air remeshed per wavelength |
+| `Frequency_study/FSI_elec` | The same, voltage-driven (impedance, coil current) |
 | `Time_study/Multitone` | Nonlinear time-domain simulation, multi-tone |
+| `Coupling_3D/Driver_in_cavity` | Driver in a 3D enclosure: cavity modes, radiation on a rigid ground, vented box |
+| `Coupling_3D/Labyrinth` | Folded transmission line on a rigid ground |
+| `Coupling_3D/Column_labyrinth` | Three drivers in a column with a folded line (multi-driver) |
+
+## Documentation
+
+```bash
+pip install sphinx furo
+python3 -m sphinx -b html docs docs/_build/html      # then open docs/_build/html/index.html
+```
 
 ## Publication
 
