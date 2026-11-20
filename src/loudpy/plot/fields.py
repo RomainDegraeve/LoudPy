@@ -234,12 +234,14 @@ def coupled_modes(modes, indices, labels=None, range_db: float = 60.0, scale: fl
         rel = p._scalar(L - top, "level")
         name = labels[j] if labels is not None else f"mode {k}"
         zeta = np.real(p.extra.get("zeta", np.nan))
+        head = f"{name}\n{p.coordinate:.0f} Hz" + (rf", $\zeta$ = {zeta:.2g}" if np.isfinite(zeta) else "")
         field(rel, ax=ax, cmap=style.CMAPS["spl"], vmin=-range_db, vmax=0, colorbar=False, outline=False,
-              xlim=xlim, ylim=ylim, title=f"{name}: {p.coordinate:.0f} Hz" + (rf", $\zeta$ = {zeta:.2g}"
-                                                                              if np.isfinite(zeta) else ""))
+              xlim=xlim, ylim=ylim, title=head)
+        ax.title.set_fontsize(8)
         solid = u._scalar(np.full(u.mesh.n_nodes, 0.55), Quantity("solid", "Structure"))
         field(solid, ax=ax, deformed=u, scale=scale, colorbar=False, cmap="Greys", vmin=0, vmax=1, xlim=xlim,
-              ylim=ylim, title=ax.get_title())
+              ylim=ylim, title=head)
+        ax.title.set_fontsize(8)
         ax.set_xlabel("")
         ax.set_ylabel("")
     for ax in axes.ravel()[len(idx):]:

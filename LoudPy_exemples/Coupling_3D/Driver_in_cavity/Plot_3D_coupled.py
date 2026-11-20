@@ -52,7 +52,7 @@ def row(axl, axr, f):
     i = int(np.argmin(np.abs(res.frequencies - f)))
     share = ", ".join(f"$m$ = {m}: {100 * e / E.values[i].sum():.0f} %" for m, e in zip(E.coords["order"], E.values[i]))
     axl.set_title(f"{f:.0f} Hz: pressure in the enclosure (max {lp.spl(p_max):.0f} dB) and driver", fontsize=8)
-    axr.set_title(f"front view; kinetic energy {share}", fontsize=7)
+    axr.set_title(f"front view\nkinetic energy {share}", fontsize=6)
 
 
 for b0 in np.arange(F_START - F_START % BAND, F_END, BAND):

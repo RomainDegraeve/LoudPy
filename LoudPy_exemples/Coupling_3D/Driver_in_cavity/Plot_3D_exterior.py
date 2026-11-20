@@ -57,10 +57,10 @@ def row(axs, i):
     (lp.plot.View3D((480, 480)).add(full, scalars="|u|", clim=(0, 1), smooth_shading=True, colorbar=False)
      .camera((0, 0, 1), (0, 0, 0), (0, 1, 0), zoom=1.2).show(axs[2]))
     share = ", ".join(f"$m$ = {m}: {100 * e / E.values[i].sum():.0f} %" for m, e in zip(E.coords["order"], E.values[i]))
-    axs[0].set_title(f"{f:.0f} Hz, vertical cut: outside max {lp.spl(out_max):.0f} dB (beyond "
-                     f"{100 * NEAR_FIELD:.0f} cm), inside max {lp.spl(in_max):.0f} dB", fontsize=7)
-    axs[1].set_title(f"horizontal cut at the driver height ({Y0:.2f} m), from above", fontsize=7)
-    axs[2].set_title(f"driver, front view\n{share}", fontsize=7)
+    axs[0].set_title(f"{f:.0f} Hz: vertical cut\nmax outside {lp.spl(out_max):.0f} dB, inside {lp.spl(in_max):.0f} dB",
+                     fontsize=7)
+    axs[1].set_title(f"horizontal cut, from above\n(driver height {Y0:.2f} m)", fontsize=7)
+    axs[2].set_title(f"driver, front view\n{share}", fontsize=6)
 
 
 freqs = res.frequencies

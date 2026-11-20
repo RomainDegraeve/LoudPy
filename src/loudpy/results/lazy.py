@@ -32,17 +32,14 @@ class LazyArray:
         with h5py.File(self.path, "r") as f:
             ds = f[self.name]
             if isinstance(key, tuple) and any(isinstance(k, (list, np.ndarray)) for k in key):
-                # h5py needs increasing indices: read sorted unique rows, then reorder
+                # h5py needs increasing, unique indices along one axis: read the sorted unique
+                # nodes (axis 1), then put them back in the order asked for
                 k0 = key[0]
                 rows = np.asarray(key[1]) if len(key) > 1 else None
-                if rows is not None and rows.ndim == 1:
-                    order = np.argsort(rows)
-                    uniq, inv = np.unique(rows[order], return_inverse=True)
-                    block = ds[k0, uniq] if not isinstance(k0, (list, np.ndarray)) else ds[:, uniq][k0]
-                    out = np.empty(block.shape, block.dtype)
-                    picked = block[..., inv]
-                    out[..., order] = picked
-                    return out
+                if rows is not None and rows.ndim == 1 and not isinstance(k0, (list, np.ndarray)):
+                    uniq, inv = np.unique(rows, return_inverse=True)
+                    block = ds[(k0, uniq) + tuple(key[2:])]
+                    return np.take(block, inv, axis=1 if np.ndim(block) > 1 and not np.isscalar(k0) else 0)
                 return np.asarray(ds)[key]
             return ds[key]
 

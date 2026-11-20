@@ -214,3 +214,16 @@ def test_save_metadata(tmp_path, mesh_dir):
     study.save(tmp_path / "m.h5", case="demo", tones=np.array([1.0, 2.0]))
     meta = lp.load(tmp_path / "m.h5").meta
     assert meta["case"] == "demo" and meta["tones"] == [1.0, 2.0] and meta["study"] == "FrequencyResponse"
+
+
+def test_lazy_array_columns(tmp_path):
+    """Lazy datasets (large fields) read node subsets in any order, for scalar and vector fields."""
+    from loudpy.results.lazy import LazyArray
+    A = np.random.default_rng(0).normal(size=(5, 9, 2))
+    with h5py.File(tmp_path / "t.h5", "w") as f:
+        f["a"], f["b"] = A, A[..., 0]
+    la, lb = LazyArray(tmp_path / "t.h5", "a"), LazyArray(tmp_path / "t.h5", "b")
+    cols = np.array([7, 2, 2, 5])
+    np.testing.assert_array_equal(la[:, cols], A[:, cols])
+    np.testing.assert_array_equal(lb[:, cols], A[:, cols, 0])
+    np.testing.assert_array_equal(la[3, cols], A[3, cols])
