@@ -1,15 +1,39 @@
 [project]
 name = "loudpy"
-version = "0.1.0"
-description = "Python API for Fluid-solid interaction FEM simulations"
+dynamic = ["version"]                         # from src/loudpy/__init__.py (__version__)
+description = "Finite element simulation of loudspeakers: structure, air, radiation, 3D enclosures"
 authors = [
     {name = "Romain Degraeve", email = "rom2graeve@gmail.com"},
-    
 ]
-dependencies = ["numpy>=2.4.4", "numba>=0.65.0", "scipy>=1.17.1", "gmsh>=4.15.2", "h5py>=3.16.0", "matplotlib>=3.10.9", "pyvista>=0.48.4", "imageio>=2.37.3", "imageio-ffmpeg>=0.6.0", "pandas>=2.2"]
 requires-python = ">=3.13"
 readme = "README.md"
-license = {text = "GPL-3.0+"}
+license = "GPL-3.0-or-later"
+keywords = ["finite elements", "acoustics", "loudspeaker", "fluid-structure interaction", "vibroacoustics"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+# the computational core; plotting, 3D views and tables are optional (extras below)
+dependencies = [
+    "numpy>=2.1",
+    "scipy>=1.14.1",
+    "numba>=0.61",
+    "h5py>=3.12",
+    "gmsh>=4.13",
+]
+
+[project.optional-dependencies]
+plot = ["matplotlib>=3.9.2", "pandas>=2.2.3"]
+3d = ["pyvista>=0.44", "imageio>=2.35", "imageio-ffmpeg>=0.5"]
+all = ["loudpy[plot,3d]"]
+
+[project.urls]
+Homepage = "https://github.com/RomainDegraeve/LoudPy"
+Documentation = "https://github.com/RomainDegraeve/LoudPy/tree/main/docs"
+Issues = "https://github.com/RomainDegraeve/LoudPy/issues"
 
 [build-system]
 requires = ["pdm-backend"]
@@ -19,14 +43,21 @@ build-backend = "pdm.backend"
 [tool.pdm]
 distribution = true
 
+[tool.pdm.version]
+source = "file"
+path = "src/loudpy/__init__.py"
+
 [dependency-groups]
 dev = [
-    "matplotlib>=3.10.8",
-    "ruff>=0.15.11",
-    "black>=26.3.1",
+    "ruff>=0.6",
+    "mypy>=1.11",
 ]
 test = [
-    "pytest>=9.0.3",
+    "pytest>=8.0",
+]
+docs = [
+    "sphinx>=8.0",
+    "furo>=2024.8.6",
 ]
 
 [tool.pdm.build]

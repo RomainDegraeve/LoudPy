@@ -12,6 +12,7 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass, fields, replace
 from pathlib import Path
+from loudpy.errors import MaterialError, SelectionError
 
 # Air of the 3D scenes (lp.Scene defaults) [kg/m³], [m/s]
 RHO_AIR, C_AIR = 1.2, 343.0
@@ -43,6 +44,12 @@ class Material:
     alpha: float | None = None
     n: float | None = None
 
+    def __post_init__(self):
+        from loudpy.checks import check
+        for attr, kind in (("rho", "density"), ("E", "young_modulus"), ("nu", "poisson_ratio"), ("eta", "loss_factor"),
+                           ("alpha_ray", "rayleigh_alpha"), ("beta_ray", "rayleigh_beta"), ("c", "speed_of_sound")):
+            check(getattr(self, attr), kind, f"material {self.name!r}: {attr}")
+
     def with_(self, **overrides) -> "Material":
         """A copy with some properties changed (None values are ignored)."""
         return replace(self, **{k: v for k, v in overrides.items() if v is not None})
@@ -51,7 +58,7 @@ class Material:
         """{name: value} of properties that must be set; a clear error otherwise."""
         missing = [n for n in names if getattr(self, n) is None]
         if missing:
-            raise ValueError(f"material {self.name!r} has no {', '.join(missing)}: give "
+            raise MaterialError(f"material {self.name!r} has no {', '.join(missing)}: give "
                              f"{', '.join(m + '=' for m in missing)} or add it to the material library")
         return {n: getattr(self, n) for n in names}
 
@@ -60,7 +67,7 @@ class Material:
         known = {f.name for f in fields(cls)}
         unknown = set(d) - known - {"type"}
         if unknown:
-            raise ValueError(f"material {d.get('name')!r}: unknown properties {sorted(unknown)}")
+            raise MaterialError(f"material {d.get('name')!r}: unknown properties {sorted(unknown)}")
         kw = {k: v for k, v in d.items() if k in known}
         if "type" in d and "kind" not in d:
             kw["kind"] = d["type"]
@@ -85,7 +92,7 @@ class MaterialLibrary(Mapping):
         try:
             return self._m[name]
         except KeyError:
-            raise KeyError(f"no material {name!r} in {self.path or 'the library'} "
+            raise SelectionError(f"no material {name!r} in {self.path or 'the library'} "
                            f"(available: {', '.join(sorted(self._m))})") from None
 
     def __iter__(self):

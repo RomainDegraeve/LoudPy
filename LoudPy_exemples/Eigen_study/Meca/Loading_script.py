@@ -16,6 +16,8 @@ from pathlib import Path
 
 import loudpy as lp
 
+lp.plot.style.use()                       # the loudpy figure style for this script
+
 here = Path("LoudPy_exemples/Eigen_study/Meca/Results")
 modes = lp.load(here / "Files/modes.h5")
 print(modes)

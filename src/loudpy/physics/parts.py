@@ -16,6 +16,7 @@ from __future__ import annotations
 import numpy as np
 
 from loudpy.geometry.naming import pml_layer
+from loudpy.errors import ModelError
 
 
 class Part:
@@ -146,19 +147,19 @@ def region_parameters(region, lib) -> dict:
             p["alpha_ray"] = d.alpha if d.alpha is not None else m.require("alpha_ray")["alpha_ray"]
             p["beta_ray"] = d.beta if d.beta is not None else m.require("beta_ray")["beta_ray"]
         else:
-            raise TypeError(f"{region.name}: unknown damping {d!r}")
+            raise ModelError(f"{region.name}: unknown damping {d!r}")
         return p
     if isinstance(region, PML):
         p = m.require("rho", "c")
         p["alpha"] = region.strength if region.strength is not None else m.require("alpha")["alpha"]
         p["n"] = region.order if region.order is not None else m.require("n")["n"]
         if region.tuned_to is None:
-            raise ValueError(f"PML {region.name!r}: give tuned_to= (frequency the absorption is tuned to)")
+            raise ModelError(f"PML {region.name!r}: give tuned_to= (frequency the absorption is tuned to)")
         p["f_pml"] = region.tuned_to
         return p
     if isinstance(region, Air):
         return m.require("rho", "c")
-    raise TypeError(f"unknown region {region!r}")
+    raise ModelError(f"unknown region {region!r}")
 
 
 def region_part(region, group, lib) -> RegionPart:
@@ -194,6 +195,6 @@ def boundary_part(boundary, group) -> EdgePart:
     if value is None:
         if cls is RadiationEdge:
             return cls(group)
-        raise ValueError(f"{type(boundary).__name__}({boundary.name!r}): group {group.name!r} names no "
+        raise ModelError(f"{type(boundary).__name__}({boundary.name!r}): group {group.name!r} names no "
                          f"direction (_r_, _z_, _rz_) nor side (front / rear); give dofs= or side=")
     return cls(group, value)

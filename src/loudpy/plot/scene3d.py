@@ -77,6 +77,7 @@ def scene_surfaces(res, f, cut=None, keep=None, near_field: float = 0.08, groups
     return out
 
 
+@style.styled
 def scene_view(res, f, cameras: dict, cut=None, keep=None, range_db: float = 50.0, contour_db: float | None = 3.0,
                near_field: float = 0.08, deformation: float = 0.10, outline=None, ground=None, size=(900, 760),
                ncols: int | None = None, title: str | None = None, cavity=None):

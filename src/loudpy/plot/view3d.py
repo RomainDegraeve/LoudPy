@@ -178,6 +178,7 @@ class View3D:
         pl.close()
         return img
 
+    @style.styled
     def show(self, ax=None, title: str | None = None, colorbars: bool = True):
         """Draw the image (and its colour bars) into `ax` (a new figure without it); returns the axes.
         colorbars=False: no bars here (draw them once for several panels with colorbars(fig, axes, view.bars))."""
@@ -201,6 +202,7 @@ def colorbars_for(fig, axes, bars, **kwargs):
         fig.colorbar(ScalarMappable(Normalize(*clim), cmap), ax=axes, label=label, **kwargs)
 
 
+@style.styled
 def field3d(f, show=None, ax=None, cmap=None, vmin=None, vmax=None, title=None, colorbar=True, camera=None,
             cut=None, size=(900, 700), range_db: float | None = 50.0, **kwargs):
     """

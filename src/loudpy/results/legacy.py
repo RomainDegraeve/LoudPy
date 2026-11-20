@@ -15,6 +15,7 @@ import numpy as np
 
 from loudpy.geometry.mesh import Mesh, MeshGroup
 from loudpy.results.results import Block, FrequencyResults, ModeResults, TimeResults, canonical
+from loudpy.errors import ResultsFormatError
 
 PHYSICS_PREFIX = {"solid": "subdomainmeca", "air": "subdomainacou"}
 
@@ -119,7 +120,7 @@ def read(path):
             return ModeResults(_mode_blocks(f), meta, boundaries, source=str(path))
         if "time_histories" in f:
             return TimeResults(_time_blocks(f), meta, boundaries, source=str(path))
-    raise ValueError(f"{path}: no frequency, mode or time results found (format 1)")
+    raise ResultsFormatError(f"{path}: no frequency, mode or time results found (format 1)")
 
 
 def _frequency_blocks(f):

@@ -1,6 +1,7 @@
 import logging
 import gmsh
 import os 
+from loudpy.errors import ModelError
 
 log = logging.getLogger("loudpy")
 
@@ -29,7 +30,7 @@ def prepare_geometry( step_path: str, brep_path: str, unit : str = "mm") -> None
         elif unit == "inch":
             gmsh.model.occ.dilate(entities, 0, 0, 0, 0.0254, 0.0254, 0.0254)
         else:
-            raise ValueError(f"Unsupported unit '{unit}'. Expected 'm', 'mm', 'inch'.")
+            raise ModelError(f"Unsupported unit '{unit}'. Expected 'm', 'mm', 'inch'.")
         
         gmsh.model.occ.synchronize()
 

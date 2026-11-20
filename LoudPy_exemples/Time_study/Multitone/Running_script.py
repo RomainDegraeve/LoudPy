@@ -17,6 +17,8 @@ import numpy as np
 
 import loudpy as lp
 
+lp.set_verbosity("info")                 # progress messages (loudpy is silent by default)
+
 lp.plot.style.use()                       # loudpy figure style (fonts, colours, SPL in dB RMS)
 
 

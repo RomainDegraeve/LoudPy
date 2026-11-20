@@ -68,6 +68,7 @@ def _x_axis(ax, dim, x, logx):
     ax.set_xlabel(quantity(dim).axis_label() if dim not in ("r", "z") else style.LABELS[dim])
 
 
+@style.styled
 def line(d, ax=None, label=None, logx=None, logy=None, title=None, legend=None, **kwargs):
     """
     Curves of Data (or a list of Data on the same axes); returns the axes. 2D data draw one
@@ -110,6 +111,7 @@ def line(d, ax=None, label=None, logx=None, logy=None, title=None, legend=None, 
     return ax
 
 
+@style.styled
 def map(d, ax=None, levels=None, vmin=None, vmax=None, cmap=None, logx=None, colorbar=True, title=None,
         contours=None, **kwargs):
     """
@@ -149,6 +151,7 @@ def map(d, ax=None, levels=None, vmin=None, vmax=None, cmap=None, logx=None, col
     return ax
 
 
+@style.styled
 def polar(d, ax=None, rlim=None, title=None, zero="N", clockwise=True, legend: bool = True, **kwargs):
     """
     Data over "angle" [°] on a polar diagram (2D: one curve per value of the other coordinate, e.g.
@@ -184,6 +187,7 @@ def polar(d, ax=None, rlim=None, title=None, zero="N", clockwise=True, legend: b
     return ax
 
 
+@style.styled
 def data(d, ax=None, kind=None, **kwargs):
     """Plot Data with the natural kind: polar / map / line (see Data.plot)."""
     if kind is None:

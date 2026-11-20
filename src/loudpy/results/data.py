@@ -26,6 +26,7 @@ from pathlib import Path
 import numpy as np
 
 from loudpy.results.quantities import COMPONENTS, Quantity, quantity as as_quantity
+from loudpy.errors import ResultsError, SelectionError
 
 P_REF = 20e-6
 
@@ -116,7 +117,7 @@ class Data:
     # ── selection ──────────────────────────────────────────────────────────
     def _axis(self, dim):
         if dim not in self.coords:
-            raise KeyError(f"no dimension {dim!r} (dimensions: {list(self.coords)})")
+            raise ResultsError(f"no dimension {dim!r} (dimensions: {list(self.coords)})")
         return list(self.coords).index(dim)
 
     def isel(self, **index) -> "Data":
@@ -474,7 +475,7 @@ class Field:
         from loudpy.geometry.naming import matches
         names = [n for n in self.mesh.groups if matches(region, n)]
         if not names:
-            raise KeyError(f"no mesh group selected by {region!r} (groups: {list(self.mesh.groups)})")
+            raise SelectionError(f"no mesh group selected by {region!r} (groups: {list(self.mesh.groups)})")
         tags = np.unique(np.concatenate([self.mesh.groups[n].cells.ravel() for n in names]))
         rows = self.mesh.rows_of(tags)
         sub = Mesh(tags, self.mesh.coords[rows], {n: self.mesh.groups[n] for n in names}, self.mesh.path)

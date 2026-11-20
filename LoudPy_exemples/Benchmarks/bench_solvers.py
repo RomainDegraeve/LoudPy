@@ -22,6 +22,8 @@ import numpy as np
 
 import loudpy as lp
 
+lp.set_verbosity("info")                 # progress messages (loudpy is silent by default)
+
 CASE = sys.argv[1]
 TAG = sys.argv[2] if len(sys.argv) > 2 else "run"
 out = Path("LoudPy_exemples/Benchmarks/Results")

@@ -17,11 +17,13 @@ from pathlib import Path
 import numpy as np
 import scipy.sparse as sp
 
+from loudpy.checks import check
 from loudpy.model.drives import Force, Voltage
 from loudpy.model.regions import PML, Air
 from loudpy.results.results import Block, FrequencyResults
 from loudpy.study import records
 from loudpy.study.base import Study
+from loudpy.errors import ModelError
 
 
 @dataclass
@@ -46,6 +48,16 @@ class PerWavelength:
     c: float | None = None
     folder: str | Path | None = None
 
+    def __post_init__(self):
+        from loudpy.checks import check
+        check(self.bands, "frequency", "PerWavelength.bands")
+        check(self.every, "positive", "PerWavelength.every")
+        check(self.air_elements, "elements_per_wavelength", "PerWavelength.air_elements")
+        check(self.air_max_size, "mesh_size", "PerWavelength.air_max_size")
+        check(self.pml_thickness, "wavelengths", "PerWavelength.pml_thickness")
+        check(self.pml_elements, "positive", "PerWavelength.pml_elements")
+        check(self.c, "speed_of_sound", "PerWavelength.c")
+
     def split(self, freqs) -> list[np.ndarray]:
         """The frequencies grouped by band (in the given order)."""
         freqs = np.asarray(freqs, float)
@@ -54,7 +66,7 @@ class PerWavelength:
         elif len(self.bands):
             key = np.searchsorted(np.asarray(self.bands, float), freqs, side="right")
         else:
-            raise ValueError("PerWavelength needs bands= or every=")
+            raise ModelError("PerWavelength needs bands= or every=")
         out, start = [], 0
         for i in range(1, len(freqs) + 1):
             if i == len(freqs) or key[i] != key[start]:
@@ -76,16 +88,16 @@ class FrequencyResponse(Study):
         if self.is_scene:                                    # 3D scene: Force or {driver name: Force}
             drives = self.drive.values() if isinstance(self.drive, dict) else [self.drive]
             if not all(isinstance(d, Force) and not d.is_signal for d in drives):
-                raise TypeError("a scene is driven by lp.Force (harmonic) or {driver name: lp.Force}")
+                raise ModelError("a scene is driven by lp.Force (harmonic) or {driver name: lp.Force}")
             return
         if not isinstance(self.drive, (Force, Voltage)):
-            raise TypeError(f"drive must be lp.Force or lp.Voltage, got {self.drive!r}")
+            raise ModelError(f"drive must be lp.Force or lp.Voltage, got {self.drive!r}")
         if isinstance(self.drive, Force) and self.drive.is_signal:
-            raise ValueError("FrequencyResponse needs a harmonic Force (a complex amplitude), not a signal")
+            raise ModelError("FrequencyResponse needs a harmonic Force (a complex amplitude), not a signal")
         has_air = any(isinstance(r, Air) for r in model.regions)
         self.coupled = has_air if coupled is None else coupled
         if self.coupled and not has_air:
-            raise ValueError("coupled=True needs an air region (lp.Air) in the model")
+            raise ModelError("coupled=True needs an air region (lp.Air) in the model")
         if isinstance(self.drive, Voltage) and not self.coupled:
             raise NotImplementedError("a Voltage drive is available for the coupled structure + air model")
         self.reuse_factorization = reuse_factorization
@@ -98,7 +110,7 @@ class FrequencyResponse(Study):
         parts = self._parts()
         s = assemble(parts, air=self.coupled)
         if s.F is None:
-            raise ValueError("the model has no coil boundary (lp.Coil): nothing drives it")
+            raise ModelError("the model has no coil boundary (lp.Coil): nothing drives it")
         solver = SweepSolver()
         solver.reuse = self.reuse_factorization and solver.reuse
         d = self.drive
@@ -158,6 +170,7 @@ class FrequencyResponse(Study):
             self.results = scene_response.solve(self, freqs, store=store, **options)
             return self.results
         freqs = np.atleast_1d(np.asarray(freqs, float))
+        check(freqs, "frequency", "FrequencyResponse.solve(freqs)")
         meta = {"study": "FrequencyResponse", "drive": repr(self.drive), "coupled": self.coupled,
                 "geometry": str(self.model.geometry)}
         if remesh is None:
@@ -170,7 +183,7 @@ class FrequencyResponse(Study):
 
     def _solve_remeshed(self, freqs, rule: PerWavelength):
         if not self.coupled:
-            raise ValueError("remesh= adapts the air mesh: it needs the coupled model")
+            raise ModelError("remesh= adapts the air mesh: it needs the coupled model")
         air = [r for r in self.model.regions if isinstance(r, Air) and not isinstance(r, PML)]
         pml = [r for r in self.model.regions if isinstance(r, PML)]
         saved = [(r, r.mesh_size, getattr(r, "thickness", None), getattr(r, "tuned_to", None)) for r in air + pml]

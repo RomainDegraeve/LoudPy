@@ -11,6 +11,47 @@ time dependence :math:`e^{j\omega t}`. Sound pressure levels are RMS:
 Axisymmetric frame: ``r ≥ 0`` (radius), ``z`` along the axis (front +z). 3D scenes: the driver
 axis is +z unless placed otherwise, ``y`` is vertical (the ground ``y = 0``).
 
+Every physical input is checked where it enters the model (:mod:`loudpy.checks`): a value outside its
+valid range raises :class:`~loudpy.errors.ModelError` (a negative density, ν ≥ 0.5 …); a valid value
+outside its plausible SI range is kept with a :class:`~loudpy.errors.PlausibilityWarning` (a mesh size
+of 2 for 2 mm, a Young's modulus in MPa …).
+
+Errors and warnings
+-------------------
+
+Every error is a :class:`~loudpy.errors.LoudpyError`, and also the built-in exception it replaces
+(``except ValueError`` keeps working):
+
+=================================== ==========================================================
+``ModelError`` (``MaterialError``)  invalid model description, settings or materials
+``SelectionError``                  a name or selection matches nothing (also a ``KeyError``)
+``MeshError``                       geometry or mesh that cannot be built or used
+``StateError``                      call order: mesh before solving, solve before saving
+``SolverError``                     a solver failed (``ConvergenceError`` when asked to be strict)
+``ResultsError``                    the results do not contain what was asked for
+``ResultsFormatError``              a result file that cannot be read
+=================================== ==========================================================
+
+Warnings: ``ConvergenceWarning`` (Newton–Raphson, GMRES or ARPACK did not reach their tolerance; the
+result is kept) and ``PlausibilityWarning``. Turn them into errors with the standard ``warnings``
+filters, e.g. ``warnings.simplefilter("error", lp.errors.ConvergenceWarning)``.
+
+Messages
+--------
+
+loudpy is silent by default (it does not configure Python's logging). ``lp.set_verbosity("info")``
+prints the progress of meshing, sweeps and mode searches; ``"debug"`` adds solver details (shifts,
+filters, mode tables). The logger is ``"loudpy"``: configure it like any other.
+
+Troubleshooting: OpenMP
+-----------------------
+
+loudpy does not set ``KMP_DUPLICATE_LIB_OK``. If a mixed environment (e.g. conda packages linked to
+Intel MKL together with pip wheels) aborts with ``OMP: Error #15``, install the scientific stack from
+one source (all pip, or all conda-forge with ``nomkl``) or select Numba's own thread pool with
+``NUMBA_THREADING_LAYER=workqueue``; setting ``KMP_DUPLICATE_LIB_OK`` only hides the clash and can give
+wrong results.
+
 Physical-group names
 --------------------
 

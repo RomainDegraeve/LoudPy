@@ -81,6 +81,7 @@ def _scalar(f, show):
 
 
 # ── one field ────────────────────────────────────────────────────────────────
+@style.styled
 def field(f, show: str | None = None, ax=None, deformed=None, scale: float | None = None, factor: float | None = None,
           mirror: bool = False,
           outline: bool = True, mesh: bool = False, cmap=None, vmin=None, vmax=None, range_db: float | None = 50.0,
@@ -153,6 +154,7 @@ def field(f, show: str | None = None, ax=None, deformed=None, scale: float | Non
     return ax
 
 
+@style.styled
 def boundary(f, tags, scale: float | None = None, ax=None, title=None):
     """Rest and deformed positions of the nodes `tags` (e.g. res.boundary(name)) of a displacement field."""
     if ax is None:
@@ -180,6 +182,7 @@ def _one_set(modes):
     return modes
 
 
+@style.styled
 def modes(modes, indices=None, n: int | None = None, ncols: int = 4, scale: float = 0.05, show: str = "abs",
           name: str = "u", size=None):
     """
@@ -214,6 +217,7 @@ def modes(modes, indices=None, n: int | None = None, ncols: int = 4, scale: floa
     return fig
 
 
+@style.styled
 def coupled_modes(modes, indices, labels=None, range_db: float = 60.0, scale: float = 0.05, xlim=None, ylim=None):
     """
     Coupled structure + air modes of one set (modes.set("fsi")): per mode, the relative pressure
@@ -255,6 +259,7 @@ def coupled_modes(modes, indices, labels=None, range_db: float = 60.0, scale: fl
     return fig
 
 
+@style.styled
 def mode_chart(modes, y: str = "zeta", ax=None, color=None, label=None, **kwargs):
     """
     Modes as points: frequency (log axis) against the damping ratio (y="zeta") or the azimuthal

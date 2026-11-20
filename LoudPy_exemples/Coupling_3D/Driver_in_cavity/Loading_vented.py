@@ -19,6 +19,8 @@ import numpy as np
 import loudpy as lp
 from enclosure import X0, Y0, Z_F, PORT_X, PORT_Y, port_tuning, vented_volume
 
+lp.plot.style.use()                       # the loudpy figure style for this script
+
 here = Path("LoudPy_exemples/Coupling_3D/Driver_in_cavity/Results")
 DIST = 1.0
 POLAR_F = [50, 70, 100, 300, 1000, 2000, 3000]

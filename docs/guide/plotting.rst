@@ -71,8 +71,10 @@ The building blocks (``view3d.tet_grid``, ``tri_surface``, ``clip``, ``isolines`
 The loudpy style
 ----------------
 
-:mod:`loudpy.plot.style` is the single place where figures are styled. Importing ``lp.plot``
-applies it; scripts that use matplotlib directly call ``lp.plot.style.use()`` once.
+:mod:`loudpy.plot.style` is the single place where figures are styled. Every ``lp.plot`` function
+draws in that style without touching your global matplotlib settings; scripts that also draw with
+matplotlib directly (titles, extra lines, their own figures) call ``lp.plot.style.use()`` once, as all
+the examples do.
 
 * serif text and mathematics (STIX), 8.5–10 pt, thin axes, ticks inside on four sides, minor ticks
 * the Okabe–Ito colour cycle (colour-blind safe)

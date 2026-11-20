@@ -23,6 +23,8 @@ import numpy as np
 
 import loudpy as lp
 
+lp.plot.style.use()                       # the loudpy figure style for this script
+
 here = Path("LoudPy_exemples/Eigen_study/FSI_DtN/Results")
 vacuo_file = Path("LoudPy_exemples/Eigen_study/Meca/Results/Files/modes.h5")
 MATCH_F_TOL, MATCH_ZETA_TOL = 0.05, 0.15   # structural ↔ in-vacuo: relative tolerances on f and ζ

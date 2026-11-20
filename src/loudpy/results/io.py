@@ -18,6 +18,7 @@ import h5py
 
 from loudpy.results import legacy, schema
 from loudpy.results.results import KINDS
+from loudpy.errors import ResultsFormatError
 
 
 def _read_one(path):
@@ -53,7 +54,7 @@ def load(source):
         return parts[0]
     kinds = {r.kind for r in parts}
     if len(kinds) != 1:
-        raise ValueError(f"cannot merge results of different kinds: {sorted(kinds)}")
+        raise ResultsFormatError(f"cannot merge results of different kinds: {sorted(kinds)}")
     blocks = [b for r in parts for b in r.blocks]
     if sort:
         blocks.sort(key=lambda b: float(b.values[0]) if len(b.values) else 0.0)

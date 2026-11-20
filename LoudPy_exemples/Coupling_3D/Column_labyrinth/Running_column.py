@@ -28,6 +28,8 @@ from pathlib import Path
 import numpy as np
 
 import loudpy as lp
+
+lp.set_verbosity("info")                 # progress messages (loudpy is silent by default)
 from column import CENTERS, NAMES, cabinet, driver, line_length, quarter_wave
 
 files = Path("LoudPy_exemples/Coupling_3D/Column_labyrinth/Results/Files")

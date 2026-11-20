@@ -22,6 +22,8 @@ from loudpy.physics.modal import CavityModes
 from loudpy.plot import view3d
 from enclosure import X0, Y0, Z_F
 
+lp.plot.style.use()                       # the loudpy figure style for this script
+
 here = Path("LoudPy_exemples/Coupling_3D/Driver_in_cavity/Results")
 BAND, ROWS = 500.0, 2
 DEFORMATION, NEAR_FIELD = 0.10, 0.08

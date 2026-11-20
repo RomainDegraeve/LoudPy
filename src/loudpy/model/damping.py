@@ -18,11 +18,20 @@ class Rayleigh:
     alpha: float | None = None          # mass-proportional coefficient [1/s] (None: material alpha_ray)
     beta: float | None = None           # stiffness-proportional coefficient [s] (None: material beta_ray)
 
+    def __post_init__(self):
+        from loudpy.checks import check
+        check(self.alpha, "rayleigh_alpha", "Rayleigh.alpha")
+        check(self.beta, "rayleigh_beta", "Rayleigh.beta")
+
 
 @dataclass(frozen=True)
 class Hysteretic:
     """Hysteretic (structural) damping: complex stiffness K (1 + i eta) (None: the material's eta)."""
     eta: float | None = None            # loss factor (None: material eta)
+
+    def __post_init__(self):
+        from loudpy.checks import check
+        check(self.eta, "loss_factor", "Hysteretic.eta")
 
 
 @dataclass(frozen=True)

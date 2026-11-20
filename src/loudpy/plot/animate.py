@@ -38,6 +38,7 @@ def _frames(source, name, start, duration, fps, n_periods):
     return [source.field(name, index=i) for i in range(i0, len(t), stride)]
 
 
+@style.styled
 def animate(source, path, *, name: str = "u", deformed: bool = True, scale: float = 0.05, factor: float | None = None,
             start: float | None = None, duration: float = 8.0, fps: int = 30, n_periods: int = 1, **kwargs):
     """

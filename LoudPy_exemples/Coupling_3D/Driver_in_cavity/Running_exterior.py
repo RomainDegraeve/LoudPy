@@ -20,6 +20,8 @@ from pathlib import Path
 import numpy as np
 
 import loudpy as lp
+
+lp.set_verbosity("info")                 # progress messages (loudpy is silent by default)
 from enclosure import FILES, X0, Y0, exterior_scene
 
 files = Path(FILES)

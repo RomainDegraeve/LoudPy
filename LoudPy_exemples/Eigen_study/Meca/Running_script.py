@@ -14,6 +14,8 @@ Then run Loading_script.py.
 """
 import loudpy as lp
 
+lp.set_verbosity("info")                 # progress messages (loudpy is silent by default)
+
 # ── Paths ──────────────────────────────────────────────────────────────────────
 geometry = "LoudPy_exemples/Geometries/Loudspeaker/HPNEW-Sketch.geo"
 mesh_path = "LoudPy_exemples/Eigen_study/Meca/Results/Files/mesh.msh"      # reused on reruns

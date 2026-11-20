@@ -9,6 +9,7 @@ import numpy as np
 import math
 from dataclasses import dataclass
 from typing import Callable, List, Tuple, Dict, Any, Optional
+from loudpy.errors import MeshError
 
 log = logging.getLogger("loudpy.mesh")
 
@@ -284,7 +285,7 @@ class MeshManager:
         # Check all curves have valid boundary data
         for tag, (s, e) in edges.items():
             if s is None or e is None:
-                raise ValueError(
+                raise MeshError(
                     f"Curve {tag} has incomplete boundary data — cannot build ordered loop."
                 )
 
@@ -308,7 +309,7 @@ class MeshManager:
                     deg[n1].append(int(t))
                     deg[n2].append(int(t))
                 odd = {n: tags for n, tags in sorted(deg.items()) if len(tags) != 2}
-                raise ValueError(
+                raise MeshError(
                     f"Cannot continue ordered loop at node {tail} (ordered so far: {ordered}). "
                     f"Remaining curves: {remaining}; nodes not shared by exactly two curves: {odd}. "
                     "Check for disconnected or duplicate curves in the physical group."
@@ -325,7 +326,7 @@ class MeshManager:
         head_first = edges[abs(first)][0 if first > 0 else 1]
 
         if tail_last != head_first:
-            raise ValueError(
+            raise MeshError(
                 f"Ordered loop does not close: tail node {tail_last} != "
                 f"head node {head_first}. Input curves: {curve_tags}"
             )

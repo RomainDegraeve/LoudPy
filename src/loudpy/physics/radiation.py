@@ -34,6 +34,7 @@ from __future__ import annotations
 from math import factorial
 
 import numpy as np
+from loudpy.errors import MeshError
 
 
 # ── Reverse Bessel polynomials θ_n and their roots ─────────────────────────────
@@ -105,7 +106,7 @@ def dtn_boundary_vectors(edges: np.ndarray, node_tags: np.ndarray,
     dist = np.array([np.hypot(xy[int(t)][0] - r0, xy[int(t)][1] - z0) for t in node_tags])
     R = float(dist.mean())
     if np.ptp(dist) > 1e-3 * R:
-        raise ValueError(f"DtN boundary is not a circle about {center}: "
+        raise MeshError(f"DtN boundary is not a circle about {center}: "
                          f"radius {dist.min():.6g}–{dist.max():.6g} m")
 
     orders = list(orders)

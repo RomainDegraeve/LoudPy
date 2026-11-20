@@ -126,6 +126,18 @@ Plotting
 .. automodule:: loudpy.plot.style
    :members: use, reset, context, figure, frequency_axis, tidy, label_panels, save, pdf_pages
 
+Errors, warnings and input checks
+---------------------------------
+
+.. automodule:: loudpy.errors
+   :members:
+   :show-inheritance:
+
+.. automodule:: loudpy.checks
+   :members: check
+
+.. currentmodule:: loudpy
+
 Low-level toolkit
 -----------------
 

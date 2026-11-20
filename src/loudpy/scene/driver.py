@@ -20,6 +20,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from loudpy.geometry.frame import Frame, as_frame
+from loudpy.errors import ModelError
 
 
 @dataclass(frozen=True)
@@ -59,7 +60,7 @@ class Driver:
         tagset = {int(t) for t in tags}
         coil_nodes = np.array([i for i, t in enumerate(modes.node_tags) if int(t) in tagset], dtype=np.int64)
         if not len(coil_nodes):
-            raise ValueError(f"no node of the boundary {coil!r} on the modal mesh of {path}")
+            raise ModelError(f"no node of the boundary {coil!r} on the modal mesh of {path}")
         return cls(modes, rear.sample(geometry), front.sample(geometry) if front else None, coil_nodes,
                    name or "driver", source=dict(path=str(path), orders=list(orders), f_max=f_max,
                                                  geometry=str(geometry)))

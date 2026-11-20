@@ -18,6 +18,7 @@ import numpy as np
 import scipy.sparse as sp
 
 from loudpy.physics.registry import select
+from loudpy.errors import ModelError
 
 log = logging.getLogger("loudpy.physics")
 
@@ -49,7 +50,7 @@ class System:
         """The speed of sound of the air regions (one value required)."""
         cs = {float(sd.c) for sd in self.acou.subdomains if getattr(sd, "c", None) is not None}
         if len(cs) != 1:
-            raise ValueError(f"one speed of sound is needed in the air, found {cs}")
+            raise ModelError(f"one speed of sound is needed in the air, found {cs}")
         return cs.pop()
 
 
@@ -112,7 +113,7 @@ def dtn_system(s: System, parts, center, f_max: float, half: bool = True, n_max:
     c = s.speed_of_sound()
     arcs = select(parts, "radiation")
     if not arcs:
-        raise ValueError("the model has no radiation boundary (lp.Radiation)")
+        raise ModelError("the model has no radiation boundary (lp.Radiation)")
 
     Dk = sp.csr_matrix((na, na))
     Dc = sp.csr_matrix((na, na))

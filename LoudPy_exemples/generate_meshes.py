@@ -30,6 +30,8 @@ EXAMPLES = [
 
 def run(script):
     import loudpy as lp
+
+lp.set_verbosity("info")                 # progress messages (loudpy is silent by default)
     from loudpy.results.results import Block, ModeResults, TimeResults
     from loudpy.study.base import Study
     from loudpy.study.frequency import FrequencyResponse

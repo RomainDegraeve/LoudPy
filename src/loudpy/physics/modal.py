@@ -48,6 +48,7 @@ from loudpy.geometry.frame import as_frame
 from loudpy.geometry.meshing3d import read_p2_mesh
 from loudpy.model.materials import C_AIR, RHO_AIR
 from loudpy.solvers.eigen import start_vector
+from loudpy.errors import ModelError, SelectionError
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -88,7 +89,7 @@ class CavityModes:
             return self.patches[name]
         if name in self.surfaces:
             return self.surfaces[name]
-        raise KeyError(f"no surface {name!r} (patches: {list(self.patches)}, "
+        raise SelectionError(f"no surface {name!r} (patches: {list(self.patches)}, "
                        f"surfaces: {list(self.surfaces)})")
 
     # ── FE ─────────────────────────────────────────────────────────────────
@@ -253,7 +254,7 @@ class MultiDriver:
         n_d = len(self.frames)
         self.modes = [modes] * n_d if isinstance(modes, DriverModes) else list(modes)
         if len(self.modes) != n_d:
-            raise ValueError(f"{len(self.modes)} DriverModes for {n_d} frames")
+            raise ModelError(f"{len(self.modes)} DriverModes for {n_d} frames")
         self.names = list(names) if names is not None else [f"driver_{j}" for j in range(n_d)]
         n = [len(d) for d in self.modes]
         self.offsets = np.concatenate([[0], np.cumsum(n)]).astype(int)
@@ -316,7 +317,7 @@ def as_drivers(driver, profile=None, center=(0.0, 0.0)):
     """(MultiDriver, per-driver profiles, single?) from one DriverModes or a MultiDriver."""
     if isinstance(driver, MultiDriver):
         if profile is None or len(profile) != driver.n_drivers:
-            raise ValueError("with a MultiDriver, profile is a list with one wet profile per driver")
+            raise ModelError("with a MultiDriver, profile is a list with one wet profile per driver")
         return driver, list(profile), False
     return MultiDriver([driver], [center]), [profile], True
 

@@ -22,6 +22,8 @@ import loudpy as lp
 from loudpy.plot import view3d
 from column import X0, Y0S, Z_F, Z_BACK, W_IN as W, H_IN as H, WALL_T, quarter_wave
 
+lp.plot.style.use()                       # the loudpy figure style for this script
+
 here = Path("LoudPy_exemples/Coupling_3D/Column_labyrinth/Results")
 FREQS = [40, 70, 120, 250, 500, 1000]         # [Hz] (nearest computed frequency)
 RANGE = 50.0

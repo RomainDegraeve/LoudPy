@@ -20,7 +20,9 @@ import numpy as np
 import scipy.sparse as sp
 from scipy.sparse.linalg import ArpackNoConvergence, LinearOperator, eigs
 
+from loudpy.errors import ConvergenceWarning, LoudpyWarning
 from loudpy.solvers.linear import QEPShiftInvert, factorize
+from loudpy.errors import SolverError
 
 log = logging.getLogger("loudpy.solvers")
 
@@ -233,7 +235,7 @@ def filter_modes(s_vals, phi, f_min, f_max, filter_halfplane,
                 f"{n_real} real or near-real (overdamped / spurious ζ≈1) "
                 f"eigenvalue(s) between {f_min} and {f_max} Hz ignored "
                 f"in the modal basis.",
-                stacklevel=2,
+                LoudpyWarning, stacklevel=2,
             )
 
         n_growing = int(np.sum(np.logical_and(mask, growing)))
@@ -242,7 +244,7 @@ def filter_modes(s_vals, phi, f_min, f_max, filter_halfplane,
                 f"{n_growing} eigenvalue(s) with Re(s) > 0 (growing in time) "
                 f"between {f_min} and {f_max} Hz ignored. "
                 f"Check the signs of M, C and K.",
-                stacklevel=2,
+                LoudpyWarning, stacklevel=2,
             )
 
         lower_half = np.imag(s_vals) < -noise
@@ -294,7 +296,7 @@ def multishift(K, M, C, f_targets, n_modes_per_shift,
             log.info(f"    shift {ft:7.1f} Hz → FAILED ({type(e).__name__}: {e})")
 
     if not s_all:
-        raise RuntimeError("All shifts failed — no modes collected.")
+        raise SolverError("All shifts failed — no modes collected.")
 
     return np.concatenate(s_all), np.concatenate(phi_all, axis=1)
 
@@ -394,7 +396,7 @@ def covering(K, M, C, f_min, f_max, n_modes_per_shift,
             skipped.append(sigma0)
             warnings.warn(f"ARPACK failed around σ/2π = {sigma0/(2*np.pi):.1f} Hz "
                           f"(ζ = {-sigma0.real/abs(sigma0):.2f}); skipped, modes within "
-                          f"{r_skip/(2*np.pi):.0f} Hz of it may be missing.", stacklevel=2)
+                          f"{r_skip/(2*np.pi):.0f} Hz of it may be missing.", ConvergenceWarning, stacklevel=2)
             continue
         r = np.max(np.abs(s_v - sigma))
         shifts.append((sigma, r))
@@ -440,7 +442,7 @@ def covering(K, M, C, f_min, f_max, n_modes_per_shift,
             f"{(~covered).mean():.1%} of the region uncovered "
             f"(f from {np.abs(miss).min()/(2*np.pi):.0f} Hz, "
             f"ζ up to {(-miss.real/np.abs(miss)).max():.2f}). "
-            f"Raise max_shifts or n_modes_per_shift.", stacklevel=2)
+            f"Raise max_shifts or n_modes_per_shift.", ConvergenceWarning, stacklevel=2)
     else:
         log.info(f"  Covering | complete with {len(shifts)} shifts, "
               f"{len(s_keep)} distinct eigenvalues")

@@ -40,6 +40,7 @@ import numpy as np
 
 from loudpy.geometry.gmsh_session import gmsh_module
 from loudpy.model.materials import C_AIR, RHO_AIR
+from loudpy.errors import MeshError, ModelError, StateError
 
 log = logging.getLogger("loudpy")
 
@@ -98,11 +99,14 @@ class Scene:
         scene.mesh(folder)"""
     def __init__(self, cabinet, drivers, rho: float = RHO_AIR, c: float = C_AIR):
         """cabinet: callable(occ) → Cabinet;  drivers: PlacedDriver list (Driver.place)."""
+        from loudpy.checks import check
+        check(rho, "density", "Scene.rho")
+        check(c, "speed_of_sound", "Scene.c")
         self.cabinet = cabinet
         self.drivers = list(drivers)
         names = [d.name for d in self.drivers]
         if len(set(names)) != len(names):
-            raise ValueError(f"driver names must be unique: {names}")
+            raise ModelError(f"driver names must be unique: {names}")
         self.rho, self.c = rho, c
         self._cavity: _Cavity | None = None
         self._open: _OpenAir | None = None
@@ -116,7 +120,7 @@ class Scene:
                cache_modes=True):
         """The cabinet air as rigid-wall cavity modes (configurations A and B)."""
         if self._open is not None and self._open.kind == "merged":
-            raise ValueError("a merged air domain already contains the cabinet air")
+            raise ModelError("a merged air domain already contains the cabinet air")
         self._cavity = _Cavity(tuple(mesh_size), tuple(near), f_max, eta, file, cache_modes)
         return self
 
@@ -133,7 +137,7 @@ class Scene:
                file="air_{f_hi:.0f}Hz.msh"):
         """One air domain: inside + openings + outside (configuration C)."""
         if self._cavity is not None:
-            raise ValueError("a merged air domain replaces the cavity modes: remove cavity()")
+            raise ModelError("a merged air domain replaces the cavity modes: remove cavity()")
         self._open = _OpenAir("merged", ground, level, margin, [tuple(b) for b in bands], points_per_wavelength,
                               max_size, driver_size, tuple(near), plug_from, file)
         return self
@@ -148,7 +152,7 @@ class Scene:
             return "cavity"
         if self._open is not None:
             return "exterior"
-        raise ValueError("configure the scene first: cavity(), exterior() or merged()")
+        raise StateError("configure the scene first: cavity(), exterior() or merged()")
 
     # ── meshing ────────────────────────────────────────────────────────────
     def mesh(self, folder, reuse=True):
@@ -237,7 +241,7 @@ class Scene:
         cuts = [add_driver_cutout(d.driver.rear_cutout, center=d.frame) for d in self.drivers]
         vols = carve_drivers(cab.inner, cuts, extra_cuts=list(cab.cuts))
         if len(vols) != 1:
-            raise ValueError(f"the cavity is {len(vols)} volumes (expected one)")
+            raise MeshError(f"the cavity is {len(vols)} volumes (expected one)")
         self._keep_only(occ, vols)
         r_c = [d.driver.r_rear for d in self.drivers]
         z_b = [d.driver.z_baffle for d in self.drivers]
@@ -306,7 +310,7 @@ class Scene:
             vols = [t for d, t in air if d == 3]
             self._keep_only(occ, vols)
             if len(vols) != 1:
-                raise ValueError(f"the exterior air is {len(vols)} volumes (expected one)")
+                raise MeshError(f"the exterior air is {len(vols)} volumes (expected one)")
             r_f = [d.driver.r_front for d in self.drivers]
             z_f = [d.driver.z_front for d in self.drivers]
             mesh_exterior(path, vols[0], self.dtn(), self._frames(), r_f[0] if self._single() else r_f,
@@ -322,7 +326,7 @@ class Scene:
             occ.synchronize()
             vols = [t for d, t in air if d == 3]
             if len(vols) != 1:
-                raise ValueError(f"the air is {len(vols)} volumes: the inside must connect to the outside")
+                raise MeshError(f"the air is {len(vols)} volumes: the inside must connect to the outside")
             self._keep_only(occ, vols)
             names = ["interface_driver"] if self._single() else \
                 [f"interface_driver_{j}" for j in range(len(self.drivers))]

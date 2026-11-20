@@ -93,3 +93,30 @@ def test_deterministic_meshing(tmp_path):
     assert a.names() == b.names()
     for name in a.names():
         assert np.array_equal(a.groups[name].cells, b.groups[name].cells), name
+
+
+def test_import_has_no_side_effects():
+    """import loudpy / loudpy.plot leaves the environment, logging and matplotlib settings alone."""
+    import os
+    import subprocess
+    import sys
+    code = ("import os, logging, matplotlib as mpl; mpl.use('Agg'); before = dict(mpl.rcParams);"
+            "import loudpy as lp, loudpy.plot, numpy as np;"
+            "assert 'KMP_DUPLICATE_LIB_OK' not in os.environ;"
+            "assert all(isinstance(h, logging.NullHandler) for h in logging.getLogger('loudpy').handlers);"
+            "assert dict(mpl.rcParams) == before;"
+            "ax = lp.Data(np.arange(1., 4.), {'f': np.array([10., 100., 1000.])}, 'spl').plot();"
+            "assert dict(mpl.rcParams) == before;"
+            "assert ax.yaxis.label.get_fontfamily() == ['serif']")
+    env = {k: v for k, v in os.environ.items() if k != "KMP_DUPLICATE_LIB_OK"}
+    out = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr
+
+
+def test_set_verbosity_prints_progress(capsys):
+    import loudpy as lp
+    lp.set_verbosity("info")
+    import logging
+    logging.getLogger("loudpy.test").info("hello from loudpy")
+    lp.set_verbosity("warning")
+    assert "hello from loudpy" in capsys.readouterr().err

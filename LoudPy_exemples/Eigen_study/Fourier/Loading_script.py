@@ -15,6 +15,8 @@ from pathlib import Path
 
 import loudpy as lp
 
+lp.plot.style.use()                       # the loudpy figure style for this script
+
 here = Path("LoudPy_exemples/Eigen_study/Fourier/Results")
 modes = lp.load(here / "Files/eigen_fourier.h5")
 print(modes, {m: len(modes.order(m)) for m in modes.orders})

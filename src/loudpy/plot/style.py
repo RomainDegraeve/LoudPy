@@ -121,6 +121,35 @@ def context():
         yield
 
 
+def is_active() -> bool:
+    """True when the loudpy style is the global matplotlib style (after use())."""
+    return all(mpl.rcParams.get(k) == RC[k] for k in ("font.family", "axes.prop_cycle", "xtick.direction"))
+
+
+def styled(fn):
+    """
+    Decorator of the lp.plot functions: draw in the loudpy style without changing the user's global
+    matplotlib settings. The figure is laid out inside the style (texts, ticks), so it keeps the style
+    when it is shown or saved later.
+    """
+    import functools
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        if is_active():
+            return fn(*args, **kwargs)
+        with mpl.rc_context(RC):
+            out = fn(*args, **kwargs)
+            fig = getattr(out, "figure", None) if not hasattr(out, "savefig") else out
+            if isinstance(out, tuple) and out and hasattr(out[0], "savefig"):
+                fig = out[0]
+            if fig is not None and hasattr(fig, "draw_without_rendering"):
+                fig.draw_without_rendering()             # create the ticks and texts with the loudpy style
+            return out
+    return wrapper
+
+
+@styled
 def figure(size: str | tuple = "wide", nrows: int = 1, ncols: int = 1, **kwargs):
     """plt.subplots with a standard size (SIZES name, or (width, height) in inches), constrained layout."""
     import matplotlib.pyplot as plt
@@ -204,7 +233,8 @@ def save(fig, path, close: bool = True, **kwargs) -> Path:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.stem + ".tmp" + path.suffix)
-    tidy(fig).savefig(tmp, **kwargs)
+    with mpl.rc_context(RC):
+        tidy(fig).savefig(tmp, **kwargs)
     os.replace(tmp, path)
     if close:
         plt.close(fig)
@@ -219,7 +249,8 @@ class _Pages:
 
     def savefig(self, fig, close: bool = True, **kwargs):
         import matplotlib.pyplot as plt
-        self.pdf.savefig(tidy(fig), **kwargs)
+        with mpl.rc_context(RC):
+            self.pdf.savefig(tidy(fig), **kwargs)
         if close:
             plt.close(fig)
 
@@ -240,5 +271,6 @@ def pdf_pages(path):
     os.replace(tmp, path)
 
 
-__all__ = ["COLORS", "CMAPS", "DIVERGING", "LABELS", "SIZES", "RC", "use", "reset", "context", "figure",
+__all__ = ["COLORS", "CMAPS", "DIVERGING", "LABELS", "SIZES", "RC", "use", "reset", "context", "is_active",
+           "styled", "figure",
            "frequency_axis", "tidy", "label_panels", "save", "pdf_pages"]

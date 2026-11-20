@@ -19,6 +19,8 @@ import numpy as np
 import loudpy as lp
 from labyrinth import X0, Y0, Z_F, mouth, quarter_wave
 
+lp.plot.style.use()                       # the loudpy figure style for this script
+
 here = Path("LoudPy_exemples/Coupling_3D/Labyrinth/Results")
 other = Path("LoudPy_exemples/Coupling_3D/Driver_in_cavity/Results/Files")
 DIST = 1.0

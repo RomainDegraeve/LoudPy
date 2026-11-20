@@ -34,6 +34,7 @@ amplitudes (MultiDriver.coil_forces(coil_nodes, amplitudes)), or run it once per
 from __future__ import annotations
 
 import time
+import warnings
 
 import numpy as np
 import scipy.linalg as sla
@@ -41,10 +42,12 @@ import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 from scipy.special import spherical_jn, spherical_yn, sph_harm_y
 
+from loudpy.errors import ConvergenceWarning
 from loudpy.fem.tet10 import assemble_p2, surface_quadrature
 from loudpy.geometry.meshing3d import read_p2_mesh
 from loudpy.model.materials import C_AIR, RHO_AIR
 from loudpy.physics.modal import add_pistons, as_drivers, couple_drivers
+from loudpy.errors import SelectionError
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -166,7 +169,7 @@ class ExteriorFE:
             names = list(self.front)
         missing = [nm for nm in names if nm not in self.faces or not len(self.faces[nm])]
         if missing:
-            raise KeyError(f"no faces for {missing} in the mesh (read: {list(self.faces)})")
+            raise SelectionError(f"no faces for {missing} in the mesh (read: {list(self.faces)})")
         self.pnodes, self.Bf, self.wet_areas, _ = couple_drivers(
             self.nodes, [self.faces[nm] for nm in names], drivers, profiles, map_tol)
         self.wet_area = float(sum(self.wet_areas))
@@ -260,7 +263,8 @@ def coupled_sweep(bands, freqs, F, w_s, zeta, S, R, kappa2, eta_air=0.0, rho=RHO
             rhs[pn] = -rho * w ** 2 * (Bf @ sla.lu_solve(Hlu, F))
             p, it, info = ext.solve(k, rhs, Mpre, p_prev, rtol, extra)
             if info != 0:
-                log(f"    ! GMRES did not converge at {f:.0f} Hz (info {info})")
+                warnings.warn(f"GMRES did not reach rtol = {rtol:g} at {f:.0f} Hz (info {info}); the result is kept",
+                              ConvergenceWarning, stacklevel=2)
             q_all[i] = sla.lu_solve(Hlu, F - Bf.T @ p[pn])
             coefs[i], iters[i], p_prev = ext.coefficients(p, k), it, p
             if on_frequency is not None:

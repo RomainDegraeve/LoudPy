@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import numpy as np
 from scipy.sparse import issparse
+from loudpy.errors import StateError
 
 
 class DirichletElimination:
@@ -82,7 +83,7 @@ class DirichletElimination:
     def expand(self, u_red):
         """Scatter a reduced vector back to the full DOF size (blocked DOFs = 0)."""
         if self._free is None:
-            raise RuntimeError("expand() called before apply_blocked_boundaries(); no free-DOF map.")
+            raise StateError("expand() called before apply_blocked_boundaries(); no free-DOF map.")
         u = np.zeros(self.matrix_size, dtype=u_red.dtype)
         u[self._free] = u_red
         return u

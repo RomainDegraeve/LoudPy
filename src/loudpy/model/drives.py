@@ -15,12 +15,20 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from loudpy.errors import ModelError
+
 
 @dataclass(frozen=True)
 class Force:
     """Force on the coil: a complex amplitude [N] (harmonic), or a time signal sampled at fs [Hz] (transient)."""
     amplitude: complex | np.ndarray = 1.0       # [N], or a time signal (with fs)
     fs: float | None = None                     # sampling rate of the signal [Hz]
+
+    def __post_init__(self):
+        from loudpy.checks import check
+        check(self.fs, "sampling_rate", "Force.fs")
+        if self.is_signal and self.fs is None:
+            raise ModelError("a Force signal needs its sampling rate: lp.Force(signal, fs=…)")
 
     @property
     def is_signal(self) -> bool:
@@ -36,6 +44,13 @@ class Voltage:
     Bl: float                                   # force factor [T·m]
     Le: float = 0.0                             # coil inductance [H]
     n: float = 1.0                              # inductance exponent: Ze = Re + (jω)^n Le
+
+    def __post_init__(self):
+        from loudpy.checks import check
+        check(self.Re, "resistance", "Voltage.Re")
+        check(self.Bl, "force_factor", "Voltage.Bl")
+        check(self.Le, "inductance", "Voltage.Le")
+        check(self.n, "inductance_exponent", "Voltage.n")
 
     def impedance(self, omega: float) -> complex:
         """Blocked electrical impedance Ze(ω)."""

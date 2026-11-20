@@ -28,6 +28,8 @@ from pathlib import Path
 import numpy as np
 
 import loudpy as lp
+
+lp.set_verbosity("info")                 # progress messages (loudpy is silent by default)
 from labyrinth import X0, Y0, cabinet, driver, export_cabinet, line_length, quarter_wave
 
 files = Path("LoudPy_exemples/Coupling_3D/Labyrinth/Results/Files")

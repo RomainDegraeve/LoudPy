@@ -15,6 +15,8 @@ import numpy as np
 
 import loudpy as lp
 
+lp.set_verbosity("info")                 # progress messages (loudpy is silent by default)
+
 geometry = "LoudPy_exemples/Geometries/Plate/clamped_plate.geo"
 mesh_path = "LoudPy_exemples/Eigen_study/Fourier/Results/Files/plate_mesh.msh"
 

@@ -18,6 +18,7 @@ from loudpy.fem.batch import _batch_K, _batch_M, _batch_TL
 from loudpy.fem.dofs import DirichletElimination
 from loudpy.fem.shape import material_matrix_D
 from loudpy.physics.registry import select
+from loudpy.errors import ModelError, StateError
 
 
 class _Structural(DirichletElimination, ElementAssembler):
@@ -27,7 +28,7 @@ class _Structural(DirichletElimination, ElementAssembler):
     def __init__(self, objects):
         solids = select(objects, "solid")
         if not solids:
-            raise ValueError(f"{type(self).__name__}: no solid region (role 'solid') found.")
+            raise ModelError(f"{type(self).__name__}: no solid region (role 'solid') found.")
         self._setup(solids)
         self._free = None
 
@@ -129,7 +130,7 @@ class MecaAssemblerFourier(ElementAssembler):
     def __init__(self, objects, m: int, axis_tol: float = 1e-9):
         solids = select(objects, "solid")
         if not solids:
-            raise ValueError("MecaAssemblerFourier: no solid region (role 'solid') found.")
+            raise ModelError("MecaAssemblerFourier: no solid region (role 'solid') found.")
         if int(m) != m or m < 0:
             raise ValueError(f"azimuthal order m must be a non-negative integer, got {m}")
         self.m = int(m)
@@ -225,5 +226,5 @@ class MecaAssemblerFourier(ElementAssembler):
 
     def expand(self, u_red):
         if self.T is None:
-            raise RuntimeError("expand() called before apply_blocked_boundaries().")
+            raise StateError("expand() called before apply_blocked_boundaries().")
         return self.T @ u_red

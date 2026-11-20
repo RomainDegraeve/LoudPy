@@ -22,12 +22,19 @@ here draw them, compose figures and add a few composite plots:
     lp.plot.animate(trans, "u.mp4")                      animations
     lp.plot.save(fig, "Results/Figures/x.pdf")           folders created, safe on synced folders
 
-Importing loudpy.plot applies the loudpy style (loudpy.plot.style: serif fonts, Okabe–Ito colours,
-one colormap per quantity, labels "Name $symbol$ [unit]"); lp.plot.style.reset() undoes it.
+Every lp.plot function draws in the loudpy style (loudpy.plot.style: serif fonts, Okabe–Ito colours,
+one colormap per quantity, labels "Name $symbol$ [unit]") without changing your global matplotlib
+settings; lp.plot.style.use() makes it the global style (for figures you draw yourself too), and
+lp.plot.style.reset() restores matplotlib's defaults.
 """
 from __future__ import annotations
 
 import numpy as np
+
+try:
+    import matplotlib  # noqa: F401
+except ImportError as e:                                  # an optional dependency
+    raise ImportError("lp.plot needs matplotlib: pip install 'loudpy[plot]'") from e
 
 from loudpy.plot import style
 from loudpy.plot.animate import animate
@@ -36,14 +43,13 @@ from loudpy.plot.fields import boundary, coupled_modes, field, mode_chart, modes
 from loudpy.plot.scene3d import Camera, scene_view
 from loudpy.plot.view3d import View3D
 
-style.use()
-
 figure = style.figure
 save = style.save
 pdf_pages = style.pdf_pages
 label_panels = style.label_panels
 
 
+@style.styled
 def directivity(res, f, radius: float, angles=None, center=None, axis="z", toward="x", normalize: bool = True,
                 ax=None, **kwargs):
     """

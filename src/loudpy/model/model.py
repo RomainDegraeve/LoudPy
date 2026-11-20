@@ -29,6 +29,7 @@ from loudpy.model.boundaries import Boundary
 from loudpy.model.damping import Hysteretic
 from loudpy.model.materials import MaterialLibrary, load_materials
 from loudpy.model.regions import PML, Air, Region, Solid
+from loudpy.errors import ModelError, SelectionError, StateError
 
 log = logging.getLogger("loudpy.model")
 
@@ -78,7 +79,7 @@ class Model:
             elif isinstance(it, Boundary):
                 self.boundaries.append(it)
             else:
-                raise TypeError(f"cannot add {it!r} to a Model (expected a region or a boundary)")
+                raise ModelError(f"cannot add {it!r} to a Model (expected a region or a boundary)")
         self.meshed = None
         return self
 
@@ -87,7 +88,7 @@ class Model:
         for it in self.regions + self.boundaries:
             if it.name == name:
                 return it
-        raise KeyError(name)
+        raise SelectionError(name)
 
     def groups(self, kind: str | None = None) -> list[str]:
         """Physical groups of the geometry: kind "domain", "boundary" or None (all)."""
@@ -106,17 +107,17 @@ class Model:
         for r in self.regions:
             sel = [g for g in domains if naming.matches(r.name, g)]
             if not sel:
-                raise ValueError(f"{type(r).__name__}({r.name!r}) selects no domain group of "
+                raise SelectionError(f"{type(r).__name__}({r.name!r}) selects no domain group of "
                                  f"{self.geometry.name}; domain groups: {domains}")
             for g in sel:
                 if g in owner:
-                    raise ValueError(f"group {g!r} is selected by both {owner[g]!r} and {r.name!r}")
+                    raise SelectionError(f"group {g!r} is selected by both {owner[g]!r} and {r.name!r}")
                 owner[g] = r.name
             out[r.name] = sel
         for b in self.boundaries:
             sel = [g for g in bounds if naming.matches(b.name, g)]
             if not sel:
-                raise ValueError(f"{type(b).__name__}({b.name!r}) selects no boundary group of "
+                raise SelectionError(f"{type(b).__name__}({b.name!r}) selects no boundary group of "
                                  f"{self.geometry.name}; boundary groups: {bounds}")
             out[b.name] = sel
         return out
@@ -163,7 +164,7 @@ class Model:
             elif isinstance(r, Air):
                 out.append(DomainSizing(r.name, "air", r.mesh_size))
             else:
-                raise TypeError(f"cannot mesh {r!r}")
+                raise ModelError(f"cannot mesh {r!r}")
         return out
 
     def _parts(self, domains, boundaries):
@@ -183,7 +184,7 @@ class Model:
     def boundary_nodes(self) -> dict:
         """{boundary name: {"node_tags", "edges"}} of the meshed boundaries (stored with the results)."""
         if self.meshed is None:
-            raise RuntimeError("call model.mesh() first")
+            raise StateError("call model.mesh() first")
         out = {}
         for b in self.boundaries:
             groups = [p.group for p in self.parts if hasattr(p, "edges") and naming.matches(b.name, p.name)]

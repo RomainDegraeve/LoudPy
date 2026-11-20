@@ -20,6 +20,8 @@ import numpy as np
 
 import loudpy as lp
 
+lp.plot.style.use()                       # the loudpy figure style for this script
+
 here = Path("LoudPy_exemples/Eigen_study/Fourier/Results")
 ORDERS = [0, 1, 2, 3]
 DEFORMATION = 0.10

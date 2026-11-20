@@ -26,6 +26,8 @@ Then run Loading_script.py and Plot_3D_modes.py.
 """
 import loudpy as lp
 
+lp.set_verbosity("info")                 # progress messages (loudpy is silent by default)
+
 # ── Paths ──────────────────────────────────────────────────────────────────────
 geometry = "LoudPy_exemples/Geometries/Loudspeaker/HPNEW-Sketch.geo"
 mesh_path = "LoudPy_exemples/Eigen_study/Fourier/Results/Files/mesh.msh"   # reused on reruns

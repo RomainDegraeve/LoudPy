@@ -19,6 +19,8 @@ import numpy as np
 
 import loudpy as lp
 
+lp.set_verbosity("info")                 # progress messages (loudpy is silent by default)
+
 # ── Paths ──────────────────────────────────────────────────────────────────────
 geometry = "LoudPy_exemples/Geometries/Loudspeaker/HPNEW-Sketch.geo"
 files = "LoudPy_exemples/Frequency_study/FSI/Results/Files"

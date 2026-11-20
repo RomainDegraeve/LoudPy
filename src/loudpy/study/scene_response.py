@@ -16,6 +16,7 @@ import numpy as np
 
 from loudpy.geometry.mesh import Mesh, MeshGroup
 from loudpy.model.drives import Force
+from loudpy.errors import SelectionError, StateError
 
 
 def multidriver(scene):
@@ -32,7 +33,7 @@ def coil_force(scene, drivers, drive):
     else:
         unknown = set(drive) - set(names)
         if unknown:
-            raise KeyError(f"no driver {sorted(unknown)} (drivers: {names})")
+            raise SelectionError(f"no driver {sorted(unknown)} (drivers: {names})")
         amps = [drive[n].amplitude if n in drive else 0.0 for n in names]
     return drivers.coil_forces([d.driver.coil_nodes for d in scene.drivers], np.asarray(amps, complex))
 
@@ -102,7 +103,7 @@ def solve(study, freqs, store=None, chunk_hz=50.0, rtol=1e-7, log=None):
     from loudpy.physics.exterior import ExteriorFE, coupled_sweep
     scene = study.model
     if scene.folder is None:
-        raise RuntimeError("mesh the scene first: scene.mesh(folder)")
+        raise StateError("mesh the scene first: scene.mesh(folder)")
     freqs = np.atleast_1d(np.asarray(freqs, float))
     drivers = multidriver(scene)
     F = coil_force(scene, drivers, study.drive)

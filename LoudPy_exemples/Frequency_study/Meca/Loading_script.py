@@ -16,6 +16,8 @@ from pathlib import Path
 
 import loudpy as lp
 
+lp.plot.style.use()                       # the loudpy figure style for this script
+
 here = Path("LoudPy_exemples/Frequency_study/Meca/Results")
 res = lp.load(here / "Files/sweep.h5")
 print(res)

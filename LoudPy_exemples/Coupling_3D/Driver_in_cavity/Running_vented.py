@@ -26,6 +26,8 @@ import h5py
 import numpy as np
 
 import loudpy as lp
+
+lp.set_verbosity("info")                 # progress messages (loudpy is silent by default)
 from loudpy.physics.modal import CavityModes, DriverCavityCoupling
 from loudpy.model.materials import RHO_AIR, C_AIR
 from loudpy.physics.exterior import HalfSpaceDtN, ExteriorFE, coupled_sweep, port_block

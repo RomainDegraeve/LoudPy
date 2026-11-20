@@ -34,6 +34,7 @@ from loudpy.geometry.mesh import Mesh
 from loudpy.results.data import Data, Field, spl  # noqa: F401  (spl re-exported)
 from loudpy.results.quantities import COMPONENTS, quantity
 from loudpy.results.selection import as_selection
+from loudpy.errors import ResultsError
 
 PHYSICS_OF = {"u": "solid", "v": "solid", "a": "solid", "p": "air"}
 ALIASES = {"u_meca": "u", "v_meca": "v", "a_meca": "a", "p_acou": "p"}     # former field names
@@ -62,7 +63,7 @@ class Block:
             return self.meshes[phys]
         if len(self.meshes) == 1:
             return next(iter(self.meshes.values()))
-        raise KeyError(f"no mesh for field {name!r} (meshes: {list(self.meshes)})")
+        raise ResultsError(f"no mesh for field {name!r} (meshes: {list(self.meshes)})")
 
 
 def _at_rows(arr, W):
@@ -133,7 +134,7 @@ class Results:
         from loudpy.geometry.naming import matches
         sel = [b for n, b in self.boundaries.items() if n == name or matches(name, n)]
         if not sel:
-            raise KeyError(f"no boundary {name!r} (boundaries: {list(self.boundaries)})")
+            raise ResultsError(f"no boundary {name!r} (boundaries: {list(self.boundaries)})")
         return np.unique(np.concatenate([np.asarray(b["node_tags"]) for b in sel]))
 
     def __repr__(self):
@@ -169,7 +170,7 @@ class Results:
         name = canonical(name)
         b, i, g = self._locate(index, value)
         if name not in b.fields:
-            raise KeyError(f"no field {name!r} (fields: {list(b.fields)})")
+            raise ResultsError(f"no field {name!r} (fields: {list(b.fields)})")
         values = np.asarray(b.fields[name][i])
         return Field(name, b.mesh_of(name), np.real(values) if self.real else values, float(b.values[i]),
                      "t" if self.dim == "t" else "f", {k: v[i] for k, v in b.extra.items() if np.ndim(v) == 1},
@@ -190,7 +191,7 @@ class Results:
         out = []
         for b in self.blocks:
             if name not in b.fields:
-                raise KeyError(f"no field {name!r} in block {b.label!r} (fields: {list(b.fields)})")
+                raise ResultsError(f"no field {name!r} in block {b.label!r} (fields: {list(b.fields)})")
             mesh = b.mesh_of(name)
             out.append(_at_rows(b.fields[name], mesh.interpolation(sel.points(mesh.dim))))
         v = np.concatenate(out, axis=0)                                   # (n, n_pts[, dpn])
@@ -266,7 +267,7 @@ class FrequencyResults(Results):
     def impedance(self) -> Data:
         """Electrical input impedance Z = U / I_coil over frequency (voltage drive) [Ω]."""
         if "I_coil" not in self.scalars:
-            raise ValueError("no coil current in these results (lp.Voltage drive needed)")
+            raise ResultsError("no coil current in these results (lp.Voltage drive needed)")
         return Data(self.extra("U") / self.extra("I_coil"), {"f": self.frequencies}, "Z", meta=self._meta())
 
 
@@ -320,13 +321,13 @@ class ModeResults(Results):
         """The modes of azimuthal order m."""
         sel = [b for b in self.blocks if int(b.meta.get("order", -1)) == int(m)]
         if not sel:
-            raise KeyError(f"no modes of order m = {m} (orders: {self.orders})")
+            raise ResultsError(f"no modes of order m = {m} (orders: {self.orders})")
         return ModeResults(sel, self.meta, self.boundaries, self.source)
 
     def set(self, label: str) -> "ModeResults":
         sel = [b for b in self.blocks if b.label == label]
         if not sel:
-            raise KeyError(f"no mode set {label!r} (sets: {self.sets})")
+            raise ResultsError(f"no mode set {label!r} (sets: {self.sets})")
         return ModeResults(sel, self.meta, self.boundaries, self.source)
 
     def mode(self, k: int, name: str | None = None) -> Field:

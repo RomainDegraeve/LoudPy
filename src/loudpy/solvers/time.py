@@ -12,7 +12,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import warnings
+
 import numpy as np
+
+from loudpy.errors import ConvergenceWarning
 
 from loudpy.solvers.linear import factorize
 
@@ -148,7 +152,8 @@ def generalized_alpha_newton(tangent, M_red, reduce, free, n_dof, F_base, signal
             a_iter += c1 * delta_u
             v_iter += c2 * delta_u
         else:
-            log(f"  ⚠  NR did not converge at step {step}  (res_norm = {res_norm:.3e})")
+            warnings.warn(f"Newton–Raphson did not converge at step {step} (residual {res_norm:.3e} > {nr_tol:g}); "
+                          f"the step is kept", ConvergenceWarning, stacklevel=2)
 
         u_n, v_n, a_n = u_iter, v_iter, a_iter
         u_full_step = np.zeros(n_dof, dtype=np.float64)

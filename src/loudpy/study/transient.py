@@ -15,6 +15,7 @@ from loudpy.model.drives import Force
 from loudpy.physics.registry import select
 from loudpy.results.results import Block, TimeResults
 from loudpy.study.base import Study
+from loudpy.errors import ModelError
 
 
 class Transient(Study):
@@ -25,7 +26,7 @@ class Transient(Study):
                  nr_tol: float = 1e-5, nr_max_iter: int = 10):
         super().__init__(model)
         if not (isinstance(drive, Force) and drive.is_signal and drive.fs):
-            raise ValueError("Transient needs lp.Force(signal, fs=...)")
+            raise ModelError("Transient needs lp.Force(signal, fs=...)")
         if not nonlinear:
             raise NotImplementedError("only the nonlinear (total Lagrangian) transient is available; for "
                                       "small amplitudes it gives the linear response")
@@ -42,11 +43,11 @@ class Transient(Study):
             n_steps = int(round(duration / dt))
         n_steps = len(sig) - 1 if n_steps is None else int(n_steps)
         if n_steps > len(sig) - 1:
-            raise ValueError(f"the signal has {len(sig)} samples: at most {len(sig) - 1} steps")
+            raise ModelError(f"the signal has {len(sig)} samples: at most {len(sig) - 1} steps")
         parts = self._parts()
         coils = select(parts, "coil")
         if not coils:
-            raise ValueError("the model has no coil boundary (lp.Coil)")
+            raise ModelError("the model has no coil boundary (lp.Coil)")
         coil = coils[0]
         comp = 1 if tuple(coil.direction) == (1,) else 0               # axial (z) or radial (r) drive
 

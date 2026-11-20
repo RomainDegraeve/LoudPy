@@ -25,6 +25,7 @@ import numpy as np
 from loudpy.results.data import Data
 from loudpy.results.results import FrequencyResults
 from loudpy.results.selection import as_selection
+from loudpy.errors import ResultsError, SelectionError
 
 
 class DriverResponse:
@@ -46,7 +47,7 @@ class DriverResponse:
     def in_vacuo(self) -> "DriverResponse":
         """The same driver under the same drive, without air (in vacuo modal response)."""
         if self.force is None:
-            raise ValueError("these results do not store the drive (re-run the study)")
+            raise ResultsError("these results do not store the drive (re-run the study)")
         w = 2 * np.pi * self.frequencies[:, None]
         wk = 2 * np.pi * self.modes.freq[None, :]
         q0 = self.force[None, :] / (wk ** 2 + 2j * self.modes.zeta[None, :] * wk * w - w ** 2)
@@ -118,7 +119,7 @@ class SceneResults(FrequencyResults):
     def _stacked(self, name):
         rows = [np.asarray(b.extra[name]) for b in self.blocks if name in b.extra]
         if not rows:
-            raise KeyError(f"no {name!r} in these results")
+            raise ResultsError(f"no {name!r} in these results")
         n = max(r.shape[1] for r in rows)
         out = np.zeros((len(self), n), rows[0].dtype)
         i = 0
@@ -137,7 +138,7 @@ class SceneResults(FrequencyResults):
         from loudpy.physics.modal import DriverModes
         d = next((d for d in self.scene["drivers"] if d["name"] == name), None)
         if d is None:
-            raise KeyError(f"no driver {name!r} (drivers: {self.drivers})")
+            raise ResultsError(f"no driver {name!r} (drivers: {self.drivers})")
         a = self.attachments[d["modes"]]
         modes = DriverModes(a["xy"], a["tris"], a["m"], np.asarray(a["family"]).astype(str), a["freq"], a["zeta"],
                             np.asarray(a["U"]))
@@ -176,7 +177,7 @@ class SceneResults(FrequencyResults):
         from loudpy.physics.exterior import HalfSpaceDtN
         h = self.scene.get("hemisphere")
         if not h:
-            raise ValueError("these results have no exterior air (no DtN expansion)")
+            raise ResultsError("these results have no exterior air (no DtN expansion)")
         return HalfSpaceDtN(h["center"], h["radius"], up=h["up"])
 
     def far_field(self, at) -> Data:
@@ -185,10 +186,10 @@ class SceneResults(FrequencyResults):
         pts = sel.points(3)
         h = self.scene.get("hemisphere")
         if not h:
-            raise ValueError("these results have no exterior air (no DtN expansion)")
+            raise ResultsError("these results have no exterior air (no DtN expansion)")
         r = np.linalg.norm(pts - np.asarray(h["center"]), axis=1)
         if np.any(r < h["radius"] * (1 - 1e-9)):
-            raise ValueError(f"far_field needs points outside the hemisphere (radius {h['radius']:.3f} m); "
+            raise SelectionError(f"far_field needs points outside the hemisphere (radius {h['radius']:.3f} m); "
                              f"use pressure() for points inside")
         return self._pressure_data(self._far(pts), sel)
 
@@ -205,13 +206,13 @@ class SceneResults(FrequencyResults):
         """Rigid-wall frequencies of the cavity modes [Hz]."""
         cav = self.attachments.get("cavity")
         if cav is None:
-            raise ValueError("these results have no cavity modes")
+            raise ResultsError("these results have no cavity modes")
         return self.scene["c"] * np.sqrt(np.maximum(np.asarray(cav["kappa2"]), 0.0)) / (2 * np.pi)
 
     def _cavity(self, pts):
         cav = self.attachments.get("cavity")
         if cav is None:
-            raise ValueError("these results have no cavity modes")
+            raise ResultsError("these results have no cavity modes")
         nodes = np.asarray(cav["nodes"])
         rows = np.array([int(np.argmin(np.linalg.norm(nodes - p, axis=1))) for p in pts])
         uniq, inv = np.unique(rows, return_inverse=True)                  # increasing rows (lazy datasets)
@@ -231,7 +232,7 @@ class SceneResults(FrequencyResults):
         elif cav is not None and "tets" in cav:
             nodes, tets = np.asarray(cav["nodes"]), np.asarray(cav["tets"])
         else:
-            raise ValueError("no cavity cells in these results: pass cavity=CavityModes.load(…_modes.h5)")
+            raise ResultsError("no cavity cells in these results: pass cavity=CavityModes.load(…_modes.h5)")
         mesh = Mesh(np.arange(len(nodes)), np.asarray(nodes, float), {"air": MeshGroup("air", 3, "tet10", tets)})
         cache[id(cavity)] = (cavity, mesh)
         return mesh

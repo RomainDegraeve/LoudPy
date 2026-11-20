@@ -25,6 +25,8 @@ import loudpy as lp
 from loudpy.physics.modal import CavityModes
 from enclosure import X0, Z_B
 
+lp.plot.style.use()                       # the loudpy figure style for this script
+
 here = Path("LoudPy_exemples/Coupling_3D/Driver_in_cavity/Results")
 N_PEAKS = 6                     # frequencies shown in deformation_3d.pdf
 RIM = (0.040, 0.0265)           # cone point of the rocking signature (r, z) [m]

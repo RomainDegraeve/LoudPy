@@ -31,10 +31,12 @@ import warnings
 
 import numpy as np
 
+from loudpy.checks import check
 from loudpy.physics.registry import select
 from loudpy.results.results import Block, ModeResults
 from loudpy.solvers import eigen as eig
 from loudpy.study.base import Study
+from loudpy.errors import ModelError
 
 log = logging.getLogger("loudpy.study")
 
@@ -58,7 +60,7 @@ class Modes(Study):
     def __init__(self, model, physics: str = "structure"):
         super().__init__(model)
         if physics not in PHYSICS:
-            raise ValueError(f"physics must be one of {PHYSICS}, got {physics!r}")
+            raise ModelError(f"physics must be one of {PHYSICS}, got {physics!r}")
         self.physics = physics
 
     def solve(self, f_max: float, f_min: float = 20.0, *, orders=None, method: str = "multishift",
@@ -73,6 +75,10 @@ class Modes(Study):
                        max_shifts, cover_goal, cover_avoid_frac, dedup_freq_tol_hz, dedup_rel_tol,
                        checkpoint_path, checkpoint_every (see coupled_modes)
         """
+        check(f_max, "frequency_positive", "Modes.solve(f_max)")
+        check(f_min, "frequency", "Modes.solve(f_min)")
+        if f_min >= f_max:
+            raise ModelError(f"Modes.solve: f_min = {f_min:g} Hz must be below f_max = {f_max:g} Hz")
         if self.is_scene:                       # drivers + cavity modes (scene configuration "cavity")
             from loudpy.study import scene_response
             self.results = scene_response.coupled_modes(self, f_max=f_max)
@@ -86,7 +92,7 @@ class Modes(Study):
             elif method == "arpack":
                 blocks = [structural_modes(parts, f_min, f_max, n_modes=n_modes, f_target=f_target)]
             else:
-                raise ValueError(f"method must be 'multishift' or 'arpack', got {method!r}")
+                raise ModelError(f"method must be 'multishift' or 'arpack', got {method!r}")
         elif self.physics == "coupled":
             blocks = [coupled_modes(parts, f_min, f_max, n_per_shift, boundaries=self.model.boundary_nodes(),
                                     meta=self._meta(), **options)]
@@ -280,12 +286,12 @@ def coupled_modes(parts, f_min=20.0, f_max=5000.0, n_per_shift=30, *, dedup_freq
     """
     from loudpy.physics.systems import assemble, dtn_system, meshes, nodal
     if not select(parts, "radiation"):
-        raise ValueError("coupled modes need a radiation boundary (lp.Radiation)")
+        raise ModelError("coupled modes need a radiation boundary (lp.Radiation)")
     s = assemble(parts, air=True)
     Ks, Ms, Cs, ds = dtn_system(s, parts, dtn_center, f_max, dtn_half, dtn_order)
     nm, na = ds["nm"], ds["na"]
     if np.abs(Cs).sum() == 0:
-        raise ValueError("the coupled DtN system has no damping matrix (C = 0)")
+        raise ModelError("the coupled DtN system has no damping matrix (C = 0)")
     stop_fn = _goal_check(s, parts, Ks, Ms, Cs, nm, na, f_min, f_max, cover_goal) if cover_goal is not None else None
     avoid = []
     if cover_avoid_frac > 0:

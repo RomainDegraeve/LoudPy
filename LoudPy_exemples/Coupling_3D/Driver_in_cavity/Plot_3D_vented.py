@@ -21,6 +21,8 @@ import loudpy as lp
 from loudpy.plot import view3d
 from enclosure import X0, Y0, Z_F, W, H, WALL_T, back_z, PORT_X, PORT_Y, port_tuning, vented_volume
 
+lp.plot.style.use()                       # the loudpy figure style for this script
+
 here = Path("LoudPy_exemples/Coupling_3D/Driver_in_cavity/Results")
 FREQS = [50, 70, 100, 300, 1000, 1900]        # [Hz] (nearest computed frequency)
 RANGE = 60.0

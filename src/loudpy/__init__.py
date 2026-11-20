@@ -16,11 +16,6 @@ modules; it is not part of the top-level namespace. See docs/ (Sphinx) for the u
 API reference.
 """
 
-import os as _os
-
-# scipy (OpenBLAS / MKL) and numba may each load an OpenMP runtime; allow both (set before they load).
-_os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
-
 # ── public API ───────────────────────────────────────────────────────────────
 from .model import (
     Model, Solid, Air, PML, Clamped, Coil, FluidStructure, Radiation,
@@ -33,10 +28,10 @@ from .results import (load, spl, Results, FrequencyResults, ModeResults, TimeRes
 from .study import Modes, FrequencyResponse, PerWavelength, Transient
 from .scene import Driver, Profile, Scene, Cabinet
 
+from . import errors
 from ._log import set_verbosity
 
 __version__ = "0.1.0"
-set_verbosity("info")
 
 
 def __getattr__(name):
@@ -61,6 +56,6 @@ __all__ = [
     # results and evaluation
     "load", "spl", "Results", "FrequencyResults", "ModeResults", "TimeResults", "Data", "Field",
     "Point", "Points", "Polar", "Arc", "Line",
-    # messages, lazily imported plotting
-    "set_verbosity", "plot",
+    # messages and errors, lazily imported plotting
+    "set_verbosity", "errors", "plot",
 ]

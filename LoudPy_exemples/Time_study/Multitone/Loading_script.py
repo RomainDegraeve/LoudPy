@@ -18,6 +18,8 @@ import numpy as np
 
 import loudpy as lp
 
+lp.plot.style.use()                       # the loudpy figure style for this script
+
 here = Path("LoudPy_exemples/Time_study/Multitone/Results")
 res = lp.load(here / "Files/time.h5")
 print(res)

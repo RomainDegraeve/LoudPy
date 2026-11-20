@@ -6,11 +6,12 @@ Installation
 
 .. code-block:: bash
 
-   pip install loudpy                 # release
-   pip install -e .                   # from a clone of the repository (development)
+   pip install "loudpy[all]"          # release, with plotting and 3D views
+   pip install -e ".[all]"            # from a clone of the repository (development)
 
-loudpy needs Python ≥ 3.13, NumPy, SciPy, Numba, h5py, gmsh (meshing) and matplotlib; the 3D
-views of the examples use PyVista.
+loudpy needs Python ≥ 3.13, NumPy, SciPy, Numba, h5py and gmsh (meshing). The extras add plotting
+(``loudpy[plot]``: matplotlib, pandas) and 3D views (``loudpy[3d]``: PyVista, imageio);
+``loudpy[all]`` installs both.
 
 .. tip::
 
@@ -29,6 +30,8 @@ pick groups by name:
 .. code-block:: python
 
    import loudpy as lp
+
+   lp.set_verbosity("info")                        # progress messages (loudpy is silent by default)
 
    model = lp.Model("LoudPy_exemples/Geometries/Loudspeaker/HPNEW-Sketch.geo")
    model.add(

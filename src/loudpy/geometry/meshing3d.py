@@ -17,6 +17,7 @@ import numpy as np
 
 from loudpy.geometry.frame import as_frame, _is_single
 from loudpy.geometry.gmsh_session import gmsh_module as _gmsh
+from loudpy.errors import MeshError
 
 
 def sample_profile(geo_path, curves, start, n_per_curve=40):
@@ -38,7 +39,7 @@ def sample_profile(geo_path, curves, start, n_per_curve=40):
         if np.linalg.norm(p[-1] - last) < np.linalg.norm(p[0] - last):
             p = p[::-1]
         if np.linalg.norm(p[0] - last) > 1e-5:
-            raise ValueError(f"curve {t} does not start at {last} (gap {np.linalg.norm(p[0] - last):.2e})")
+            raise MeshError(f"curve {t} does not start at {last} (gap {np.linalg.norm(p[0] - last):.2e})")
         p[0] = last
         out.append(p)
         last = p[-1]
@@ -69,7 +70,7 @@ def add_driver_cutout(segments, center=(0.0, 0.0), z_top=None):
     pts = np.vstack([segments[0][:1]] + [s[1:] for s in segments])
     r_c, z_b = pts[0]
     if abs(pts[-1, 0]) > 1e-9:
-        raise ValueError("the wet profile must end on the axis (r = 0)")
+        raise MeshError("the wet profile must end on the axis (r = 0)")
     z_top = float(z_top if z_top is not None else pts[:, 1].max() + 0.01)
 
     def P(r, z):
@@ -192,7 +193,7 @@ def mesh_cavity(msh_path, cavity_volume, center, r_c, z_b, h_near, h_far, d_near
     walls = [t for t, o in zip(bnd, owner) if o < 0]
     for j, d in enumerate(drivers):
         if not d:
-            raise ValueError(f"no wet surface found for driver {j} ({as_frame(frames[j])})")
+            raise MeshError(f"no wet surface found for driver {j} ({as_frame(frames[j])})")
     gmsh.model.addPhysicalGroup(3, [cavity_volume], 1, name="cavity")
     if single:
         gmsh.model.addPhysicalGroup(2, drivers[0], 2, name="interface_driver")
@@ -321,7 +322,7 @@ def mesh_exterior(msh_path, volume, dtn: HalfSpaceDtN, center, r_f, z_front, h_n
         groups[fronts[o] if o >= 0 else "walls"].append(t)
     for nm in fronts:
         if not groups[nm]:
-            raise ValueError(f"no wet surface found for {nm}")
+            raise MeshError(f"no wet surface found for {nm}")
     gmsh.model.addPhysicalGroup(3, [volume], 1, name="air")
     for k, (name, ts) in enumerate(groups.items(), start=2):
         gmsh.model.addPhysicalGroup(2, ts, k, name=name)

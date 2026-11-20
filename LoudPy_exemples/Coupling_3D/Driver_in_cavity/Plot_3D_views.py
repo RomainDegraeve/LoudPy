@@ -22,6 +22,8 @@ from loudpy.physics.modal import CavityModes
 from loudpy.plot import view3d
 from enclosure import X0, Y0, Z_F, H, back_z
 
+lp.plot.style.use()                       # the loudpy figure style for this script
+
 here = Path("LoudPy_exemples/Coupling_3D/Driver_in_cavity/Results")
 FREQS = [100, 470, 1000, 1680, 2400]          # [Hz] (nearest computed frequency)
 RANGE = 50.0

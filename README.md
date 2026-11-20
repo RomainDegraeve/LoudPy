@@ -32,8 +32,11 @@ This project was developed by Romain Degraeve as part of the
 The easiest way to install LoudPy is via pip:
 
 ```bash
-pip install loudpy
+pip install "loudpy[all]"        # with plotting (matplotlib, pandas) and 3D views (pyvista)
 ```
+
+The core (`pip install loudpy`: NumPy, SciPy, Numba, h5py, gmsh) runs every study; the extras add
+`loudpy[plot]` and `loudpy[3d]`.
 
 For development installation, see the [Developer Setup](#developer-setup) section below.
 
@@ -48,6 +51,7 @@ model.add(lp.Solid("membranne", "Paper"), lp.Solid("surround", "Rubber"), lp.Sol
           lp.Clamped("interface_constrained"), lp.Coil("interface_forced"))
 model.mesh("mesh.msh")
 
+lp.set_verbosity("info")                              # progress messages (silent by default)
 modes = lp.Modes(model).solve(f_max=20000)            # eigenmodes
 modes.table()                                         # f, ζ (pandas)
 modes.mode(0).plot(deformed=True)                     # the first mode shape

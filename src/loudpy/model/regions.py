@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from loudpy.checks import check
 from loudpy.model.damping import Damping, Rayleigh
 from loudpy.model.materials import Material
 
@@ -36,6 +37,12 @@ class Solid(Region):
     E: float | None = None
     nu: float | None = None
 
+    def __post_init__(self):
+        check(self.mesh_size, "mesh_size", f"Solid({self.name!r}).mesh_size")
+        check(self.rho, "density", f"Solid({self.name!r}).rho")
+        check(self.E, "young_modulus", f"Solid({self.name!r}).E")
+        check(self.nu, "poisson_ratio", f"Solid({self.name!r}).nu")
+
 
 @dataclass
 class Air(Region):
@@ -44,6 +51,11 @@ class Air(Region):
     mesh_size: float = 0.01
     rho: float | None = None
     c: float | None = None
+
+    def __post_init__(self):
+        check(self.mesh_size, "mesh_size", f"Air({self.name!r}).mesh_size")
+        check(self.rho, "density", f"Air({self.name!r}).rho")
+        check(self.c, "speed_of_sound", f"Air({self.name!r}).c")
 
 
 @dataclass
@@ -57,3 +69,12 @@ class PML(Region):
     strength: float | None = None       # absorption strength (None: material alpha)
     rho: float | None = None
     c: float | None = None
+
+    def __post_init__(self):
+        check(self.thickness, "thickness", f"PML({self.name!r}).thickness")
+        check(self.mesh_size, "mesh_size", f"PML({self.name!r}).mesh_size")
+        check(self.tuned_to, "frequency_positive", f"PML({self.name!r}).tuned_to")
+        check(self.order, "positive", f"PML({self.name!r}).order")
+        check(self.strength, "positive", f"PML({self.name!r}).strength")
+        check(self.rho, "density", f"PML({self.name!r}).rho")
+        check(self.c, "speed_of_sound", f"PML({self.name!r}).c")

@@ -22,6 +22,8 @@ import numpy as np
 import loudpy as lp
 from column import X0, Y0S, Z_F, Z_BACK, WALL_T, MOUTH_H, NAMES, quarter_wave
 
+lp.plot.style.use()                       # the loudpy figure style for this script
+
 here = Path("LoudPy_exemples/Coupling_3D/Column_labyrinth/Results")
 DIST = 1.0                                      # distance of the probes from the middle driver [m]
 POLAR_F = [50, 100, 200, 400, 700, 1000]        # [Hz] (nearest computed frequency)
