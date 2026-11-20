@@ -43,7 +43,8 @@ class Transient(Study):
                              f"lp.Rayleigh.from_loss_factor(eta) for a transient study")
 
     def solve(self, n_steps: int | None = None, duration: float | None = None) -> TimeResults:
-        from loudpy.fem.elements.tri6_axi import compute_unit_force_T6
+        from loudpy.fem.assembly import cell_tabulation
+        from loudpy.fem.kernels import _boundary_load_kernel
         from loudpy.physics.structural import MecaAssemblerNL
         from loudpy.physics.systems import meshes, nodal, System
         from loudpy.solvers.time import free_dof_reducer, generalized_alpha_newton
@@ -73,10 +74,14 @@ class Transient(Study):
         # unit coil force pattern on the free DOFs (consistent nodal forces, normalised to a sum of 1)
         pos = {int(t): i for i, t in enumerate(coil.node_tags)}
         F = np.zeros(n_dof)
-        for edge in coil.edges:
-            fe = compute_unit_force_T6(np.array([coil.node_coords[pos[int(t)]][:2] for t in edge]))
+        edges = np.asarray(coil.edges)
+        ec = np.ascontiguousarray([[coil.node_coords[pos[int(t)]][:2] for t in edge] for edge in edges], dtype=float)
+        N, dN, w = cell_tabulation(1, edges.shape[1])
+        fe = np.empty(edges.shape)
+        _boundary_load_kernel(ec, N, dN, w, np.ones((len(ec), len(w))), True, fe)   # ∫ N 2πr ds
+        for edge, f_edge in zip(edges, fe):
             for k, t in enumerate(edge):
-                F[2 * nl.tag_to_local[t] + comp] += fe[k]
+                F[2 * nl.tag_to_local[int(t)] + comp] += f_edge[k]
         F_red = F[free] / F[free].sum()
 
         def tangent(u_full):

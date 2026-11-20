@@ -21,8 +21,8 @@ testable on its own.
                  │  systems (structure, air, DtN), modal (3D cavity),   │  (K, C, M, coupling, F)
                  │  exterior (half-space DtN FE)                        │
                  ├──────────────────────────────────────────────────────┤
-   fem           │  loudpy.fem: quadrature · shape functions · element  │  discretisation, no physics
-                 │  kernels (tri6_axi, tet10) · assembly · sparse       │  names
+   fem           │  loudpy.fem: Lagrange P1–P3 / Q1–Q2 · quadrature ·   │  discretisation, no physics
+                 │  spaces · generic kernels · assembly · sparse        │  names
                  ├──────────────────────────────────────────────────────┤
    geometry      │  loudpy.geometry: Mesh · naming · meshing2d ·        │
                  │  meshing3d (cut-outs, classification) · Frame        │

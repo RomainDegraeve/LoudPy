@@ -9,8 +9,7 @@ import pytest
 from loudpy.fem import kernels as fk
 from loudpy.fem.quadrature import quadrature
 from loudpy.fem.reference import element_for_gmsh_type
-from loudpy.fem.shape import material_matrix_D
-from loudpy.fem.solid import (axisymmetric_kernel, fourier_kernel, material_matrix_D6,
+from loudpy.fem.solid import (axisymmetric_kernel, fourier_kernel, material_matrix_D, material_matrix_D6,
                               total_lagrangian_kernel)
 from loudpy.fem.space import Space
 from support import fem_meshes

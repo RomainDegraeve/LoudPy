@@ -16,8 +16,8 @@ from scipy.sparse import issparse
 from loudpy.fem.assembly import ElementAssembler
 from loudpy.fem.dofs import DirichletElimination
 from loudpy.fem.kernels import _mass_kernel, coefficient, expand_components
-from loudpy.fem.shape import material_matrix_D
-from loudpy.fem.solid import axisymmetric_kernel, fourier_kernel, material_matrix_D6, total_lagrangian_kernel
+from loudpy.fem.solid import (axisymmetric_kernel, fourier_kernel, material_matrix_D, material_matrix_D6,
+                              total_lagrangian_kernel)
 from loudpy.physics.registry import select
 from loudpy.errors import ModelError, StateError
 
@@ -123,7 +123,7 @@ class MecaAssemblerNL(_Structural):
 
 class MecaAssemblerFourier(ElementAssembler):
     """
-    Structural matrices of azimuthal order m (see fem.elements.tri6_axi.fourier), 3 DOF per node
+    Structural matrices of azimuthal order m (see fem.solid.fourier_kernel), 3 DOF per node
     ordered (U_r, U_z, U_θ), with the constraints of order m eliminated by a
     transformation u_full = T u_red:
 

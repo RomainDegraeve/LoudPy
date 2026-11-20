@@ -49,6 +49,7 @@ NumPy, pandas and files.
    api/index
    guide/file_format
    guide/architecture
+   guide/elements
    guide/conventions
 
 Indices

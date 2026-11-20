@@ -27,7 +27,7 @@ Cost unit: one *session* ≈ one long working block (3–5 h). Status: ✅ done 
 | A | Foundations: no import side effects, OpenMP, exceptions, SI checks, packaging, CI, verification tests | 1 | ✅ |
 | B | Materials and air: library v2 (units, temperature, provenance), damping separate, air from (T, p, RH), one air for 2D and 3D | 1 | ✅ |
 | C | Selections and geometry: selection objects, three geometry sources, nothing read from names, PML by selection, driver profiles from selections | 3 | ✅ |
-| D | Own generic FE core: Lagrange P1–P3 on lines / triangles / quads / tetrahedra, quadrature, spaces, generic kernels and assembly, curved (isoparametric) elements; old kernels removed | 5 | ◐ |
+| D | Own generic FE core: Lagrange P1–P3 on lines / triangles / quads / tetrahedra, quadrature, spaces, generic kernels and assembly, curved (isoparametric) elements; old kernels removed | 5 | ✅ |
 | E | Physics interfaces and couplings: one contribution protocol, generic system builder, electrical circuit as physics, 3D on the same protocol (the sign convention was fixed in C) | 4 | ○ |
 | F | One model for 2D and 3D: `lp.Model(dim=…)`, COMSOL-like tree (print, `check()`, mesh controls by selection, study steps), parameters and parametric sweeps, selectors and geometry sources in 3D scenes, typed mesh and solver settings, one remeshing rule, immutable model during solves, deterministic meshing by default, examples rewritten | 4 | ○ |
 | G | Results format 3: one results family, self-contained files (with the model description and parameters), public arrays, derived fields (stress, strain, velocity, intensity) and values (power, volume velocity, impedance, SPL, Thiele–Small parameters), interpolation in tetrahedra, ParaView series | 3 | ○ |
@@ -315,7 +315,7 @@ The plan holds; adjustments, decided with the user:
   (the nonlinear time integration only uses α, β). It now refuses hysteretic damping with an error
   pointing to `lp.Rayleigh` (test in `test_drive_checks`). Modes and frequency responses accept both.
 
-## Phase D — in progress
+## Phase D — done (gate report at the end of this section)
 
 - **D1 (done)**: `fem/reference.py`: reference cells (line, triangle, quadrilateral, tetrahedron, gmsh
   conventions), Lagrange elements P1–P3 on lines / triangles / tetrahedra and Q1–Q2 on quadrilaterals on
@@ -399,3 +399,24 @@ The plan holds; adjustments, decided with the user:
   P3 508.74 / 1975.5 (P2 and P3 within 0.1 %; at h = 1 mm P2 508.76, P3 508.67). The public API is
   unchanged (`mesh_order` existed; element orders are documented for users in phase F). Operators of
   the committed meshes unchanged. 283 tests pass with `--slow`.
+- **D5 (done)**: the former kernels are removed (`fem/elements/tri6_axi/*` (10 files), `fem/batch.py`,
+  `fem/shape.py`; `material_matrix_D` moved to `fem/solid.py`; the transient's coil force on the generic
+  boundary kernel). Numba, all 2D operators of the FSI speaker, first call in a new process: empty cache
+  (compilation) 15.0 s former → 15.3 s new; warm cache 0.12 → 0.21 s. Theory note for users:
+  `docs/guide/elements.rst` (cells, layouts, quadrature, isoparametric map, axisymmetric and PML forms,
+  boundary terms, what the tests check). 283 tests pass with `--slow`.
+
+**Gate D report.**
+
+| Gate item | Result |
+|---|---|
+| patch tests | linear fields exact on distorted curved cells, P1–P3, Q1–Q2, axisymmetric, tetrahedra P1–P3 (≤ 1e-10); uniform-strain elasticity patch with exact energy (1e-11) |
+| exact integration | monomials to degree 8 on every cell (1e-13); gmsh layouts (1e-15) |
+| manufactured orders ≈ p + 1 (L2) | structured 2D: P1–P3, Q1–Q2 ≥ p + 0.85 (Poisson, Helmholtz, axisymmetric); tetrahedra P1 1.80, P2 2.73, P3 3.73 (unstructured); curved P3 4.0 with the TRI10 node fix |
+| former operators at 1e-12 (same machine, worktree) | M, H, Q (PML), F_int, Cam, F ≤ 3e-14; 3D toolkit (straight mode) ≤ 1.3e-15; **K-family 1.2e-11**: identical formulas (4e-19 in IEEE Python), JIT rounding of the former kernel amplified by one nearly inverted spider cell — to be accepted by the user |
+| committed references at their tolerances | all unchanged (1e-10 / 1e-6 / 1e-4) |
+| assembly ≤ 1.5× the former | 0.41–0.85× (faster); compilation unchanged |
+| public API unchanged | yes (`mesh_order` existed; tests through `support/current_api.py`) |
+
+Beyond the gate: curved 3D cells (hemisphere 1.8 % → 0.011 %); every element order through the model
+(plate: P2 and P3 within 0.1 %, P1 locks as expected).

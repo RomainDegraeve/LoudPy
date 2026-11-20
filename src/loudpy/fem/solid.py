@@ -13,8 +13,7 @@ Inputs as in `loudpy.fem.kernels` (ec, N, dN, w), plus the material:
                                                      tangent K_T = K_mat + K_geo, consistent M,
                                                      C = α M + β K_mat, internal force F_int
 
-The matrix D and the strain ordering are those of `loudpy.fem.shape.material_matrix_D` and of
-`material_matrix_D6`. 1/r is evaluated at the quadrature points only (never on the axis nodes).
+The matrices D and the strain orderings are those of `material_matrix_D` and `material_matrix_D6`. 1/r is evaluated at the quadrature points only (never on the axis nodes).
 Outputs are flattened row-major (n_e, (c·n)²), DOFs interleaved per node.
 """
 from __future__ import annotations
@@ -24,7 +23,21 @@ from numba import njit, prange
 
 from loudpy.fem.kernels import TWO_PI, _det_inv, _gradients, _jacobian, _radius
 
-__all__ = ["axisymmetric_kernel", "fourier_kernel", "total_lagrangian_kernel", "material_matrix_D6"]
+__all__ = ["axisymmetric_kernel", "fourier_kernel", "total_lagrangian_kernel", "material_matrix_D",
+           "material_matrix_D6"]
+
+
+@njit(cache=True, fastmath=False)
+def material_matrix_D(E, nu):
+    """Isotropic elasticity, axisymmetric strains [ε_r, ε_z, γ_rz, ε_θ] (4×4)."""
+    factor = E / ((1 + nu) * (1 - 2 * nu))
+    D = factor * np.array([
+        [1 - nu, nu, 0, nu],
+        [nu, 1 - nu, 0, nu],
+        [0, 0, (1 - 2 * nu) / 2, 0],
+        [nu, nu, 0, 1 - nu]
+    ])
+    return D
 
 
 @njit(cache=True)

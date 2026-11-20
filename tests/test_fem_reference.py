@@ -86,21 +86,23 @@ def test_reproduces_its_polynomials(cell, order):
         np.testing.assert_allclose(np.einsum("qnd,n->qd", dN, u), grad, atol=1e-11)
 
 
-def test_matches_former_shape_functions():
-    """The generic TRI6 and LINE3 bases equal the hand-written ones of the former kernels."""
-    from loudpy.fem.shape import fct_form_L3, fct_form_T6
+def test_closed_form_tri6_line3():
+    """The generic TRI6 and LINE3 bases equal their closed forms (the hand-written functions of the former
+    kernels, removed in phase D5)."""
     tri, line = lagrange("triangle", 2), lagrange("line", 2)
-    for xi, eta in random_points("triangle", 10):
-        N, dN = tri.tabulate([[xi, eta]])
-        N0, dxi, deta = fct_form_T6(xi, eta)
+    for x, y in random_points("triangle", 10):
+        N, dN = tri.tabulate([[x, y]])
+        N0 = [1 - 3 * x - 3 * y + 2 * x ** 2 + 4 * x * y + 2 * y ** 2, 2 * x ** 2 - x, 2 * y ** 2 - y,
+              4 * x - 4 * x ** 2 - 4 * x * y, 4 * x * y, 4 * y - 4 * x * y - 4 * y ** 2]
+        dx = [-3 + 4 * x + 4 * y, 4 * x - 1, 0, 4 - 8 * x - 4 * y, 4 * y, -4 * y]
+        dy = [-3 + 4 * x + 4 * y, 0, 4 * y - 1, -4 * x, 4 * x, 4 - 4 * x - 8 * y]
         np.testing.assert_allclose(N[0], N0, atol=1e-14)
-        np.testing.assert_allclose(dN[0, :, 0], dxi, atol=1e-13)
-        np.testing.assert_allclose(dN[0, :, 1], deta, atol=1e-13)
-    for (xi,) in random_points("line", 10):
-        N, dN = line.tabulate([[xi]])
-        N0, d0 = fct_form_L3(xi)
-        np.testing.assert_allclose(N[0], N0, atol=1e-14)
-        np.testing.assert_allclose(dN[0, :, 0], d0, atol=1e-14)
+        np.testing.assert_allclose(dN[0, :, 0], dx, atol=1e-13)
+        np.testing.assert_allclose(dN[0, :, 1], dy, atol=1e-13)
+    for (x,) in random_points("line", 10):
+        N, dN = line.tabulate([[x]])
+        np.testing.assert_allclose(N[0], [-0.5 * x * (1 - x), 0.5 * x * (1 + x), 1 - x * x], atol=1e-14)
+        np.testing.assert_allclose(dN[0, :, 0], [x - 0.5, x + 0.5, -2 * x], atol=1e-14)
 
 
 @pytest.mark.parametrize("cell,order", [e for e in ELEMENTS if e[0] != "line"])
