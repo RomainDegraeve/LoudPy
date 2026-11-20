@@ -29,7 +29,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        # macOS weekly and on demand only: the suite runs on the author's Mac before each push
+        os: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && fromJSON('["ubuntu-latest", "macos-latest"]') || fromJSON('["ubuntu-latest"]') }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
