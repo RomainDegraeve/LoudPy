@@ -23,6 +23,10 @@ The pieces
 
    scene = lp.Scene(cabinet, [hp.place("main", at=(0.1, 0.18))])
 
+The air is the library's ``Air`` (20 °C, 101.325 kPa, dry: the same air as the 2D models); give
+other conditions with ``lp.Scene(cabinet, drivers, air=lp.air(temperature=…, humidity=…))``
+(see :doc:`models`). ``scene.rho`` and ``scene.c`` are its density and speed of sound.
+
 * :class:`lp.Driver <loudpy.Driver>` — the modes, the coil (the ``interface_forced`` boundary of
   the modal file) and the wet **profiles** (:class:`lp.Profile <loudpy.Profile>`: chained curves
   of the 2D geometry, from the baffle to the axis), which shape the cut-outs of the driver in the

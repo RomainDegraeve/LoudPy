@@ -26,8 +26,24 @@ The roadmap of this work is in `docs/ROADMAP.md`.
 - Verification tests against analytical solutions (clamped plate, rectangular cavity, pulsating
   sphere radiation).
 - Continuous integration (GitHub Actions): lint, tests, documentation.
+- `lp.air(temperature, pressure, humidity)`: air as an ideal-gas mixture of dry air and water vapour
+  (speed of sound within 0.05 % of Cramer 1993 over 0–40 °C, 80–101 kPa, 0–100 % RH; verification test).
+- Material library format 2 (`"format": "loudpy-materials/2"`): kinds `solid` / `fluid`, reference
+  temperature and source of each material, damping fits grouped under `damping`;
+  `MaterialLibrary.save`. Format-1 libraries are still read.
+- `lp.Scene(…, air=…)`: the air of a scene, a library name or an `lp.Material`.
 
 ### Changed
+- One air everywhere: the library's `Air` is computed by `lp.air()` at 20 °C, 101.325 kPa, dry
+  (ρ = 1.2041 kg/m³, c = 343.24 m/s), and 2D models, 3D scenes and the 3D toolkit defaults
+  (`RHO_AIR`, `C_AIR`) all use it. Before, 2D used 1.204 / 343.2 and 3D used 1.2 / 343.0: 2D results
+  with air change by ~1e-4, 3D results by ~7e-4 in frequency (up to ~1 % in phase-sensitive far
+  fields). The affected test references were regenerated on purpose (see `docs/ROADMAP.md`, phase B).
+- `Material`: fields `kind` (`"solid"` / `"fluid"`, was `"elastic"` / `"acoustic"`), `rayleigh =
+  (alpha, beta)` and `loss_factor` (were `alpha_ray`, `beta_ray`, `eta`), `temperature`, `pressure`,
+  `humidity`, `source`. Library solid values are marked "typical value, unverified".
+- PML settings belong to `lp.PML` (`strength=3.0`, `order=1.0` by default), no longer to the air material.
+- `lp.Scene(cabinet, drivers, rho=…, c=…)` → `lp.Scene(cabinet, drivers, air=…)`.
 - `import loudpy` has no side effects: no environment variable, logging silent by default
   (`lp.set_verbosity("info")` to see progress), the plot style no longer changes matplotlib's
   global settings (`lp.plot.style.use()` to opt in).

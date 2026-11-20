@@ -80,6 +80,7 @@ def _attachments(scene, drivers, extra=None):
         desc.append(dict(name=d.name, modes=key, offset=int(off), origin=d.frame.origin.tolist(),
                          rotation=d.frame.rotation.tolist()))
     att["scene"] = {"meta": dict(drivers=desc, configuration=scene.configuration, rho=scene.rho, c=scene.c,
+                                 air=dict(name=scene.air.name, **scene.air.to_dict()),
                                  hemisphere=scene.hemisphere, **(extra or {}))}
     return att
 

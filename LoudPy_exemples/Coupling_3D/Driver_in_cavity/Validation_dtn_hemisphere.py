@@ -10,11 +10,12 @@ import numpy as np
 
 from loudpy.geometry.gmsh_session import gmsh_module as _gmsh
 from loudpy.fem.tet10 import surface_quadrature
-from loudpy.model.materials import RHO_AIR, C_AIR
+import loudpy as lp
 from loudpy.physics.exterior import HalfSpaceDtN, ExteriorFE, _h2
 
 A_IN, R_OUT, H_MESH = 0.10, 0.30, 0.022
 FREQS = [100.0, 1000.0, 3000.0]
+AIR = lp.materials["Air"]
 msh = "LoudPy_exemples/Coupling_3D/Driver_in_cavity/Results/Files/dtn_shell.msh"
 
 gmsh = _gmsh()
@@ -51,12 +52,12 @@ far = np.array([[np.cos(a), np.sin(a) * 0.6, np.sin(a) * 0.8] for a in np.linspa
 gn = ext.gnodes
 print(f"{len(ext.nodes)} nodes, {len(gn)} on Γ")
 for f in FREQS:
-    w, k = 2 * np.pi * f, 2 * np.pi * f / C_AIR
+    w, k = 2 * np.pi * f, 2 * np.pi * f / AIR.c
     for name, n, un in (("pulsating", 0, np.ones(len(xq))), ("oscillating", 1, xq[:, 0] / rq)):
         rhs = np.zeros(len(ext.nodes), complex)
-        rhs[inodes] = -RHO_AIR * w ** 2 * (W.T @ (wq * un))
+        rhs[inodes] = -AIR.rho * w ** 2 * (W.T @ (wq * un))
         p, it, info = ext.solve(k, rhs, rtol=1e-10)
-        A = RHO_AIR * w ** 2 / (k * _h2(n, k * A_IN, True))
+        A = AIR.rho * w ** 2 / (k * _h2(n, k * A_IN, True))
         ang = lambda x: np.ones(len(x)) if n == 0 else x[:, 0] / np.linalg.norm(x, axis=1)
         x_g = ext.nodes[gn]
         exact_g = A * _h2(n, k * np.linalg.norm(x_g, axis=1)) * ang(x_g)

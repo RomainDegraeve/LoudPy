@@ -62,10 +62,53 @@ def test_selection_of_the_speaker():
 # ── materials ────────────────────────────────────────────────────────────────
 def test_material_library():
     paper = lp.materials["Paper"]
-    assert paper.kind == "elastic" and paper.E == 1e9
+    assert paper.kind == "solid" and paper.E == 1e9 and paper.temperature == 293.15
+    assert paper.rayleigh == (18.0, 4.6e-6) and paper.loss_factor == 0.03
+    assert paper.source == "typical value, unverified"
     assert paper.with_(E=2e9).E == 2e9 and paper.E == 1e9
     with pytest.raises(KeyError, match="available"):
         lp.materials["Unobtainium"]
+
+
+def test_library_formats(tmp_path):
+    import json
+    from loudpy.errors import LoudpyWarning
+    v1 = {"Air": {"type": "acoustic", "rho": 1.204, "c": 343.2, "alpha": 3, "n": 1},
+          "Paper": {"type": "elastic", "rho": 1200, "E": 1e9, "nu": 0.3, "eta": 0.03, "alpha_ray": 18.0,
+                    "beta_ray": 4.6e-6}}
+    (tmp_path / "v1.json").write_text(json.dumps(v1))
+    with pytest.warns(LoudpyWarning, match="PML settings"):
+        old = lp.load_materials(tmp_path / "v1.json")
+    assert old["Air"].kind == "fluid" and old["Air"].c == 343.2
+    assert old["Paper"].rayleigh == lp.materials["Paper"].rayleigh
+    lib = lp.load_materials()
+    again = lp.load_materials(lib.save(tmp_path / "v2.json"))
+    assert dict(again) == dict(lib)
+    with pytest.raises(ValueError, match="unknown properties"):
+        lp.Material.from_dict({"name": "X", "rho": 1.0, "colour": "red"})
+
+
+def test_air_model():
+    """Ideal-gas air vs tabulated values (dry air at 1 atm: 331.3 m/s at 0 °C, ρ 1.204 at 20 °C)."""
+    std = lp.materials["Air"]
+    assert std == lp.air() and std.temperature == 293.15 and std.humidity == 0.0
+    assert abs(std.rho - 1.2041) < 1e-4 and abs(std.c - 343.24) < 0.01
+    assert abs(lp.air(273.15).c - 331.3) < 0.05 and abs(lp.air(273.15).rho - 1.2922) < 1e-3
+    humid = lp.air(humidity=1.0)                     # water vapour is lighter: ρ down, c up
+    assert humid.rho < std.rho and 0.0 < humid.c - std.c < 1.5
+    from loudpy.model.materials import C_AIR, RHO_AIR
+    assert (RHO_AIR, C_AIR) == (std.rho, std.c)      # one air for 2D, 3D and the toolkit
+    with pytest.raises(ValueError):
+        lp.air(humidity=1.5)
+
+
+def test_scene_air():
+    import loudpy as lp
+    scene = lp.Scene(lambda occ: None, [], air=lp.air(temperature=303.15))
+    assert scene.c == lp.air(303.15).c and scene.rho == scene.air.rho
+    assert lp.Scene(lambda occ: None, []).c == lp.materials["Air"].c
+    with pytest.raises(ValueError, match="not a fluid"):
+        lp.Scene(lambda occ: None, [], air="Paper")
 
 
 def test_missing_property_is_explicit():

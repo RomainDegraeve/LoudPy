@@ -39,7 +39,7 @@ import logging
 import numpy as np
 
 from loudpy.geometry.gmsh_session import gmsh_module
-from loudpy.model.materials import C_AIR, RHO_AIR
+from loudpy.model.materials import Material, materials
 from loudpy.errors import MeshError, ModelError, StateError
 
 log = logging.getLogger("loudpy")
@@ -97,23 +97,35 @@ class Scene:
         scene = lp.Scene(cabinet, [hp.place("main", at=(x0, y0))])
         scene.cavity(...) / scene.exterior(...) / scene.merged(...)
         scene.mesh(folder)"""
-    def __init__(self, cabinet, drivers, rho: float = RHO_AIR, c: float = C_AIR):
-        """cabinet: callable(occ) → Cabinet;  drivers: PlacedDriver list (Driver.place)."""
-        from loudpy.checks import check
-        check(rho, "density", "Scene.rho")
-        check(c, "speed_of_sound", "Scene.c")
+    def __init__(self, cabinet, drivers, air: "str | Material" = "Air"):
+        """cabinet: callable(occ) → Cabinet;  drivers: PlacedDriver list (Driver.place);
+        air: a fluid of the material library or an lp.Material (lp.air(temperature=…, humidity=…))."""
+        air = air if isinstance(air, Material) else materials[air]
+        if air.kind != "fluid":
+            raise ModelError(f"Scene air: {air.name!r} is a {air.kind}, not a fluid")
+        air.require("rho", "c")
+        self.air = air
         self.cabinet = cabinet
         self.drivers = list(drivers)
         names = [d.name for d in self.drivers]
         if len(set(names)) != len(names):
             raise ModelError(f"driver names must be unique: {names}")
-        self.rho, self.c = rho, c
         self._cavity: _Cavity | None = None
         self._open: _OpenAir | None = None
         self.folder: Path | None = None
         self.cavity_mesh: Path | None = None
         self.band_meshes: list[dict] = []
         self.hemisphere: dict | None = None
+
+    @property
+    def rho(self) -> float:
+        """Density of the air [kg/m³]."""
+        return self.air.rho
+
+    @property
+    def c(self) -> float:
+        """Speed of sound in the air [m/s]."""
+        return self.air.c
 
     # ── configuration ──────────────────────────────────────────────────────
     def cavity(self, mesh_size=(0.003, 0.012), f_max=6000.0, eta=0.0, near=(0.005, 0.06), file="cavity.msh",

@@ -48,14 +48,55 @@ Boundaries
 Materials and damping
 ---------------------
 
-``lp.materials`` is the default library (``Paper``, ``Rubber``, ``Copper``, ``Kapton``,
-``PhenolicCloth``, ``Polypropylene``, ``SolidGlue``, ``Air``). Load your own with
-:func:`lp.load_materials <loudpy.load_materials>` (a JSON file ``{name: {rho, E, nu, eta, …}}``)
-and pass it to the model, or give an :class:`lp.Material <loudpy.Material>` directly.
+A :class:`lp.Material <loudpy.Material>` holds SI values: a **solid** has ``rho`` [kg/m³], ``E``
+[Pa] and ``nu``; a **fluid** has ``rho`` and ``c`` [m/s]. Each material also records the
+``temperature`` [K] its values refer to and their ``source``. Values are checked on creation
+(errors outside the valid range, a ``PlausibilityWarning`` outside the usual one).
 
-Damping of a solid: :class:`lp.Rayleigh <loudpy.Rayleigh>` (default, the material's
-coefficients), :class:`lp.Hysteretic <loudpy.Hysteretic>` (loss factor) or
-:class:`lp.Undamped <loudpy.Undamped>`.
+``lp.materials`` is the default library (``Paper``, ``Rubber``, ``Copper``, ``Kapton``,
+``PhenolicCloth``, ``Polypropylene``, ``SolidGlue``, ``Air``). The solid values are **typical
+values, not verified against measurements**: give your own for quantitative work, in the script
+(``lp.Material("Steel", rho=7850, E=2.1e11, nu=0.3)``, ``lp.materials["Paper"].with_(E=1.2e9)``)
+or in a library loaded with :func:`lp.load_materials <loudpy.load_materials>` and passed to the
+model (``lp.Model(geo, materials=lib)``):
+
+.. code-block:: json
+
+   {"format": "loudpy-materials/2",
+    "materials": {
+      "Paper": {"kind": "solid", "rho": 1200, "E": 1.0e9, "nu": 0.30,
+                "damping": {"rayleigh": [18.0, 4.6e-6], "loss_factor": 0.03},
+                "temperature": 293.15, "source": "datasheet XYZ"},
+      "Air":   {"kind": "fluid", "model": "air", "temperature": 293.15, "pressure": 101325.0,
+                "humidity": 0.0}}}
+
+Libraries of the earlier flat format (``"type"``, ``"eta"``, ``"alpha_ray"``, ``"beta_ray"``) are
+still read; ``MaterialLibrary.save`` writes the current format.
+
+**Damping is not a material constant.** It is chosen on the region:
+:class:`lp.Rayleigh <loudpy.Rayleigh>` (default; ``C = αM + βK``),
+:class:`lp.Hysteretic <loudpy.Hysteretic>` (complex stiffness ``K(1 + iη)``) or
+:class:`lp.Undamped <loudpy.Undamped>`. A coefficient that is not given comes from the
+material's *default damping fit* (``Material.rayleigh = (α [1/s], β [s])``,
+``Material.loss_factor = η``). PML settings belong to the region (``lp.PML(strength=3, order=1)``
+by default), not to the air.
+
+Air
+~~~
+
+The library's ``Air`` is computed by :func:`lp.air <loudpy.air>` at 20 °C, 101.325 kPa, dry:
+ρ = 1.2041 kg/m³, c = 343.24 m/s. 2D models, 3D scenes (``lp.Scene(…, air=…)``) and the low-level
+3D toolkit all use these values. Other conditions:
+
+.. code-block:: python
+
+   warm = lp.air(temperature=308.15, humidity=0.8)     # 35 °C, 80 % RH: ρ = 1.126, c = 354.45
+   model.add(lp.Air("subacou", material=warm), lp.PML("PML", material=warm))
+   scene = lp.Scene(cabinet, drivers, air=warm)
+
+``lp.air`` treats air as an ideal-gas mixture of dry air and water vapour (saturation pressure
+from the Buck equation). Its speed of sound is within 0.05 % of Cramer's correlation (1993) over
+0–40 °C, 80–101 kPa and 0–100 % RH (checked in the verification tests).
 
 Drives
 ------

@@ -16,7 +16,7 @@ import numpy as np
 
 from loudpy.geometry.gmsh_session import gmsh_module as _gmsh
 from loudpy.geometry.meshing3d import sample_profile, add_driver_cutout
-from loudpy.model.materials import C_AIR
+import loudpy as lp
 from loudpy.physics.exterior import HalfSpaceDtN
 from loudpy.geometry.meshing3d import add_driver_front, mesh_volume
 from enclosure import (geo_path, Z_B, Z_F, REAR_CURVES, REAR_START, FRONT_CURVES, FRONT_START, W, X0, Y0,
@@ -125,7 +125,7 @@ cfg = dict(center=center.tolist(), radius=R, up=1, port=dict(x=PORT_X, y=PORT_Y,
 v_cav, _ = build("cavity", H_CAVITY, out / "vented_cavity.msh")
 cfg["cavity"] = dict(msh=str(out / "vented_cavity.msh"), volume=v_cav)
 for f_lo, f_hi in BANDS:
-    h = min(H_MAX, C_AIR / f_hi / PTS_PER_WAVELENGTH)
+    h = min(H_MAX, lp.materials["Air"].c / f_hi / PTS_PER_WAVELENGTH)
     for kind in ("ext",):
         path = out / f"vented_{kind}_{f_hi:.0f}Hz.msh"
         _, n = build(kind, h, path)

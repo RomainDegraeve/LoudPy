@@ -4,6 +4,7 @@ Verification against analytical solutions: the numbers are right, not only uncha
   clamped circular plate     axisymmetric + Fourier-order structure vs Kirchhoff plate theory
   rectangular rigid cavity   3D P2 acoustics vs the exact modes, and the observed convergence order
   pulsating hemisphere       3D exterior FE + half-space DtN vs the exact radiated pressure
+  air                        lp.air (ideal-gas mixture) vs Cramer's speed-of-sound correlation
 
 Each case states its tolerance and why. They run in a few seconds (fast suite, every CI run).
 """
@@ -82,6 +83,35 @@ def test_pulsating_hemisphere_radiation(tmp_path):
         errs.append(np.linalg.norm(fe - exact, axis=1) / np.linalg.norm(exact, axis=1))
     coarse, fine = errs
     assert np.all(fine < coarse) and fine.max() < 0.022, (coarse, fine)
+
+
+# ── air ──────────────────────────────────────────────────────────────────────
+# Cramer, "The variation of the specific heat ratio and the speed of sound in air with temperature,
+# pressure, humidity, and CO2 concentration", JASA 93 (1993) 2510, eq. (15) and table III; the
+# saturation pressure and enhancement factor of Davis (1992), as used by Cramer. CO2: 400 ppm.
+_CRAMER = (331.5024, 0.603055, -0.000528, 51.471935, 0.1495874, -0.000782, -1.82e-7, 3.73e-8, -2.93e-10,
+           -85.20931, -0.228525, 5.91e-5, -2.835149, -2.15e-13, 29.179762, 0.000486)
+
+
+def _cramer_c(t, p, rh, xc=4e-4):
+    a, T = _CRAMER, t + 273.15
+    psv = np.exp(1.2378847e-5 * T ** 2 - 1.9121316e-2 * T + 33.93711047 - 6.3431645e3 / T)
+    xw = rh * (1.00062 + 3.14e-8 * p + 5.6e-7 * t ** 2) * psv / p
+    return (a[0] + a[1] * t + a[2] * t ** 2 + (a[3] + a[4] * t + a[5] * t ** 2) * xw
+            + (a[6] + a[7] * t + a[8] * t ** 2) * p + (a[9] + a[10] * t + a[11] * t ** 2) * xc
+            + a[12] * xw ** 2 + a[13] * p ** 2 + a[14] * xc ** 2 + a[15] * xw * p * xc)
+
+
+def test_air_matches_cramer():
+    """
+    Speed of sound of lp.air within 0.06 % of Cramer over 0–40 °C, 80–101 kPa, 0–100 % RH (measured
+    0.048 %; the ideal-gas model ignores the small dispersion of γ with temperature and the CO2).
+    """
+    worst = 0.0
+    for t, p, rh in itertools.product(range(0, 41, 5), (80e3, 90e3, 101325.0), (0.0, 0.25, 0.5, 0.75, 1.0)):
+        ours, ref = lp.air(t + 273.15, p, rh).c, _cramer_c(t, p, rh)
+        worst = max(worst, abs(ours - ref) / ref)
+    assert worst < 6e-4, worst
 
 
 # ── units and plausibility checks ────────────────────────────────────────────

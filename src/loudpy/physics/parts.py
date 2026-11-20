@@ -132,7 +132,11 @@ def _material(region, lib):
 
 
 def region_parameters(region, lib) -> dict:
-    """Physical parameters of the part of a region (material, overrides, damping, PML settings)."""
+    """Physical parameters of the part of a region (material, overrides, damping, PML settings).
+
+    The damping coefficients not given to lp.Rayleigh / lp.Hysteretic come from the material's default
+    fits (Material.rayleigh, Material.loss_factor).
+    """
     from loudpy.model.damping import Hysteretic, Rayleigh, Undamped
     from loudpy.model.regions import PML, Air, Solid
     m = _material(region, lib)
@@ -140,19 +144,21 @@ def region_parameters(region, lib) -> dict:
         p = m.require("rho", "E", "nu")
         d = region.damping
         if isinstance(d, Hysteretic):
-            p["eta"] = d.eta if d.eta is not None else m.require("eta")["eta"]
+            p["eta"] = d.eta if d.eta is not None else m.require("loss_factor")["loss_factor"]
         elif isinstance(d, Undamped):
             p.update(alpha_ray=0.0, beta_ray=0.0)
         elif isinstance(d, Rayleigh):
-            p["alpha_ray"] = d.alpha if d.alpha is not None else m.require("alpha_ray")["alpha_ray"]
-            p["beta_ray"] = d.beta if d.beta is not None else m.require("beta_ray")["beta_ray"]
+            alpha, beta = d.alpha, d.beta
+            if alpha is None or beta is None:
+                fit = m.require("rayleigh")["rayleigh"]
+                alpha, beta = (fit[0] if alpha is None else alpha), (fit[1] if beta is None else beta)
+            p.update(alpha_ray=alpha, beta_ray=beta)
         else:
             raise ModelError(f"{region.name}: unknown damping {d!r}")
         return p
     if isinstance(region, PML):
         p = m.require("rho", "c")
-        p["alpha"] = region.strength if region.strength is not None else m.require("alpha")["alpha"]
-        p["n"] = region.order if region.order is not None else m.require("n")["n"]
+        p["alpha"], p["n"] = region.strength, region.order
         if region.tuned_to is None:
             raise ModelError(f"PML {region.name!r}: give tuned_to= (frequency the absorption is tuned to)")
         p["f_pml"] = region.tuned_to

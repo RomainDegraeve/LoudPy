@@ -65,8 +65,8 @@ class PML(Region):
     thickness: float = 1.0              # layer thickness [m]
     mesh_size: float = 0.01
     tuned_to: float | None = None       # frequency the absorption is tuned to [Hz]
-    order: float | None = None          # profile order (None: material n)
-    strength: float | None = None       # absorption strength (None: material alpha)
+    order: float = 1.0                  # order of the absorption profile (1: linear)
+    strength: float = 3.0               # absorption strength (dimensionless)
     rho: float | None = None
     c: float | None = None
 

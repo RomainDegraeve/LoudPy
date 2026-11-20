@@ -77,8 +77,9 @@ def line_length():
             + (H_IN - GAP_TOP / 2 - MOUTH_H / 2) + d3 / 2)
 
 
-def quarter_wave(c=343.0, end_correction=True):
+def quarter_wave(c=None, end_correction=True):
     """Quarter-wave estimate of the tuning [Hz] (mouth end correction ≈ 0.6 √(A/π))."""
+    c = lp.materials["Air"].c if c is None else c
     L = line_length()
     if end_correction:
         L += 0.6 * np.sqrt(W_IN * MOUTH_H / np.pi)

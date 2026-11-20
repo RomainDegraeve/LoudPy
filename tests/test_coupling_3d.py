@@ -10,6 +10,8 @@ import itertools
 import numpy as np
 import pytest
 
+import loudpy as lp
+
 from support import current_api as api
 
 pytestmark = pytest.mark.slow
@@ -22,7 +24,7 @@ from support.reference import RTOL_COUPLED_MODES, RTOL_RESPONSE as RTOL_3D  # no
 def test_rect_cavity(mesh_dir, reference):
     freqs, cav = api.rect_cavity_modes(mesh_dir)
     lx, ly, lz = 0.30, 0.20, 0.14
-    exact = np.sort([343.0 / 2 * np.sqrt((a / lx) ** 2 + (b / ly) ** 2 + (c / lz) ** 2)
+    exact = np.sort([cav.c / 2 * np.sqrt((a / lx) ** 2 + (b / ly) ** 2 + (c / lz) ** 2)
                      for a, b, c in itertools.product(range(10), repeat=3)])[:12]
     assert np.abs(freqs[1:12] - exact[1:12]).max() / exact[11] < 0.01      # physics sanity
     reference.check(freqs=freqs, rtol=1e-7)
@@ -59,7 +61,7 @@ def test_driver_in_box(mesh_dir, drv, coil, reference):
     reference.check(coupled=s, rtol=RTOL_COUPLED_MODES)
     # physics sanity: the box air spring raises the pistonic resonance
     k0 = int(np.argmax(np.abs(cpl.volume_disp) * (drv.m == 0)))
-    f_c = np.sqrt(drv.freq[k0] ** 2 + 1.2 * 343.0 ** 2 * cpl.volume_disp[k0] ** 2 / cav.volume / (2 * np.pi) ** 2)
+    f_c = np.sqrt(drv.freq[k0] ** 2 + lp.materials["Air"].rho * cav.c ** 2 * cpl.volume_disp[k0] ** 2 / cav.volume / (2 * np.pi) ** 2)
     f_coupled = s.imag[np.argmin(np.abs(s.imag / 2 / np.pi - f_c))] / 2 / np.pi
     assert drv.freq[k0] < f_coupled < 1.05 * f_c
 

@@ -7,7 +7,7 @@ import numpy as np
 import gmsh
 
 from loudpy.physics.modal import CavityModes
-from loudpy.model.materials import C_AIR
+import loudpy as lp
 
 LX, LY, LZ, H, F_MAX = 0.30, 0.20, 0.14, 0.012, 3000.0
 msh = "LoudPy_exemples/Coupling_3D/Driver_in_cavity/Results/Files/rect_box.msh"
@@ -30,7 +30,7 @@ gmsh.finalize()
 
 cav = CavityModes.from_msh(msh)
 f_fe = cav.solve(F_MAX)
-f_an = np.sort([C_AIR / 2 * np.sqrt((a / LX) ** 2 + (b / LY) ** 2 + (c / LZ) ** 2)
+f_an = np.sort([lp.materials["Air"].c / 2 * np.sqrt((a / LX) ** 2 + (b / LY) ** 2 + (c / LZ) ** 2)
                 for a, b, c in itertools.product(range(12), repeat=3)])
 f_an = f_an[f_an <= F_MAX * 1.02][:len(f_fe)]
 n = min(len(f_fe), len(f_an))

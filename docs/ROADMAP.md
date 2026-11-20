@@ -17,7 +17,7 @@ Cost unit: one *session* ≈ one long working block (3–5 h). Status: ✅ done 
 | Phase | Content | Sessions | Status |
 |---|---|---|---|
 | A | Foundations: no import side effects, OpenMP, exceptions, SI checks, packaging, CI, verification tests | 1 | ✅ |
-| B | Materials and air: library v2 (units, temperature, provenance), damping separate, air from (T, p, RH), one air for 2D and 3D | 1 | ○ |
+| B | Materials and air: library v2 (units, temperature, provenance), damping separate, air from (T, p, RH), one air for 2D and 3D | 1 | ✅ |
 | C | Selections and geometry: selection objects, three geometry sources, nothing read from names, PML by selection, driver profiles from selections | 3 | ○ |
 | D | Own generic FE core: Lagrange P1–P3 on lines / triangles / quads / tetrahedra, quadrature, spaces, generic kernels and assembly, curved (isoparametric) elements; old kernels removed | 5 | ○ |
 | E | Physics interfaces and couplings: one contribution protocol, generic system builder, sign convention fixed, electrical circuit as physics, 3D on the same protocol | 4 | ○ |
@@ -74,4 +74,40 @@ Gates (each phase is committed and pushed only when its gate passes):
   reassociation; no speed cost), and the tolerances come from the measured floating-point spread
   (`tests/support/reference.py`): operators 1e-10, forced responses 1e-6, damped coupled modes in
   near-degenerate pairs 1e-4 (√ε sensitivity). The references are unchanged.
-- Still to do outside the code: the repository has no `LICENSE` file (the GPLv3 text must be added).
+- `LICENSE`: the official GPLv3 text (gnu.org); `pdm.lock` refreshed for the new dependencies.
+
+## Phase B — done
+
+- Material library format 2: `kind` solid / fluid, SI units listed in the file, reference
+  temperature and source of every material (the solids: "typical value, unverified"), damping fits
+  grouped (`rayleigh = (α, β)`, `loss_factor`) and used only when lp.Rayleigh / lp.Hysteretic get no
+  coefficient. PML settings moved from the air to `lp.PML` (same default values: strength 3, order 1).
+  Format-1 files are still read; `MaterialLibrary.save` writes format 2.
+- `lp.air(temperature, pressure, humidity)`: ideal-gas mixture of dry air and water vapour (Buck
+  saturation pressure). Speed of sound within 0.048 % of Cramer (1993) over 0–40 °C, 80–101 kPa,
+  0–100 % RH (`test_air_matches_cramer`). Standard air: ρ = 1.2041 kg/m³, c = 343.235 m/s.
+- One air: the library's Air, `lp.Scene(…, air=…)` (default: the library's Air) and the toolkit
+  defaults `RHO_AIR`, `C_AIR` are the same values (test). Examples no longer hard-code 343 m/s.
+- References. First the refactor alone, with the former air values put back (2D 1.204 / 343.2,
+  3D 1.2 / 343.0): every committed reference passes, so nothing else changed. Then with the new
+  air, the 12 references that depend on it were regenerated, each change checked against the air
+  change (ρ +8.08e-5, c +1.02e-4 in 2D; ρ +3.4e-3, c +6.85e-4 in 3D):
+
+  | reference | max relative change | explained by |
+  |---|---|---|
+  | operator ρ | 8.08e-5 | ρ ratio, exactly |
+  | operator Q | 1.4e-4 | air entries × (c_old/c_new)² − 1 = −2.038e-4 exactly; PML entries via the stretching |
+  | operator H | 1.65e-4 | air entries unchanged (Laplacian); only the PML entries move (stretching depends on c) |
+  | 2D FSI force 200 / 1500 Hz, voltage | 7.6e-5 – 1.2e-4 | air pressure ∝ ρ, k = ω/c |
+  | 3D rectangular cavity | 6.85e-4 | eigenfrequencies ∝ c, exactly |
+  | 3D pulsating hemisphere (far field) | 1.2e-2 | phase k·r at 1 kHz, r = 1 m: Δk·r = 0.0125 rad |
+  | 3D driver in box, two drivers, open scenes | 4.4e-4 – 7.2e-3 | air spring ρc², amplified near resonances |
+
+  The structure-only references (operators K, M, C, modes, transient, plate) are unchanged; their
+  regenerated values differ by ≤ 1e-11 (the fastmath change of phase A, within the tolerances) and
+  were not rewritten.
+- Found on the way, for later phases: the `test_dtn_system` fingerprint (sums over the whole coupled
+  matrix) is dominated by the structure block and cannot see a 1e-4 change of the air block (it
+  moved by 7e-12): phase E will fingerprint each block separately. The library value of SolidGlue
+  `rayleigh α = 80e-6 1/s` is ~1e6 times smaller than the other materials' (probably meant 80):
+  kept as it was, to be confirmed by the author.

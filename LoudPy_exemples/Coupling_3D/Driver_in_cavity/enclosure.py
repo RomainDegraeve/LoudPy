@@ -66,8 +66,9 @@ def outer_corners():
                      for z in (Z_F, back_z(y) - t)])
 
 
-def port_tuning(volume, c=343.0):
+def port_tuning(volume, c=None):
     """Helmholtz estimate f_b = c/2π √(S / (V L')), L' = L + 0.85a (flanged) + 0.6a (unflanged)."""
+    c = lp.materials["Air"].c if c is None else c
     S = np.pi * PORT_A ** 2
     return c / (2 * np.pi) * np.sqrt(S / (volume * (PORT_L + 1.45 * PORT_A)))
 

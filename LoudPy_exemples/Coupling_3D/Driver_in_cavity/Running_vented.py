@@ -29,7 +29,6 @@ import loudpy as lp
 
 lp.set_verbosity("info")                 # progress messages (loudpy is silent by default)
 from loudpy.physics.modal import CavityModes, DriverCavityCoupling
-from loudpy.model.materials import RHO_AIR, C_AIR
 from loudpy.physics.exterior import HalfSpaceDtN, ExteriorFE, coupled_sweep, port_block
 from enclosure import FILES, X0, Y0, PORT_A, PORT_L, driver, vented_scene
 
@@ -39,6 +38,7 @@ FREQS = np.unique(np.concatenate([np.arange(20.0, 300.0, 2.0), np.arange(300.0, 
 if len(sys.argv) > 2:                                      # quick test: list of frequencies
     FREQS = np.array([float(x) for x in sys.argv[2].split(",")])
 CAV_F_MAX, CHUNK_HZ, RTOL = 6000.0, 50.0, 1e-7
+AIR = lp.materials["Air"]                                  # 20 °C, 101.325 kPa, dry (lp.air)
 
 if MODEL == "merged":
     tag = "vented_merged" if len(sys.argv) <= 2 else "vented_merged_test"
@@ -61,12 +61,12 @@ if cav_h5.exists():
     cav = CavityModes.load(cav_h5)
 else:
     cav = CavityModes.from_msh(cfg["cavity"]["msh"], surfaces=["port_inner"])
-    cav.solve(CAV_F_MAX, c=C_AIR)
+    cav.solve(CAV_F_MAX, c=AIR.c)
     cav.save(cav_h5)
 print(f"Cavity: {len(cav.nodes)} nodes, {cav.volume * 1e3:.2f} L, {len(cav.kappa2)} modes ≤ {CAV_F_MAX:.0f} Hz "
       f"({time.time() - t0:.0f} s)")
 # X1: air leaving the box into the port (wall displacement into the cavity air = −X1/S)
-cpl = DriverCavityCoupling(cav, drv, rear, center=(X0, Y0), rho=RHO_AIR, c=C_AIR, eta_air=0.0,
+cpl = DriverCavityCoupling(cav, drv, rear, center=(X0, Y0), rho=AIR.rho, c=AIR.c, eta_air=0.0,
                            pistons=[(cav.surfaces["port_inner"], -1.0 / Sp), None])
 print(f"Cavity coupling ({time.time() - t0:.0f} s): inner mouth area "
       f"{-cpl.volume_disp[n_s] * Sp * 1e4:.2f} cm² (exact {Sp * 1e4:.2f})")
@@ -121,7 +121,7 @@ def store(i, b, p, c_h, q):
 
 
 bands_u = [(lo if bi == 0 else lo + 1e-6, hi, ext) for bi, (lo, hi, ext) in enumerate(bands)]
-y, coefs, iters = coupled_sweep(bands_u, FREQS, Fy, w_s, zeta, S, R, kappa2, eta, RHO_AIR, C_AIR,
+y, coefs, iters = coupled_sweep(bands_u, FREQS, Fy, w_s, zeta, S, R, kappa2, eta, AIR.rho, AIR.c,
                                 CHUNK_HZ, RTOL, store, H_extra=H_extra)
 h5.close()
 save_npz(list(range(len(FREQS))))

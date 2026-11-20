@@ -1,87 +1,45 @@
 {
+  "format": "loudpy-materials/2",
+  "units": {"rho": "kg/m^3", "E": "Pa", "nu": "1", "c": "m/s", "rayleigh": ["1/s", "s"], "loss_factor": "1",
+            "temperature": "K", "pressure": "Pa", "humidity": "1"},
+  "materials": {
     "Polypropylene": {
-        "type":      "elastic",
-        "name":      "Polypropylene",
-        "rho":       1200,
-        "E":         1.5e9,
-        "nu":        0.40,
-        "eta":       0.02,
-        "alpha_ray": 12.0,
-        "beta_ray":  3.1e-6
+      "kind": "solid", "rho": 1200, "E": 1.5e9, "nu": 0.40,
+      "damping": {"rayleigh": [12.0, 3.1e-6], "loss_factor": 0.02},
+      "temperature": 293.15, "source": "typical value, unverified"
     },
-
     "Paper": {
-        "type":      "elastic",
-        "name":      "Paper",
-        "rho":       1200,
-        "E":         10e8,
-        "nu":        0.30,
-        "eta":       0.03,
-        "alpha_ray": 18.0,
-        "beta_ray":  4.6e-6
+      "kind": "solid", "rho": 1200, "E": 1.0e9, "nu": 0.30,
+      "damping": {"rayleigh": [18.0, 4.6e-6], "loss_factor": 0.03},
+      "temperature": 293.15, "source": "typical value, unverified"
     },
-
     "Copper": {
-        "type":      "elastic",
-        "name":      "Copper",
-        "rho":       10000,
-        "E":         120e9,
-        "nu":        0.34,
-        "eta":       0.001,
-        "alpha_ray": 0.6,
-        "beta_ray":  1.5e-7
+      "kind": "solid", "rho": 10000, "E": 1.2e11, "nu": 0.34,
+      "damping": {"rayleigh": [0.6, 1.5e-7], "loss_factor": 0.001},
+      "temperature": 293.15, "source": "typical value, unverified"
     },
-
     "Rubber": {
-        "type":      "elastic",
-        "name":      "Rubber",
-        "rho":       950,
-        "E":         3e7,
-        "nu":        0.45,
-        "eta":       0.15,
-        "alpha_ray": 45,
-        "beta_ray":   2.3e-5
+      "kind": "solid", "rho": 950, "E": 3.0e7, "nu": 0.45,
+      "damping": {"rayleigh": [45.0, 2.3e-5], "loss_factor": 0.15},
+      "temperature": 293.15, "source": "typical value, unverified"
     },
-
     "Kapton": {
-        "type":      "elastic",
-        "name":      "Kapton",
-        "rho":       1720,
-        "E":         2.5e9,
-        "nu":        0.34,
-        "eta":       0.01,
-        "alpha_ray": 6.1,
-        "beta_ray":  1.5e-6
+      "kind": "solid", "rho": 1720, "E": 2.5e9, "nu": 0.34,
+      "damping": {"rayleigh": [6.1, 1.5e-6], "loss_factor": 0.01},
+      "temperature": 293.15, "source": "typical value, unverified"
     },
-
     "PhenolicCloth": {
-        "type":      "elastic",
-        "name":      "PhenolicCloth",
-        "rho":       600,
-        "E":         4.5e7,
-        "nu":        0.35,
-        "eta":       0.07,
-        "alpha_ray": 90.0,
-        "beta_ray":  2e-5
+      "kind": "solid", "rho": 600, "E": 4.5e7, "nu": 0.35,
+      "damping": {"rayleigh": [90.0, 2.0e-5], "loss_factor": 0.07},
+      "temperature": 293.15, "source": "typical value, unverified"
     },
-
-    "Air": {
-        "type":  "acoustic",
-        "name":  "Air",
-        "rho":   1.204,
-        "c":     343.2,
-        "alpha": 3,
-        "n":     1
-    },
-
     "SolidGlue": {
-        "type":      "elastic",
-        "name":      "SolidGlue",
-        "rho":       1200,      
-        "E":         3.5e9,     
-        "nu":        0.38,      
-        "eta":       0.03,      
-        "alpha_ray": 80e-6,     
-        "beta_ray":  1.2e-7     
+      "kind": "solid", "rho": 1200, "E": 3.5e9, "nu": 0.38,
+      "damping": {"rayleigh": [80e-6, 1.2e-7], "loss_factor": 0.03},
+      "temperature": 293.15, "source": "typical value, unverified"
+    },
+    "Air": {
+      "kind": "fluid", "model": "air", "temperature": 293.15, "pressure": 101325.0, "humidity": 0.0
     }
+  }
 }

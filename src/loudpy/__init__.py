@@ -20,7 +20,7 @@ API reference.
 from .model import (
     Model, Solid, Air, PML, Clamped, Coil, FluidStructure, Radiation,
     Rayleigh, Hysteretic, Undamped, Force, Voltage,
-    Material, MaterialLibrary, load_materials, materials,
+    Material, MaterialLibrary, air, load_materials, materials,
 )
 from .geometry import Frame, Mesh
 from .results import (load, spl, Results, FrequencyResults, ModeResults, TimeResults, Data, Field,
@@ -46,7 +46,7 @@ __all__ = [
     # model
     "Model", "Solid", "Air", "PML", "Clamped", "Coil", "FluidStructure", "Radiation",
     "Rayleigh", "Hysteretic", "Undamped", "Force", "Voltage",
-    "Material", "MaterialLibrary", "load_materials", "materials",
+    "Material", "MaterialLibrary", "air", "load_materials", "materials",
     # geometry
     "Frame", "Mesh",
     # studies
