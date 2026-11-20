@@ -1,7 +1,7 @@
 """
 Build_vented.py — meshes of the HYBRID model of the vented (bass-reflex) enclosure, standing on a
 rigid ground (enclosure.py: walls WALL_T thick, port of radius PORT_A and length PORT_L through
-the front face, its tube protruding into the box). Low-level toolkit (loudpy.Studies); the merged
+the front face, its tube protruding into the box). Low-level toolkit (loudpy.physics); the merged
 reference model is an lp.Scene (enclosure.vented_scene(), meshed by Running_vented.py merged).
 
   hybrid (fast): the inside of the box (modal, port tube excluded, inner mouth "port_inner")
@@ -14,8 +14,11 @@ from pathlib import Path
 
 import numpy as np
 
-from loudpy.Studies.Cavity_coupling import _gmsh, sample_profile, add_driver_cutout, C_AIR
-from loudpy.Studies.Exterior_dtn import HalfSpaceDtN, add_driver_front, mesh_volume
+from loudpy.geometry.gmsh_session import gmsh_module as _gmsh
+from loudpy.geometry.meshing3d import sample_profile, add_driver_cutout
+from loudpy.model.materials import C_AIR
+from loudpy.physics.exterior import HalfSpaceDtN
+from loudpy.geometry.meshing3d import add_driver_front, mesh_volume
 from enclosure import (geo_path, Z_B, Z_F, REAR_CURVES, REAR_START, FRONT_CURVES, FRONT_START, W, X0, Y0,
                        BRACE_Y, BRACE_T, BRACE_DEPTH, back_z, add_box, add_outer_box, outer_corners,
                        PORT_X, PORT_Y, PORT_A, PORT_L, PORT_T, port_tuning)

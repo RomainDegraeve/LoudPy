@@ -37,9 +37,9 @@ from pathlib import Path
 import numpy as np
 
 from loudpy.geometry.gmsh_session import gmsh_module
+from loudpy.model.materials import C_AIR, RHO_AIR
 
 AXES = {"x": 0, "y": 1, "z": 2}
-RHO_AIR, C_AIR = 1.2, 343.0
 
 
 @dataclass
@@ -267,7 +267,7 @@ class Scene:
         return dict(center=center.tolist(), radius=radius, up=up)
 
     def dtn(self):
-        from loudpy.Studies.Exterior_dtn import HalfSpaceDtN
+        from loudpy.physics.exterior import HalfSpaceDtN
         h = self.hemisphere
         return HalfSpaceDtN(h["center"], h["radius"], up=h["up"])
 

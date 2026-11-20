@@ -1,7 +1,7 @@
 """
-Exterior_dtn.py — 3D exterior acoustics above a rigid ground, with the exact DtN (Dirichlet-to-
+loudpy.physics.exterior — 3D exterior acoustics above a rigid ground, with the exact DtN (Dirichlet-to-
 Neumann) radiation condition on a hemisphere, coupled to an axisymmetric driver (front side)
-and to its enclosure (rear side, Cavity_coupling).
+and to its enclosure (rear side, loudpy.physics.modal).
 
 Half-space DtN
 --------------
@@ -20,14 +20,14 @@ In the P2 FE system this gives the low-rank boundary operator
 
 Coupled sweep (driver + enclosure + exterior), per frequency
 ------------------------------------------------------------
-    H(ω) q + Bfᵀ p = F,   H = diag(ω_k² + 2iζ_kω_kω − ω²) − ρω²(S Dcav Sᵀ + R)   (Cavity_coupling)
+    H(ω) q + Bfᵀ p = F,   H = diag(ω_k² + 2iζ_kω_kω − ω²) − ρω²(S Dcav Sᵀ + R)   (physics.modal)
     (K − k²M − D) p + ρω² Bf q = 0
 q is eliminated (H is small and dense) and the exterior equation is solved by GMRES,
 preconditioned by a sparse LU of K − k_c²M + (ik_c + 1/R) M_Γ (local absorbing condition)
 factorised once per chunk of frequencies around k_c.
 
 Several drivers: mesh_exterior with lists of frames writes "interface_front_<j>", and
-ExteriorFE.couple_driver takes a MultiDriver (Cavity_coupling); q stacks all the drivers' modes.
+ExteriorFE.couple_driver takes a MultiDriver (physics.modal); q stacks all the drivers' modes.
 coupled_sweep takes one force vector: combine the drivers' coil forces with their complex
 amplitudes (MultiDriver.coil_forces(coil_nodes, amplitudes)), or run it once per driver.
 """
@@ -42,12 +42,10 @@ import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 from scipy.special import spherical_jn, spherical_yn, sph_harm_y
 
-from loudpy.Studies.Cavity_coupling import (assemble_p2, read_p2_mesh, surface_quadrature,
-                                            surface_coupling, wet_edges, add_pistons, RHO_AIR, C_AIR,
-                                            as_drivers, couple_drivers)
-from loudpy.geometry.gmsh_session import gmsh_module as _gmsh  # noqa: F401
-# moved to loudpy.geometry.meshing3d, re-exported for existing scripts
-from loudpy.geometry.meshing3d import add_driver_front, mesh_exterior, mesh_volume  # noqa: F401
+from loudpy.fem.tet10 import assemble_p2, surface_quadrature
+from loudpy.geometry.meshing3d import read_p2_mesh
+from loudpy.model.materials import C_AIR, RHO_AIR
+from loudpy.physics.modal import add_pistons, as_drivers, couple_drivers, surface_coupling, wet_edges
 
 
 # ════════════════════════════════════════════════════════════════════════════

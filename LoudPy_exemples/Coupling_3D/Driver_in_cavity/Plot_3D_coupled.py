@@ -25,7 +25,8 @@ import numpy as np
 import pyvista as pv
 
 import loudpy as lp
-from loudpy.Studies.Cavity_coupling import CavityModes, cavity_grid, driver_surface
+from loudpy.physics.modal import CavityModes
+from loudpy.results.surfaces import cavity_grid, driver_surface
 from enclosure import X0, sealed_scene
 
 lp.plot.style.use()                       # loudpy figure style (fonts, colours, SPL in dB RMS)

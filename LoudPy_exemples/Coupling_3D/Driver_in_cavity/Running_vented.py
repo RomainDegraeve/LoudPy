@@ -8,7 +8,7 @@ Two models, chosen on the command line:
   python3 Running_vented.py hybrid   fast: modal inside (rigid walls, inner port mouth as a
                                      piston) + 1D port (plane waves) + exterior FE/DtN (outer mouth
                                      as a piston); generalised coordinates (driver modes, X1, X2).
-                                     Low-level toolkit (loudpy.Studies): run Build_vented.py and
+                                     Low-level toolkit (loudpy.physics): run Build_vented.py and
                                      Running_script.py first.
 
 What this produces (Results/Files/)
@@ -26,8 +26,9 @@ import h5py
 import numpy as np
 
 import loudpy as lp
-from loudpy.Studies.Cavity_coupling import CavityModes, DriverCavityCoupling, RHO_AIR, C_AIR
-from loudpy.Studies.Exterior_dtn import HalfSpaceDtN, ExteriorFE, coupled_sweep, port_block
+from loudpy.physics.modal import CavityModes, DriverCavityCoupling
+from loudpy.model.materials import RHO_AIR, C_AIR
+from loudpy.physics.exterior import HalfSpaceDtN, ExteriorFE, coupled_sweep, port_block
 from enclosure import FILES, X0, Y0, PORT_A, PORT_L, driver, vented_scene
 
 MODEL = sys.argv[1] if len(sys.argv) > 1 else "merged"

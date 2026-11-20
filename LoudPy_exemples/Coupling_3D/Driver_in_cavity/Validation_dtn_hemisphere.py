@@ -8,8 +8,10 @@ the DtN expansion, at r = 1 m.
 """
 import numpy as np
 
-from loudpy.Studies.Cavity_coupling import _gmsh, surface_quadrature, RHO_AIR, C_AIR
-from loudpy.Studies.Exterior_dtn import HalfSpaceDtN, ExteriorFE, _h2
+from loudpy.geometry.gmsh_session import gmsh_module as _gmsh
+from loudpy.fem.tet10 import surface_quadrature
+from loudpy.model.materials import RHO_AIR, C_AIR
+from loudpy.physics.exterior import HalfSpaceDtN, ExteriorFE, _h2
 
 A_IN, R_OUT, H_MESH = 0.10, 0.30, 0.022
 FREQS = [100.0, 1000.0, 3000.0]

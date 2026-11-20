@@ -1,7 +1,7 @@
 """
 Materials: values with SI units, loaded once from a JSON library and checked.
 
-    lp.materials["Paper"]                       the default library (Materials_Bank/materials.json)
+    lp.materials["Paper"]                       the default library (data/materials.json)
     lp.load_materials("my_materials.json")      another library
     lp.Material("Steel", rho=7850, E=2.1e11, nu=0.3)      a material defined in the script
     lp.materials["Paper"].with_(E=1.2e9)        a variant
@@ -13,7 +13,10 @@ from collections.abc import Mapping
 from dataclasses import dataclass, fields, replace
 from pathlib import Path
 
-DEFAULT_LIBRARY = Path(__file__).resolve().parents[1] / "Materials_Bank" / "materials.json"
+# Air of the 3D scenes (lp.Scene defaults) [kg/m³], [m/s]
+RHO_AIR, C_AIR = 1.2, 343.0
+
+DEFAULT_LIBRARY = Path(__file__).resolve().parents[1] / "data" / "materials.json"
 
 
 @dataclass(frozen=True)
@@ -99,7 +102,7 @@ class MaterialLibrary(Mapping):
 
 
 def load_materials(path=None) -> MaterialLibrary:
-    """The material library at `path` (default: loudpy's Materials_Bank/materials.json)."""
+    """The material library at `path` (default: loudpy's data/materials.json)."""
     return MaterialLibrary.load(path or DEFAULT_LIBRARY)
 
 

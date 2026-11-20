@@ -75,7 +75,7 @@ class DriverResponse:
 
     def surface(self, f: float, **kwargs):
         """Deformed 3D surface at the frequency nearest f (driver_surface keyword arguments)."""
-        from loudpy.Studies.Cavity_coupling import driver_surface
+        from loudpy.results.surfaces import driver_surface
         i = int(np.argmin(np.abs(self.frequencies - f)))
         return driver_surface(self.modes, self.q[i], self.frame, **kwargs)
 
@@ -108,7 +108,7 @@ class SceneResults(FrequencyResults):
 
     def driver(self, name: str) -> DriverResponse:
         from loudpy.geometry.frame import Frame
-        from loudpy.Studies.Cavity_coupling import DriverModes
+        from loudpy.physics.modal import DriverModes
         d = next((d for d in self.scene["drivers"] if d["name"] == name), None)
         if d is None:
             raise KeyError(f"no driver {name!r} (drivers: {self.drivers})")
@@ -124,7 +124,7 @@ class SceneResults(FrequencyResults):
 
     # ── pressure ───────────────────────────────────────────────────────────
     def _dtn(self):
-        from loudpy.Studies.Exterior_dtn import HalfSpaceDtN
+        from loudpy.physics.exterior import HalfSpaceDtN
         h = self.scene.get("hemisphere")
         if not h:
             raise ValueError("these results have no exterior air (no DtN expansion)")

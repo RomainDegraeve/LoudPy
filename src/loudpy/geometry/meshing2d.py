@@ -1,16 +1,62 @@
 import gmsh
 import hashlib
 import json
+import logging
 import os
 import re
 import multiprocessing
 import numpy as np
 import math
+from dataclasses import dataclass
 from typing import Callable, List, Tuple, Dict, Any, Optional
-from loudpy.ObjectsGeo import Nodes, L3_Edges, TR6_Surfs
 
+log = logging.getLogger("loudpy.mesh")
 
 DEFAULT_MESH_GRADING = 0.3
+
+# Class names written in the mesh signatures (kept so that the meshes saved before stay reusable).
+_SIGNATURE_CLASS = {"solid": "DomainSpecMecaRayleigh", "solid_hysteretic": "DomainSpecMecaHysteretic",
+                    "air": "DomainSpecAcou", "pml": "DomainSpecPML"}
+
+
+@dataclass(eq=False)
+class DomainSizing:
+    """What the mesher needs from a region: its name, kind ("solid", "solid_hysteretic", "air",
+    "pml"), element size [m] and, for a PML, its thickness t [m]."""
+    name: str
+    kind: str
+    size: float
+    t: Optional[float] = None
+
+    @property
+    def is_structure(self) -> bool:
+        return self.kind.startswith("solid")
+
+
+@dataclass
+class NodeSet:
+    """All the nodes of a mesh: tags (n,) and coordinates (n, 3)."""
+    node_tags: np.ndarray
+    node_coords: np.ndarray
+
+
+@dataclass
+class MeshPart:
+    """One physical group of the 2D mesh: its cells (TRI6 for a domain, LINE3 for a boundary)
+    as node tags, and the tags / coordinates of its nodes."""
+    node_tags: np.ndarray
+    node_coords: np.ndarray
+    cells: np.ndarray
+    name: str
+    dim: int
+
+    @property
+    def tri(self) -> np.ndarray:
+        return self.cells
+
+    @property
+    def edges(self) -> np.ndarray:
+        return self.cells
 
 
 class MeshManager:
@@ -45,11 +91,11 @@ class MeshManager:
     same triangulation twice for the same .geo.
     """
 
-    def __init__(self, SimObjects: List[Any], subdomains_key: str, mesh_order: int = 2,
+    def __init__(self, domains: List[DomainSizing], subdomains_key: str = "sub", mesh_order: int = 2,
                  grading: Optional[float] = DEFAULT_MESH_GRADING,
-                 interfaces: Optional[List[Any]] = None, prune_unused: bool = True,
+                 interfaces: Optional[List[str]] = None, prune_unused: bool = True,
                  match: Optional[Callable[[str, str], bool]] = None, deterministic: bool = False):
-        self.SimObjects = SimObjects
+        self.SimObjects = list(domains)
         self.subdomains_key = subdomains_key
         self.mesh_order = mesh_order
         self.grading = grading
@@ -129,9 +175,8 @@ class MeshManager:
             mp = m if os.path.isabs(m) else os.path.join(geo_dir, m)
             files[m] = digest(mp) if os.path.exists(mp) else "missing"
         domains = sorted(
-            [obj.name, type(obj).__name__, getattr(obj, "size", None), getattr(obj, "t", None)]
-            for obj in self.SimObjects)
-        interfaces = sorted(i.name for i in self.interfaces) if self.interfaces is not None else None
+            [obj.name, _SIGNATURE_CLASS[obj.kind], obj.size, obj.t] for obj in self.SimObjects)
+        interfaces = sorted(self.interfaces) if self.interfaces is not None else None
         sig = dict(files=files, domains=domains, interfaces=interfaces,
                    prune_unused=self.prune_unused, subdomains_key=self.subdomains_key,
                    mesh_order=self.mesh_order, grading=self.grading)
@@ -156,7 +201,7 @@ class MeshManager:
         changed = [k for k in current if stored.get(k) != current[k]]
         return (not changed), ("" if not changed else "changed: " + ", ".join(changed))
 
-    def load_mesh(self, msh_path: str) -> Tuple[List[TR6_Surfs], List[L3_Edges], "Nodes"]:
+    def load_mesh(self, msh_path: str) -> Tuple[List[MeshPart], List[MeshPart], NodeSet]:
         """Read a mesh written by generate_mesh (same data as generate_mesh(..., extract_mesh_data=True))."""
         if not os.path.exists(msh_path):
             raise FileNotFoundError(f"The file {msh_path} could not be found.")
@@ -168,7 +213,7 @@ class MeshManager:
     # DATA EXTRACTION
     # =========================================================================
 
-    def extract_mesh_data(self) -> Tuple[List[TR6_Surfs], List[L3_Edges], "Nodes"]:
+    def extract_mesh_data(self) -> Tuple[List[MeshPart], List[MeshPart], NodeSet]:
         try:
             node_tags, node_coords, _ = gmsh.model.mesh.getNodes()
             node_coords = node_coords.reshape(-1, 3)
@@ -194,11 +239,11 @@ class MeshManager:
                 group_coords = coords_map[unique_nodes]
 
                 if dim == 2:
-                    domains.append(TR6_Surfs(unique_nodes, group_coords, elements_array, name))
+                    domains.append(MeshPart(unique_nodes, group_coords, elements_array, name, 2))
                 elif dim == 1:
-                    boundaries.append(L3_Edges(unique_nodes, group_coords, elements_array, name))
+                    boundaries.append(MeshPart(unique_nodes, group_coords, elements_array, name, 1))
 
-            return domains, boundaries, Nodes(node_tags, node_coords)
+            return domains, boundaries, NodeSet(node_tags, node_coords)
         finally:
             gmsh.finalize()
 
@@ -217,7 +262,7 @@ class MeshManager:
 
     def _get_pml_thickness(self, name: str) -> float:
         obj = self._get_matched_obj(name)
-        return getattr(obj, 't', 0.1) if obj else 0.1
+        return (obj.t if obj.t is not None else 0.1) if obj else 0.1
 
     # -------------------------------------------------------------------------
     # FIX 1 — Ordered loop with hard closure validation (no silent fallback)
@@ -262,15 +307,10 @@ class MeshManager:
                     n1, n2 = edges[t]
                     deg[n1].append(int(t))
                     deg[n2].append(int(t))
-                print("\n--- loop debug ---")
-                for n, tags in sorted(deg.items()):
-                    if len(tags) != 2:
-                        print(f"node {n}: degree {len(tags)} -> curves {tags}")
-                print(f"stuck at node {tail}, ordered so far: {ordered}")
-                print("--- end debug ---\n")
+                odd = {n: tags for n, tags in sorted(deg.items()) if len(tags) != 2}
                 raise ValueError(
-                    f"Cannot continue ordered loop at node {tail}. "
-                    f"Remaining curves: {remaining}. "
+                    f"Cannot continue ordered loop at node {tail} (ordered so far: {ordered}). "
+                    f"Remaining curves: {remaining}; nodes not shared by exactly two curves: {odd}. "
                     "Check for disconnected or duplicate curves in the physical group."
                 )
 
@@ -339,7 +379,7 @@ class MeshManager:
                 if matched_obj := self._get_matched_obj(name):
                     surfaces_by_obj[matched_obj].append(s)
             except Exception as ex:
-                print(f"  ERROR building surface for '{name}': {ex}")
+                log.error("cannot build the surface of %r: %s", name, ex)
 
         return surfaces
 
@@ -601,7 +641,7 @@ class MeshManager:
         for _, pg in gmsh.model.getPhysicalGroups(1):
             name = gmsh.model.getPhysicalName(1, pg)
             curves = [c for c in gmsh.model.getEntitiesForPhysicalGroup(1, pg) if c in kept_curves]
-            matched = any(self._match(i.name, name) for i in self.interfaces)
+            matched = any(self._match(i, name) for i in self.interfaces)
             gmsh.model.removePhysicalGroups([(1, pg)])
             if matched and curves:
                 gmsh.model.addPhysicalGroup(1, curves, pg, name)
@@ -617,9 +657,8 @@ class MeshManager:
             gmsh.model.occ.synchronize()
 
     @staticmethod
-    def _is_structure(obj: Any) -> bool:
-        """Structural domain spec (DomainSpecMeca, DomainSpecMecaRayleigh, DomainSpecMecaHysteretic)."""
-        return type(obj).__name__.startswith("DomainSpecMeca")
+    def _is_structure(obj: DomainSizing) -> bool:
+        return obj.is_structure
 
     def _grading_fields(self, surfaces_by_obj: Dict) -> List[int]:
         """One field per structural domain: its size + grading · (distance to its boundary)."""
@@ -674,7 +713,7 @@ class MeshManager:
             if os.path.dirname(msh_path):
                 os.makedirs(os.path.dirname(msh_path), exist_ok=True)
             gmsh.write(msh_path)
-            print(f"Mesh generated and saved: {msh_path}")
+            log.info("mesh written: %s", msh_path)
 
     def _get_elements_for_group(
         self,

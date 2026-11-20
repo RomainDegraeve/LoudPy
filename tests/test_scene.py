@@ -96,7 +96,7 @@ def slotted_cabinet(occ):
 
 @pytest.mark.parametrize("kind", ["cavity+exterior", "merged"])
 def test_open_scene_matches_toolkit(driver, mesh_dir, tmp_path, kind, reference):
-    from loudpy.Studies.Exterior_dtn import ExteriorFE, coupled_sweep
+    from loudpy.physics.exterior import ExteriorFE, coupled_sweep
     from loudpy.study.scene_response import cavity_coupling, cavity_modes, coil_force, multidriver
     scene = _small(kind, driver, mesh_dir)
     freqs = np.array([100.0, 400.0])

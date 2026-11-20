@@ -1,10 +1,10 @@
 """
-Cavity_coupling.py — 3D acoustic cavity of any shape coupled to the azimuthal-order (Fourier)
-modes of an axisymmetric driver, by modal superposition.
+loudpy.physics.modal — 3D acoustic cavity of any shape coupled to the azimuthal-order (Fourier)
+modes of axisymmetric drivers, by modal superposition (the cavity side of lp.Scene).
 
 Ingredients
 -----------
-  - driver : in-vacuo modes of orders m = 0, 1, 2, ... (EigenStudy.solve_meca_eigen_fourier),
+  - driver : in-vacuo modes of orders m = 0, 1, 2, ... (lp.Modes(model).solve(orders=[0, 1, …])),
              made real and mass-normalised, with both azimuthal families for m ≥ 1
                  cos family : u_r = U_r cos mθ,  u_z = U_z cos mθ,  u_θ =  U_θ sin mθ
                  sin family : u_r = U_r sin mθ,  u_z = U_z sin mθ,  u_θ = −U_θ cos mθ
@@ -43,79 +43,11 @@ import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 from scipy.spatial import cKDTree
 
+from loudpy.fem.tet10 import assemble_p2, surface_quadrature
+from loudpy.geometry.frame import Frame, as_frame, _is_single
+from loudpy.geometry.meshing3d import read_p2_mesh
+from loudpy.model.materials import C_AIR, RHO_AIR
 from loudpy.solvers.eigen import start_vector
-
-# Geometry (frames, cut-outs, meshing, P2 mesh reading) lives in loudpy.geometry; the names
-# are re-exported here so that existing scripts keep working.
-from loudpy.geometry.frame import Frame, as_frame, _is_single  # noqa: F401
-from loudpy.geometry.frame import Frame as DriverFrame  # noqa: F401  (former name)
-from loudpy.geometry.gmsh_session import gmsh_module as _gmsh  # noqa: F401
-from loudpy.geometry.meshing3d import (sample_profile, add_driver_cutout, carve_drivers,  # noqa: F401
-                                       classify_driver_faces, _local_extent, mesh_cavity,
-                                       read_p2_mesh)
-
-RHO_AIR, C_AIR = 1.2, 343.0
-
-
-# ════════════════════════════════════════════════════════════════════════════
-#  P2 tetrahedron (straight edges): exact reference integrals
-# ════════════════════════════════════════════════════════════════════════════
-_TET_EDGES = [(0, 1), (1, 2), (0, 2), (0, 3), (2, 3), (1, 3)]      # gmsh TET10 node order
-
-
-def _tet10_tables():
-    from math import factorial
-    Q = np.zeros((10, 4, 4))                       # N_p = λᵀ Q_p λ (homogeneous in λ)
-    one = np.ones(4)
-    for i in range(4):
-        e = np.eye(4)[i]
-        Q[i] = 2 * np.outer(e, e) - 0.5 * (np.outer(e, one) + np.outer(one, e))
-    for p, (a, b) in enumerate(_TET_EDGES, start=4):
-        Q[p, a, b] = Q[p, b, a] = 2.0
-    L2 = (np.ones((4, 4)) + np.eye(4)) / 20.0      # ∫ λ_f λ_g dV / V
-    A = 2 * Q                                      # ∂N_p/∂λ_e = Σ_f A[p,e,f] λ_f
-    T = np.einsum("pef,qhg,fg->pqeh", A, A, L2)    # ∫ c_pe c_qh dV / V
-    I4 = np.zeros((4, 4, 4, 4))                    # ∫ λ_a λ_b λ_c λ_d dV / V
-    for idx in np.ndindex(4, 4, 4, 4):
-        cnt = np.bincount(idx, minlength=4)
-        I4[idx] = 6.0 * np.prod([factorial(c) for c in cnt]) / factorial(7)
-    Mref = np.einsum("pab,qcd,abcd->pq", Q, Q, I4)
-    return T, Mref
-
-
-_T10, _M10 = _tet10_tables()
-
-# 6-point Dunavant rule on triangles (degree 4), barycentric (l1, l2), weights sum to 1
-_TRI_QP = np.array([[0.445948490915965, 0.445948490915965], [0.108103018168070, 0.445948490915965],
-                    [0.445948490915965, 0.108103018168070], [0.091576213509771, 0.091576213509771],
-                    [0.816847572980459, 0.091576213509771], [0.091576213509771, 0.816847572980459]])
-_TRI_W = np.array([0.223381589678011] * 3 + [0.109951743655322] * 3)
-
-
-def _tri6_shape(l1, l2):
-    """TRI6 shape functions (gmsh order: corners 0, 1, 2, mid-edges 01, 12, 20)."""
-    l0 = 1.0 - l1 - l2
-    return np.array([l0 * (2 * l0 - 1), l1 * (2 * l1 - 1), l2 * (2 * l2 - 1),
-                     4 * l0 * l1, 4 * l1 * l2, 4 * l2 * l0])
-
-
-def assemble_p2(nodes, tets):
-    """Stiffness ∫∇N·∇N, mass ∫N N (sparse, straight P2 tetrahedra) and the volume."""
-    X = nodes[tets[:, :4]]                                     # (n_e, 4, 3)
-    J = np.transpose(X[:, 1:] - X[:, :1], (0, 2, 1))           # columns X_i − X_0
-    det = np.linalg.det(J)
-    Ji = np.linalg.inv(J)                                      # rows: ∇λ_1..3
-    g = np.concatenate([-Ji.sum(axis=1, keepdims=True), Ji], axis=1)   # (n_e, 4, 3)
-    G = np.einsum("nai,nbi->nab", g, g)
-    V = np.abs(det) / 6.0
-    Ke = V[:, None, None] * np.einsum("pqeh,neh->npq", _T10, G)
-    Me = V[:, None, None] * _M10[None]
-    rows = np.repeat(tets, 10, axis=1).ravel()
-    cols = np.tile(tets, (1, 10)).ravel()
-    n = len(nodes)
-    K = sp.csc_matrix((Ke.ravel(), (rows, cols)), shape=(n, n))
-    M = sp.csc_matrix((Me.ravel(), (rows, cols)), shape=(n, n))
-    return K, M, float(V.sum())
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -255,11 +187,8 @@ class DriverModes:
     def from_eigen_h5(cls, path, orders, f_max=None):
         """
         Modes of the azimuthal orders `orders` from an eigen result file: format 2 (lp.Modes,
-        read with lp.load) or format 1 (former EigenStudy.save, read with the former reader).
+        or format 1, read with lp.load).
         """
-        import h5py
-        with h5py.File(path, "r") as f:
-            fmt2 = str(f.attrs.get("loudpy_format", "1.0")).startswith("2")
         m_, fam, fr, ze, Us = [], [], [], [], []
 
         def add(m, freq, zeta, U):
@@ -274,23 +203,14 @@ class DriverModes:
             for f_ in (("c", "s") if m > 0 else ("c",)):
                 m_.append(m), fam.append(f_), fr.append(freq), ze.append(zeta), Us.append(v)
 
-        if fmt2:
-            from loudpy.results import load
-            res = load(path)
-            for m in orders:
-                b = res.order(m).blocks[0]
-                for k in range(len(b)):
-                    add(m, float(b.values[k]), float(b.extra["zeta"][k]), b.fields["u"][k])
-                mesh = b.mesh_of("u")
-                xy, tris, tags = np.asarray(mesh.coords), mesh.triangles(), np.asarray(mesh.node_tags)
-        else:
-            from loudpy.Files_Loader import EigenReader
-            with EigenReader(str(path)) as r:
-                for m in orders:
-                    snaps, mesh, _ = r.load_fourier(m)
-                    for s in snaps:
-                        add(m, s.freq, s.zeta, s.fields["u_meca"])
-                    xy, tris, tags = np.asarray(mesh.coords), np.asarray(mesh.tris)[:, :3], np.asarray(mesh.tags)
+        from loudpy.results import load
+        res = load(path)
+        for m in orders:
+            b = res.order(m).blocks[0]
+            for k in range(len(b)):
+                add(m, float(b.values[k]), float(b.extra["zeta"][k]), b.fields["u"][k])
+            mesh = b.mesh_of("u")
+            xy, tris, tags = np.asarray(mesh.coords), mesh.triangles(), np.asarray(mesh.node_tags)
         out = cls(xy, tris, m_, fam, fr, ze, np.array(Us))
         out.node_tags = tags                    # node tag of each row of xy (for boundaries of the file)
         return out
@@ -322,7 +242,7 @@ class DriverModes:
 class MultiDriver:
     """
     Several axisymmetric drivers placed in one 3D model, each with its modes (DriverModes) and
-    its frame (DriverFrame, or a 2D center for an axis along global z). Their modal coordinates
+    its frame (Frame, or a 2D center for an axis along global z). Their modal coordinates
     are stacked, driver 0 first: m, family, freq, zeta, len() describe the whole set, like
     DriverModes, so DriverCavityCoupling, ExteriorFE and the solvers take it in place of one
     driver. Identical drivers can share one DriverModes object (pass it once).
@@ -460,31 +380,11 @@ def solve_forced(freqs, F, w_s, zeta, S, R, kappa2, rho=RHO_AIR, c=C_AIR, eta_ai
         P[i] = -rho * w ** 2 * D.reshape((-1,) + (1,) * len(rhs)) * (S.T @ q[i])
     return q, P
 
-def surface_quadrature(nodes, tri):
-    """
-    Quadrature on a TRI6 surface (straight faces, 6 points per face): points xq (n_q, 3),
-    weights wq (n_q,), the surface nodes and the sparse interpolation W (n_q × n_surface_nodes).
-    ∫_S N_i f dS = (Wᵀ (wq f))_i.
-    """
-    Xc = nodes[tri[:, :3]]
-    area = 0.5 * np.linalg.norm(np.cross(Xc[:, 1] - Xc[:, 0], Xc[:, 2] - Xc[:, 0]), axis=1)
-    Nq = np.array([_tri6_shape(l1, l2) for l1, l2 in _TRI_QP])                        # (6q, 6n)
-    L = np.column_stack([1 - _TRI_QP.sum(1), _TRI_QP])                                # (6q, 3)
-    xq = np.einsum("qa,fad->fqd", L, Xc).reshape(-1, 3)
-    wq = (area[:, None] * _TRI_W[None]).ravel()
-    surf_nodes, loc = np.unique(tri, return_inverse=True)
-    loc = loc.reshape(tri.shape)
-    W = sp.csr_matrix((np.tile(Nq, (len(tri), 1)).ravel(),
-                       (np.repeat(np.arange(len(xq)), 6), np.tile(loc, (1, 6)).reshape(-1))),
-                      shape=(len(xq), len(surf_nodes)))
-    return xq, wq, surf_nodes, W
-
-
 def surface_coupling(nodes, tri, drv, edges, edge_n, center, map_tol=5e-4):
     """
     Bc[i, k] = ∫_S N_i (φ_k·n) dS on a TRI6 wet surface of a 3D air mesh (n out of the
     structure). Each quadrature point is mapped to (r, θ, z) in the driver frame (`center`: a
-    DriverFrame, or a 2D center for an axis along global z); φ_k·n is interpolated on the
+    Frame, or a 2D center for an axis along global z); φ_k·n is interpolated on the
     nearest wet edge of the meridian mesh (points farther than map_tol from it are rigid).
     Returns (surface nodes, Bc, wet area).
     """
@@ -572,7 +472,7 @@ class DriverCavityCoupling:
                  center=(0.0, 0.0), rho=RHO_AIR, c=None, eta_air=0.0, map_tol=5e-4,
                  static_correction=True, pistons=(), patch=None):
         """
-        driver, profile, center: one DriverModes, its wet profile and its center or DriverFrame;
+        driver, profile, center: one DriverModes, its wet profile and its center or Frame;
             or a MultiDriver (frames inside, center ignored) and a list with one wet profile per
             driver.
         patch: wet patch name(s) in the cavity. Default: the whole wet surface for one driver,
@@ -664,64 +564,3 @@ class DriverCavityCoupling:
             k = s.imag / (2 * np.pi) <= f_max
             s, X = s[k], X[:, k]
         return s, X[:ns], X[ns:]
-
-
-# ════════════════════════════════════════════════════════════════════════════
-#  3D views (pyvista)
-# ════════════════════════════════════════════════════════════════════════════
-def driver_surface(drv: DriverModes, q, center=(0.0, 0.0, 0.0), theta=(0.0, 2 * np.pi),
-                   n_theta=73, deformation=0.10, phase=None, u_max=None):
-    """
-    Deformed driver (boundary of the meridian mesh revolved over `theta`, placed at `center`:
-    a translation (x0, y0[, z0]), or a DriverFrame for any orientation; θ is measured from its
-    x_l axis) for the modal amplitudes q (complex, all orders summed): real part at `phase`
-    (default: phase of the largest displacement), max |u| = deformation × driver diameter.
-    u_max: displacement [m] mapped to that deformation and to |u| = 1 (default: the max of this
-    surface); pass a common value (and phase) to draw several drivers at one scale and instant.
-    Returns (pv.PolyData with point data "|u|" (normalised) and "|u| [m]", phase).
-    """
-    import pyvista as pv
-    t = drv.tris
-    e = np.sort(np.vstack([t[:, [0, 1]], t[:, [1, 2]], t[:, [2, 0]]]), axis=1)
-    uniq, cnt = np.unique(e, axis=0, return_counts=True)
-    edges = uniq[cnt == 1]
-    nodes = np.unique(edges)
-    loc = np.full(len(drv.xy), -1)
-    loc[nodes] = np.arange(len(nodes))
-    th = np.linspace(theta[0], theta[1], n_theta)
-    ur, ut, uz = drv.displacement(q, nodes, th)
-    if phase is None:
-        amp = np.abs(ur) ** 2 + np.abs(ut) ** 2 + np.abs(uz) ** 2
-        j = np.argmax(amp.ravel())
-        big = max((ur.ravel()[j], ut.ravel()[j], uz.ravel()[j]), key=abs)
-        phase = -np.angle(big)
-    ur, ut, uz = (np.real(x * np.exp(1j * phase)) for x in (ur, ut, uz))
-    mag = np.sqrt(ur ** 2 + ut ** 2 + uz ** 2)
-    ref = max(mag.max() if u_max is None else u_max, 1e-30)
-    sc = deformation * 2 * drv.xy[:, 0].max() / ref
-    r, z = drv.xy[nodes, 0][:, None], drv.xy[nodes, 1][:, None]
-    rr = r + sc * ur
-    pts = np.column_stack([(rr * np.cos(th) - sc * ut * np.sin(th)).ravel(),
-                           (rr * np.sin(th) + sc * ut * np.cos(th)).ravel(),
-                           (z + sc * uz).ravel()])
-    if isinstance(center, DriverFrame):
-        pts = center.to_global(pts)
-    else:
-        pts = pts + np.array([center[0], center[1], center[2] if len(center) > 2 else 0.0])
-    ia, ib = loc[edges[:, 0]], loc[edges[:, 1]]
-    k = np.arange(n_theta - 1)
-    quads = np.stack([np.full((len(edges), n_theta - 1), 4), ia[:, None] * n_theta + k,
-                      ib[:, None] * n_theta + k, ib[:, None] * n_theta + k + 1,
-                      ia[:, None] * n_theta + k + 1], axis=2)
-    surf = pv.PolyData(pts, quads.reshape(-1))
-    surf["|u|"] = (mag / ref).ravel()
-    surf["|u| [m]"] = mag.ravel()
-    return surf, phase
-
-
-def cavity_grid(cav: CavityModes):
-    """Linear-tetrahedron pyvista grid of the cavity (P2 corner nodes), point data "node"."""
-    import pyvista as pv
-    grid = pv.UnstructuredGrid({pv.CellType.TETRA: cav.tets[:, :4]}, cav.nodes)
-    grid["node"] = np.arange(len(cav.nodes))
-    return grid

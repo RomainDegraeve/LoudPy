@@ -15,13 +15,10 @@ from pathlib import Path
 import numpy as np
 
 import loudpy as lp
-from loudpy.SimObjects import (DomainSpecMecaRayleigh, DomainSpecAcou, DomainSpecPML, InterfaceSpecClamped,
-                              InterfaceSpecForced, InterfaceSpecAcouMeca)
-from loudpy.Studies import Problem, EigenStudy, FreqStudy, TimeStudy
 
 SPEAKER_GEO = "LoudPy_exemples/Geometries/Loudspeaker/HPNEW-Sketch.geo"
 PLATE_GEO = "LoudPy_exemples/Geometries/Plate/clamped_plate.geo"
-MATERIALS = "src/loudpy/Materials_Bank/materials.json"
+MATERIALS = "src/loudpy/data/materials.json"
 SPEAKER_PARTS = [("membranne", "Paper"), ("coil", "Copper"), ("surround", "Rubber"),
                  ("spider", "PhenolicCloth"), ("former", "Kapton"), ("glue", "SolidGlue"),
                  ("dustcap", "Polypropylene")]
@@ -29,7 +26,7 @@ PLATE = dict(E=2.1e11, nu=0.3, rho=7850.0, a=0.1, h=0.002)
 
 
 # ════════════════════════════════════════════════════════════════════════════
-#  Models (new API: lp.Model; the studies still take the equivalent Problem)
+#  Models
 # ════════════════════════════════════════════════════════════════════════════
 def plate_model():
     """Clamped steel plate (radius 0.1 m, 2 mm), axisymmetric solid, no damping."""
@@ -59,61 +56,25 @@ def _speaker_tag(size, acoustic, rear):
 
 
 def plate_problem(mesh_dir: Path):
+    """The meshed plate model (its physics parts: model.parts)."""
     model = plate_model()
     model.mesh(mesh_dir / "plate.msh")
-    return model.as_problem()
+    return model
 
 
 def speaker_problem(mesh_dir: Path, size=1e-3, acoustic=False, rear=False):
+    """The meshed speaker model (its physics parts: model.parts)."""
     model = speaker_model(size, acoustic, rear)
     model.mesh(mesh_dir / f"{_speaker_tag(size, acoustic, rear)}.msh")
-    return model.as_problem()
-
-
-# ── former API (kept to check that Model builds the same objects) ──────────────
-def legacy_plate_problem(mesh_dir: Path):
-    """Clamped steel plate (radius 0.1 m, 2 mm), axisymmetric solid, no damping."""
-    p = Problem(geo_path=PLATE_GEO, msh_path=str(mesh_dir / "plate.msh"))
-    p.add_sub_domain(DomainSpecMecaRayleigh("plate", material="Steel", E=PLATE["E"], nu=PLATE["nu"],
-                                            rho=PLATE["rho"], alpha_ray=0.0, beta_ray=0.0,
-                                            size=PLATE["h"]))
-    p.add_interface(InterfaceSpecClamped("interface_constrained"))
-    p.mesh(show_mesh_gui=False, reuse_mesh=True)
-    return p
-
-
-def legacy_speaker_problem(mesh_dir: Path, size=1e-3, acoustic=False, rear=False):
-    """HPNEW loudspeaker through Problem + DomainSpec* (former API)."""
-    tag = _speaker_tag(size, acoustic, rear)
-    p = Problem(geo_path=SPEAKER_GEO, msh_path=str(mesh_dir / f"{tag}.msh"), mat_path=MATERIALS)
-    p.add_sub_domain(*[DomainSpecMecaRayleigh(n, material=m, size=size) for n, m in SPEAKER_PARTS])
-    p.add_interface(InterfaceSpecClamped("interface_constrained"), InterfaceSpecForced("interface_forced"),
-                    InterfaceSpecAcouMeca("interface_acou_meca_front"))
-    if acoustic or rear:
-        p.add_interface(InterfaceSpecAcouMeca("interface_acou_meca_rear"))
-    if acoustic:
-        p.add_sub_domain(DomainSpecAcou("subacou", "Air", size=0.01))
-        pml = DomainSpecPML("PML", "Air")
-        pml.n, pml.alpha, pml.t, pml.size, pml.f_pml = 2, 1.5, 0.1, 0.025, 1000.0
-        p.add_sub_domain(pml)
-    p.mesh(show_mesh_gui=False, reuse_mesh=True)
-    return p
+    return model
 
 
 # ════════════════════════════════════════════════════════════════════════════
 #  Nodal mapping (full DOF vectors → per-node values with coordinates)
 # ════════════════════════════════════════════════════════════════════════════
-def _coords_of(problem, tags):
-    pos = {int(t): i for i, t in enumerate(problem.nodes.node_tags)}
-    xyz = np.asarray(problem.nodes.node_coords)
-    return xyz[[pos[int(t)] for t in tags], :2]
-
-
-def nodal(problem, dof_map, vec):
-    """Full DOF vector(s) (..., n_nodes·dpn) → (coords (n, 2), values (..., n, dpn))."""
-    tags, dpn = dof_map["unique_tags"], int(dof_map["dofs_per_node"])
-    vec = np.asarray(vec)
-    return _coords_of(problem, tags), vec.reshape(vec.shape[:-1] + (len(tags), dpn))
+def _coords_of(model, tags):
+    mesh = model.meshed
+    return mesh.coords[mesh.rows_of(np.asarray(tags))][:, :2]
 
 
 def nearest_row(coords, x):
@@ -193,46 +154,7 @@ def speaker_transient(mesh_dir: Path, n_steps=200, fs=48_000.0, f0=200.0, amplit
 
 
 # ════════════════════════════════════════════════════════════════════════════
-#  Files: save with the study, read back with the public readers
-# ════════════════════════════════════════════════════════════════════════════
-def read_freq_file(path):
-    """[(f, coords, u (nodes, 2))] of a frequency-study file, through the public reader."""
-    from loudpy.Files_Loader import FreqReader, Domain
-    out = []
-    with FreqReader(str(path)) as r:
-        for s in r.snapshots():
-            mesh = r.mesh(s.mesh_id, Domain.MECA)
-            out.append((s.f, mesh.coords[:, :2], s.complex_nodal("u_meca", mesh, dpn=2)))
-    return out
-
-
-def read_eigen_file(path):
-    """{order m: (freqs, coords, shapes (n, nodes, dpn))} of an eigen-study file."""
-    from loudpy.Files_Loader import EigenReader, Domain
-    out = {}
-    with EigenReader(str(path)) as r:
-        for m in r.fourier_orders():
-            snaps, mesh, dpn = r.load(Domain.MECA) if m == 0 else r.load_fourier(m)
-            field = next(iter(snaps[0].fields))
-            shapes = np.array([s.complex_nodal(field, mesh, dpn=dpn) for s in snaps])
-            out[m] = (np.array([s.freq for s in snaps]), mesh.coords[:, :2], shapes)
-    return out
-
-
-def read_time_file(path):
-    """(time, coords, U (n_t, nodes, 2)) of a time-study file."""
-    from loudpy.Files_Loader import TimeReader, Domain
-    with TimeReader(str(path)) as r:
-        kind = r.kinds()[0]
-        run = r.load_run(kind, 0)
-        mesh = r.mesh(run.mesh_id, Domain.MECA)
-        U = np.array([run.snapshot_at(i).complex_nodal("u_meca", mesh, dpn=2).real
-                      for i in range(len(run.time))])
-        return run.time, mesh.coords[:, :2], U
-
-
-# ════════════════════════════════════════════════════════════════════════════
-#  3D coupling (Cavity_coupling, Exterior_dtn)
+#  3D coupling (physics.modal, physics.exterior)
 # ════════════════════════════════════════════════════════════════════════════
 Z_B, Z_F = 0.031, 0.032                                 # rear baffle plane, front face [m]
 REAR_CURVES, REAR_START = [14, 7, 8, 33, 32], (0.05435, Z_B)
@@ -244,7 +166,8 @@ BOX = (0.26, 0.20, 0.15)                                # inner box W × H × D 
 def rect_cavity_modes(mesh_dir: Path, size=(0.30, 0.20, 0.14), h=0.03, f_max=2000.0):
     """Rigid rectangular box: CavityModes frequencies."""
     import gmsh
-    from loudpy.Studies.Cavity_coupling import CavityModes, _gmsh
+    from loudpy.physics.modal import CavityModes
+    from loudpy.geometry.gmsh_session import gmsh_module as _gmsh
     msh = mesh_dir / "rect_box.msh"
     if not msh.exists():
         g = _gmsh()
@@ -269,8 +192,10 @@ def hemisphere_radiation(mesh_dir: Path, freqs, a=0.10, R=0.25, h=0.04):
     Pulsating hemisphere (radius a) on a rigid ground, exterior FE + half-space DtN (radius R):
     FE pressure at 7 points at 1 m and the exact one, per frequency.
     """
-    from loudpy.Studies.Cavity_coupling import _gmsh, surface_quadrature, RHO_AIR, C_AIR
-    from loudpy.Studies.Exterior_dtn import HalfSpaceDtN, ExteriorFE, _h2
+    from loudpy.geometry.gmsh_session import gmsh_module as _gmsh
+    from loudpy.fem.tet10 import surface_quadrature
+    from loudpy.model.materials import RHO_AIR, C_AIR
+    from loudpy.physics.exterior import HalfSpaceDtN, ExteriorFE, _h2
     msh = mesh_dir / "dtn_shell.msh"
     if not msh.exists():
         g = _gmsh()
@@ -315,25 +240,23 @@ def hemisphere_radiation(mesh_dir: Path, freqs, a=0.10, R=0.25, h=0.04):
 
 def driver_modes(mesh_dir: Path, cache_dir: Path, orders=(0, 1, 2), f_max=5000.0):
     """Fourier modes of the coarse loudspeaker, saved and read back as DriverModes."""
-    from loudpy.Studies.Cavity_coupling import DriverModes
+    from loudpy.physics.modal import DriverModes
     h5 = cache_dir / "driver_modes.h5"
-    p = speaker_problem(mesh_dir)
-    study = EigenStudy(p)
-    for m in orders:
-        study.solve_meca_eigen_fourier(m, f_min=20.0, f_max=f_max, n_modes_per_shift=20)
+    study = lp.Modes(speaker_problem(mesh_dir))
+    study.solve(f_max=f_max, f_min=20.0, orders=list(orders), n_per_shift=20)
     study.save(h5)
     return DriverModes.from_eigen_h5(h5, list(orders), f_max=f_max)
 
 
 def driver_profiles():
-    from loudpy.Studies.Cavity_coupling import sample_profile
+    from loudpy.geometry.meshing3d import sample_profile
     rear = sample_profile(SPEAKER_GEO, REAR_CURVES, REAR_START)
     front = sample_profile(SPEAKER_GEO, FRONT_CURVES, FRONT_START)
     return rear, front
 
 
 def coil_nodes(drv):
-    from loudpy.Studies.Cavity_coupling import _gmsh
+    from loudpy.geometry.gmsh_session import gmsh_module as _gmsh
     g = _gmsh()
     g.clear()
     g.open(SPEAKER_GEO)
@@ -350,8 +273,9 @@ def box_cavity(mesh_dir: Path, centers, name, f_max=3000.0, h_near=0.006, h_far=
     Box W × H × D behind the baffle z = Z_B with drivers cut out at `centers` (2D centers or
     DriverFrames); one wet patch per driver when there are several. Returns solved CavityModes.
     """
-    from loudpy.Studies.Cavity_coupling import (_gmsh, add_driver_cutout, carve_drivers, mesh_cavity,
-                                                CavityModes)
+    from loudpy.geometry.gmsh_session import gmsh_module as _gmsh
+    from loudpy.geometry.meshing3d import add_driver_cutout, carve_drivers, mesh_cavity
+    from loudpy.physics.modal import CavityModes
     msh = mesh_dir / f"{name}.msh"
     if not msh.exists():
         rear, _ = driver_profiles()
@@ -374,7 +298,7 @@ def box_cavity(mesh_dir: Path, centers, name, f_max=3000.0, h_near=0.006, h_far=
 
 def coupled_box(cav, drivers_or_drv, center=None, eta_air=0.02):
     """DriverCavityCoupling for one DriverModes (with its center) or a MultiDriver."""
-    from loudpy.Studies.Cavity_coupling import DriverCavityCoupling, MultiDriver
+    from loudpy.physics.modal import DriverCavityCoupling, MultiDriver
     rear, _ = driver_profiles()
     if isinstance(drivers_or_drv, MultiDriver):
         return DriverCavityCoupling(cav, drivers_or_drv, [rear] * drivers_or_drv.n_drivers, eta_air=eta_air)
@@ -409,12 +333,14 @@ def operator_fingerprint(problem, A, row_map, col_map):
 
 def assembled_operators(mesh_dir: Path):
     """All the operators the studies assemble, on the committed meshes, as fingerprints."""
-    from loudpy.assembly import MecaAssembler, AcouAssembler, ForceAssembler, FsiAssembler, MecaAssemblerNL
-    from loudpy.assembly.assemblers.assembly_tri import MecaAssemblerFourier
+    from loudpy.physics.acoustic import AcouAssembler
+    from loudpy.physics.coupling import FsiAssembler
+    from loudpy.physics.forcing import ForceAssembler
+    from loudpy.physics.structural import MecaAssembler, MecaAssemblerFourier, MecaAssemblerNL
     import scipy.sparse as sp
     out = {}
     p = speaker_problem(mesh_dir, acoustic=True)
-    fo = p.fem_objects
+    fo = p.parts
     meca, acou = MecaAssembler(fo), AcouAssembler(fo)
     mm, am = (meca.unique_tags, meca.dofs_per_node), (acou.unique_tags, acou.dofs_per_node)
     K, M, C = meca.assemble()
@@ -464,9 +390,11 @@ def dtn_system(mesh_dir: Path, f_max=3000.0, n_max=8):
               lp.FluidStructure("interface_acou_meca_front"), lp.FluidStructure("interface_acou_meca_rear"),
               lp.Radiation("dtn_boundary"))
     model.mesh(mesh_dir / "speaker_dtn.msh")
-    study = EigenStudy(model.as_problem())
+    from loudpy.physics.systems import assemble, dtn_system
     centers = {"dtn_boundary_front": (0.0, 0.032), "dtn_boundary_rear": (0.0, 0.031)}
-    Ks, Ms, Cs, nm, na = study._assemble_dtn_system(centers, f_max, half=True, n_max=n_max)
+    Ks, Ms, Cs, info = dtn_system(assemble(model.parts, air=True), model.parts, centers, f_max, half=True,
+                                  n_max=n_max)
+    nm, na = info["nm"], info["na"]
 
     def invariants(A):
         A = A.tocsr()

@@ -16,16 +16,21 @@ by two regions; otherwise model.mesh() raises with the list of groups. model.gro
 """
 from __future__ import annotations
 
+import logging
 from pathlib import Path
+
+import numpy as np
 
 from loudpy.geometry import naming
 from loudpy.geometry.gmsh_session import physical_groups
 from loudpy.geometry.mesh import Mesh
-from loudpy.geometry.meshing2d import DEFAULT_MESH_GRADING
-from loudpy.model import _legacy
+from loudpy.geometry.meshing2d import DEFAULT_MESH_GRADING, DomainSizing
 from loudpy.model.boundaries import Boundary
+from loudpy.model.damping import Hysteretic
 from loudpy.model.materials import MaterialLibrary, load_materials
-from loudpy.model.regions import PML, Region
+from loudpy.model.regions import PML, Air, Region, Solid
+
+log = logging.getLogger("loudpy.model")
 
 SUBDOMAINS_KEY = "sub"
 
@@ -59,8 +64,7 @@ class Model:
         self.regions: list[Region] = []
         self.boundaries: list[Boundary] = []
         self.meshed: Mesh | None = None
-        self._fem_objects = None
-        self._nodes = None
+        self.parts: list = []                  # physics parts of the meshed model (loudpy.physics.parts)
         self._mesh_path: Path | None = None
 
     # ── description ────────────────────────────────────────────────────────
@@ -131,51 +135,63 @@ class Model:
         from loudpy.geometry.meshing2d import MeshManager
         self.selection()                                        # checks the names first
         path = Path(path) if path is not None else self.geometry.with_suffix(".msh")
-        specs_dom, specs_if = self._specs()
-        mm = MeshManager(specs_dom, SUBDOMAINS_KEY, mesh_order=self.mesh_order, grading=self.grading,
-                         interfaces=specs_if, match=naming.matches, deterministic=deterministic)
+        mm = MeshManager(self._sizing(), SUBDOMAINS_KEY, mesh_order=self.mesh_order, grading=self.grading,
+                         interfaces=[b.name for b in self.boundaries], match=naming.matches,
+                         deterministic=deterministic)
         ok, why = mm.can_reuse(str(self.geometry), str(path)) if reuse else (False, "")
         if ok:
+            log.info("mesh reused: %s", path)
             domains, boundaries, nodes = mm.load_mesh(str(path))
         else:
+            if reuse:
+                log.info("meshing %s (%s)", path, why)
             domains, boundaries, nodes = mm.generate_mesh(str(self.geometry), str(path), True,
                                                           show_gui=show, extract_mesh_data=True)
-        self._fem_objects = self._physics_objects(domains, boundaries)
-        self._nodes = nodes
+        self.parts = self._parts(domains, boundaries)
         self._mesh_path = path
         self.meshed = Mesh.from_axisymmetric(domains, boundaries, nodes, str(path))
         return self.meshed
 
-    # ── bridge to the current studies (until the studies are rebuilt) ──────
-    def as_problem(self):
-        """A meshed loudpy.Studies.Problem equivalent to this model (EigenStudy, FreqStudy, …)."""
-        from loudpy.Studies import Problem
-        if self.meshed is None:
-            raise RuntimeError("call model.mesh() first")
-        specs_dom, specs_if = self._specs()
-        p = Problem(geo_path=str(self.geometry), msh_path=str(self._mesh_path),
-                    mat_path=str(self.materials.path or ""), subdomains_key=SUBDOMAINS_KEY,
-                    mesh_grading=self.grading)
-        p.add_sub_domain(*specs_dom)
-        p.add_interface(*specs_if)
-        p.fem_objects, p.nodes = self._fem_objects, self._nodes
-        return p
+    def _sizing(self) -> list[DomainSizing]:
+        out = []
+        for r in self.regions:
+            if isinstance(r, Solid):
+                out.append(DomainSizing(r.name, "solid_hysteretic" if isinstance(r.damping, Hysteretic) else "solid",
+                                        r.mesh_size))
+            elif isinstance(r, PML):
+                out.append(DomainSizing(r.name, "pml", r.mesh_size, r.thickness))
+            elif isinstance(r, Air):
+                out.append(DomainSizing(r.name, "air", r.mesh_size))
+            else:
+                raise TypeError(f"cannot mesh {r!r}")
+        return out
 
-    def _specs(self):
-        return ([_legacy.region_spec(r, self.materials) for r in self.regions],
-                [_legacy.boundary_spec(b) for b in self.boundaries])
-
-    def _physics_objects(self, domains, boundaries):
-        """Same objects and order as PhysicalEntitiesManager, with exact group selection."""
+    def _parts(self, domains, boundaries):
+        """The physics parts: one per (item, selected mesh group), regions first."""
+        from loudpy.physics.parts import boundary_part, region_part
         out = []
         for g in domains:
             for r in self.regions:
                 if naming.matches(r.name, g.name):
-                    out.append(_legacy.region_object(r, g, self.materials))
+                    out.append(region_part(r, g, self.materials))
         for g in boundaries:
             for b in self.boundaries:
                 if naming.matches(b.name, g.name):
-                    out.append(_legacy.boundary_object(b, g))
+                    out.append(boundary_part(b, g))
+        return out
+
+    def boundary_nodes(self) -> dict:
+        """{boundary name: {"node_tags", "edges"}} of the meshed boundaries (stored with the results)."""
+        if self.meshed is None:
+            raise RuntimeError("call model.mesh() first")
+        out = {}
+        for b in self.boundaries:
+            groups = [p.group for p in self.parts if hasattr(p, "edges") and naming.matches(b.name, p.name)]
+            tags = np.unique(np.concatenate([np.asarray(g.node_tags) for g in groups])) if groups \
+                else np.zeros(0, np.int64)
+            edges = np.vstack([np.asarray(g.edges) for g in groups]).astype(np.int64) if groups \
+                else np.zeros((0, 3), np.int64)
+            out[b.name] = {"node_tags": tags.astype(np.int64), "edges": edges}
         return out
 
     def __repr__(self):

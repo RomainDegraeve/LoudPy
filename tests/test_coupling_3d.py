@@ -65,7 +65,7 @@ def test_driver_in_box(mesh_dir, drv, coil, reference):
 
 @pytest.fixture(scope="module")
 def two_drivers(mesh_dir, drv):
-    from loudpy.Studies.Cavity_coupling import MultiDriver
+    from loudpy.physics.modal import MultiDriver
     W, H, _ = api.BOX
     centers = [(0.07, H / 2), (W - 0.07, H / 2)]                        # mirror pair about x = W/2
     cav = api.box_cavity(mesh_dir, centers, "box_two_drivers")
@@ -87,7 +87,8 @@ def test_two_drivers_transfer(two_drivers, coil, reference):
 def test_frame_rotation_invariance(two_drivers, coil):
     """Rotating + translating the whole model (and the frames) leaves the coupling unchanged."""
     from scipy.spatial.transform import Rotation
-    from loudpy.Studies.Cavity_coupling import DriverFrame, MultiDriver, CavityModes
+    from loudpy.geometry.frame import Frame as DriverFrame
+    from loudpy.physics.modal import MultiDriver, CavityModes
     cav, drivers, cpl = two_drivers
     Rg = Rotation.from_euler("zyx", [37, -61, 23], degrees=True).as_matrix()
     t = np.array([0.3, -1.2, 0.7])

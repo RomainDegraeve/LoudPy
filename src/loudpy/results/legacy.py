@@ -36,17 +36,38 @@ def _attr(v):
     return v
 
 
+def _merged_mesh(g, prefix):
+    """(unique tags, coords, triangles as rows) of the subgroups of a format-1 mesh whose name
+    starts with `prefix` (the merge of the former MeshLoader: same node order)."""
+    subgroups = [g[k] for k in g.keys() if isinstance(g[k], h5py.Group) and k.startswith(prefix)]
+    if not subgroups and {"tags", "tris"} <= set(g.keys()):
+        subgroups = [g]
+    all_tags, all_coords, all_tris = [], [], []
+    for sg in subgroups:
+        tags = sg["tags"][:]
+        coords = sg["coords" if "coords" in sg else "nodes"][:, :2]
+        tris = sg["tris"][:, :3].astype(np.int64)
+        all_tags.append(tags)
+        all_coords.append(coords)
+        all_tris.append(tris if tris.max() >= len(tags) else tags[tris])
+    all_tags, all_coords, all_tris = map(np.concatenate, (all_tags, all_coords, all_tris))
+    tags, first = np.unique(all_tags, return_index=True)
+    row = {int(t): i for i, t in enumerate(tags)}
+    idx = np.vectorize(row.get)(all_tris)
+    ok = (idx[:, 0] != idx[:, 1]) & (idx[:, 1] != idx[:, 2]) & (idx[:, 0] != idx[:, 2])
+    return tags, all_coords[first], idx[ok]
+
+
 def _meshes(f, mesh_id) -> dict[str, Mesh]:
     """Per-physics meshes of a format-1 mesh group (same node order as the former MeshLoader)."""
-    from loudpy.Files_Loader.Mesh_Loader import MeshLoader
     g = f[f"meshes/{mesh_id}"]
     sub = g.get("subdomains", {})
     out = {}
     for phys, prefix in PHYSICS_PREFIX.items():
         if not any(k.startswith(prefix) for k in g.keys()):
             continue
-        m = MeshLoader.load(f, mesh_id, "meca" if phys == "solid" else "acou")
-        tags = np.asarray(m.tags)
+        m_tags, m_coords, m_tris = _merged_mesh(g, prefix)
+        tags = m_tags
         groups = {}
         for name, sg in sub.items():
             if not str(sg.attrs.get("physics", "")).startswith(prefix):
@@ -54,8 +75,8 @@ def _meshes(f, mesh_id) -> dict[str, Mesh]:
             stags = sg["tags"][()]
             groups[name] = MeshGroup(name, 2, "tri3", stags[sg["tris"][()]])
         if not groups:
-            groups["all"] = MeshGroup("all", 2, "tri3", tags[np.asarray(m.tris)])
-        out[phys] = Mesh(tags, np.asarray(m.coords)[:, :2], groups, str(f.filename))
+            groups["all"] = MeshGroup("all", 2, "tri3", tags[m_tris])
+        out[phys] = Mesh(tags, m_coords[:, :2], groups, str(f.filename))
     return out
 
 

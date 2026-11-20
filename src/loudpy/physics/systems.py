@@ -1,0 +1,206 @@
+"""
+Assembled systems of an axisymmetric model, blocked DOFs eliminated: what the studies solve.
+
+    s = assemble(model.parts)               structure: K, M, C, F (coil force) on the free DOFs
+    s = assemble(model.parts, air=True)     + air: H, Q, ρ and the coupling Cam
+    s = assemble_fourier(model.parts, m)    structure, azimuthal order m (3 DOF per node)
+    dtn = dtn_system(s, parts, ...)         structure + air + exact DtN radiation, symmetric u–ψ–φ form
+
+`s.meca` / `s.acou` are the assemblers: node numbering (unique_tags), expand() from the free DOFs.
+No study logic and no files here.
+"""
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass, field
+
+import numpy as np
+import scipy.sparse as sp
+
+from loudpy.physics.registry import select
+
+log = logging.getLogger("loudpy.physics")
+
+
+@dataclass
+class System:
+    """Operators on the free structural DOFs (and the air DOFs when assembled with air)."""
+    meca: object
+    K: sp.spmatrix
+    M: sp.spmatrix
+    C: sp.spmatrix | None
+    F: np.ndarray | None = None
+    acou: object | None = None
+    H: sp.spmatrix | None = None
+    Q: sp.spmatrix | None = None
+    rho: float | None = None
+    Cam: sp.spmatrix | None = None
+    info: dict = field(default_factory=dict)
+
+    @property
+    def n_meca(self) -> int:
+        return self.K.shape[0]
+
+    @property
+    def n_acou(self) -> int:
+        return 0 if self.H is None else self.H.shape[0]
+
+    def speed_of_sound(self) -> float:
+        """The speed of sound of the air regions (one value required)."""
+        cs = {float(sd.c) for sd in self.acou.subdomains if getattr(sd, "c", None) is not None}
+        if len(cs) != 1:
+            raise ValueError(f"one speed of sound is needed in the air, found {cs}")
+        return cs.pop()
+
+
+def assemble(parts, air: bool = False) -> System:
+    """Structural operators (+ air and coupling with air=True), blocked DOFs eliminated."""
+    from loudpy.physics.acoustic import AcouAssembler
+    from loudpy.physics.coupling import FsiAssembler
+    from loudpy.physics.forcing import ForceAssembler
+    from loudpy.physics.structural import MecaAssembler
+    meca = MecaAssembler(parts)
+    K, M, C = meca.assemble()
+    F = ForceAssembler(parts, meca).assemble() if select(parts, "coil") else None
+    acou = H = Q = rho = Cam = None
+    if air:
+        acou = AcouAssembler(parts)
+        H, Q, rho = acou.assemble()
+        Cam = FsiAssembler(parts, meca, acou).assemble()            # (n_acou, n_meca)
+    K, M, C, F, Cam = meca.apply_blocked_boundaries(parts, K, M, C, F, Cam)
+    return System(meca, K, M, C, F, acou, H, Q, rho, Cam)
+
+
+def assemble_fourier(parts, m: int) -> System:
+    """Structural operators of azimuthal order m ≥ 1 (3 DOF per node), constraints applied."""
+    from loudpy.physics.structural import MecaAssemblerFourier
+    asm = MecaAssemblerFourier(parts, m)
+    K, M, C = asm.apply_blocked_boundaries(parts, *asm.assemble())
+    return System(asm, K, M, C)
+
+
+def assemble_acoustic(parts) -> System:
+    """Air operators only (rigid structure): H, Q, ρ."""
+    from loudpy.physics.acoustic import AcouAssembler
+    acou = AcouAssembler(parts)
+    H, Q, rho = acou.assemble()
+    return System(None, None, None, None, acou=acou, H=H, Q=Q, rho=rho)
+
+
+def dtn_system(s: System, parts, center, f_max: float, half: bool = True, n_max: int | None = None):
+    """
+    Structure + air + exact DtN radiation in the symmetric u–ψ–φ form (p = −sψ, φ = auxiliary
+    DtN unknowns):  (s² Ms + s Cs + Ks) [u; ψ; φ] = [F; 0; 0]
+
+      Ms = diag(M, −Q/ρ, 0)
+      Cs = [[C, Camᵀ, 0], [Cam, −Σ σβ_n b_n b_nᵀ/(ρc), 0], [0, 0, −σβ/(ρc) I]]
+      Ks = [[K, 0, 0], [0, −H/ρ − Σ σβ_n b_n b_nᵀ/(ρR), G], [0, Gᵀ, diag(σβ z_i/(ρR))]]
+      G[:, i] = σ β_n √z_i b_n/(ρR)  for the i-th root z_i of order n
+
+    One DtN operator per radiation arc (e.g. front and rear hemispheres), each with its own
+    centre, radius, orders and auxiliary unknowns; σ = ±1 is the orientation of the arc (the sign
+    of the air region it closes). center: (0, z0) for every arc, {arc name: (0, z0)}, or None
+    (each arc: centre on the axis at the height of its node farthest from the axis).
+    Returns (Ks, Ms, Cs, info) with info: nm, na, n_aux, arcs, c.
+    """
+    from loudpy.physics.radiation import dtn_boundary_vectors, dtn_orders, reverse_bessel_roots
+    from loudpy.solvers.eigen import to_csc_complex
+    K, M, R, Cam, H, Q, rho = s.K, s.M, s.C, s.Cam, s.H, s.Q, s.rho
+    if np.abs(R).sum() < 1e-30:
+        R = None
+    nm, na = K.shape[0], H.shape[0]
+    c = s.speed_of_sound()
+    arcs = select(parts, "radiation")
+    if not arcs:
+        raise ValueError("the model has no radiation boundary (lp.Radiation)")
+
+    Dk = sp.csr_matrix((na, na))
+    Dc = sp.csr_matrix((na, na))
+    G_rows, G_cols, G_vals = [], [], []
+    z_aux, beta_aux, sign_aux, R_aux = [], [], [], []
+    info = []
+    for bd in arcs:
+        xy = np.asarray(bd.node_coords).reshape(len(bd.node_tags), -1)[:, :2]
+        if isinstance(center, dict) and bd.name in center:
+            ctr = tuple(center[bd.name])
+        elif center is not None and not isinstance(center, dict):
+            ctr = tuple(center)
+        else:
+            ctr = (0.0, float(xy[np.argmax(xy[:, 0]), 1]))
+        sign = float(getattr(bd, "orientation", 1.0))
+        _, R_b = dtn_boundary_vectors(bd.edges, bd.node_tags, bd.node_coords, s.acou.tag_to_local, na, ctr, [0])
+        orders, _ = dtn_orders(R_b, f_max, c, half, n_max)
+        Bvec, R_b = dtn_boundary_vectors(bd.edges, bd.node_tags, bd.node_coords, s.acou.tag_to_local, na, ctr,
+                                         orders)
+        bnd = np.flatnonzero(np.any(Bvec != 0, axis=0))
+        dk = np.zeros((bnd.size, bnd.size))
+        dc = np.zeros_like(dk)
+        n_aux0 = len(z_aux)
+        for j, n in enumerate(orders):
+            beta = (2 * n + 1) / ((2.0 if half else 4.0) * np.pi * R_b ** 2)
+            b = Bvec[j, bnd]
+            dk -= sign * beta / (rho * R_b) * np.outer(b, b)
+            dc -= sign * beta / (rho * c) * np.outer(b, b)
+            for zi in reverse_bessel_roots(n):
+                G_rows.append(bnd)
+                G_cols.append(np.full(bnd.size, len(z_aux)))
+                G_vals.append(sign * beta * np.sqrt(zi) / (rho * R_b) * b)
+                z_aux.append(zi)
+                beta_aux.append(beta)
+                sign_aux.append(sign)
+                R_aux.append(R_b)
+        ii, jj = np.meshgrid(bnd, bnd, indexing="ij")
+        Dk = Dk + sp.csr_matrix((dk.ravel(), (ii.ravel(), jj.ravel())), shape=(na, na))
+        Dc = Dc + sp.csr_matrix((dc.ravel(), (ii.ravel(), jj.ravel())), shape=(na, na))
+        info.append(dict(name=bd.name, R=R_b, center=ctr, orders=orders, sign=sign,
+                         n_aux=len(z_aux) - n_aux0, n_bnd=bnd.size))
+        log.info("DtN arc %s: R = %.4f m, centre %s, orientation %+.0f, orders %d..%d (%s), "
+                 "%d auxiliary unknowns, %d boundary nodes", bd.name, R_b, ctr, sign, orders[0], orders[-1],
+                 "even, baffled hemisphere" if half else "all, sphere", len(z_aux) - n_aux0, bnd.size)
+
+    n_aux = len(z_aux)
+    z_aux, beta_aux = np.array(z_aux), np.array(beta_aux)
+    sign_aux, R_aux = np.array(sign_aux), np.array(R_aux)
+    G = (sp.csr_matrix((np.concatenate(G_vals), (np.concatenate(G_rows), np.concatenate(G_cols))),
+                       shape=(na, n_aux)) if n_aux else sp.csr_matrix((na, 0)))
+    Raux = sp.csr_matrix((nm, nm)) if R is None else R
+    Zaa = sp.diags(sign_aux * beta_aux * z_aux / (rho * R_aux)) if n_aux else None
+    Caa = sp.diags(-sign_aux * beta_aux / (rho * c)) if n_aux else None
+    Ms = sp.bmat([[M, None, None], [None, -Q / rho, None], [None, None, sp.csr_matrix((n_aux, n_aux))]])
+    Cs = sp.bmat([[Raux, Cam.T, None], [Cam, Dc, None], [None, None, Caa]])
+    Ks = sp.bmat([[K, None, None], [None, -H / rho + Dk, G], [None, G.T, Zaa]])
+    Ks, Ms, Cs = to_csc_complex(Ks, Ms, Cs)
+    log.info("structure + air + DtN: %d structural, %d air DOFs, %d arc(s), %d auxiliary unknowns",
+             nm, na, len(arcs), n_aux)
+    return Ks, Ms, Cs, dict(nm=nm, na=na, n_aux=n_aux, arcs=info, c=c)
+
+
+def nodal(raw, n_nodes: int, dpn: int) -> np.ndarray:
+    """Full DOF vectors (..., n_nodes·dpn) → node-indexed (..., n_nodes[, dpn]) (assembler node order)."""
+    raw = np.asarray(raw)
+    if dpn == 1:
+        return raw[..., :n_nodes]
+    return raw[..., :dpn * n_nodes].reshape(raw.shape[:-1] + (n_nodes, dpn))
+
+
+def physics_mesh(parts, roles, node_tags):
+    """Mesh of the regions with `roles`, nodes in the order `node_tags`, one group per region."""
+    from loudpy.geometry.mesh import Mesh, MeshGroup
+    regions = select(parts, *roles)
+    coords = {}
+    for p in regions:
+        for t, c in zip(np.asarray(p.node_tags), np.asarray(p.node_coords)):
+            coords[int(t)] = c[:2]
+    tags = np.asarray(node_tags)
+    groups = {p.name: MeshGroup(p.name, 2, "tri6", np.asarray(p.tri)) for p in regions}
+    return Mesh(tags, np.array([coords[int(t)] for t in tags]), groups)
+
+
+def meshes(s: System, parts) -> dict:
+    """{"solid": mesh of the structural DOFs, "air": mesh of the air DOFs} of an assembled system."""
+    out = {}
+    if s.meca is not None:
+        out["solid"] = physics_mesh(parts, ("solid",), s.meca.unique_tags)
+    if s.acou is not None:
+        out["air"] = physics_mesh(parts, ("air", "pml"), s.acou.unique_tags)
+    return out

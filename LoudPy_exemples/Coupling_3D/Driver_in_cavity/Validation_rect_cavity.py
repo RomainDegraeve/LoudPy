@@ -6,7 +6,8 @@ import itertools
 import numpy as np
 import gmsh
 
-from loudpy.Studies.Cavity_coupling import CavityModes, C_AIR
+from loudpy.physics.modal import CavityModes
+from loudpy.model.materials import C_AIR
 
 LX, LY, LZ, H, F_MAX = 0.30, 0.20, 0.14, 0.012, 3000.0
 msh = "LoudPy_exemples/Coupling_3D/Driver_in_cavity/Results/Files/rect_box.msh"

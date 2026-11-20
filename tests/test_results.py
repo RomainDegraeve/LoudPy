@@ -1,6 +1,5 @@
 """
-Results layer (phase 4): lp.load reads the former files to the same numbers as the former readers,
-format 2 round trip, multi-file sweeps, the Results interface and the plots.
+Results layer: format 2 round trip, multi-file sweeps, the Results interface and the plots.
 """
 import h5py
 import numpy as np
@@ -16,29 +15,6 @@ def _legacy(name):
     if not p.exists():
         pytest.skip("legacy files are written by pytest --update-reference")
     return p
-
-
-# ── former files: lp.load == former readers ──────────────────────────────────
-def test_load_former_frequency_file():
-    old, new = api.read_freq_file(_legacy("freq_meca.h5")), api.load_freq_file(_legacy("freq_meca.h5"))
-    assert [f for f, _, _ in old] == [f for f, _, _ in new]
-    for (_, co, uo), (_, cn, un) in zip(old, new):
-        _same_by_coords(cn, un, co, uo, rtol=0)
-
-
-def test_load_former_eigen_file():
-    old, new = api.read_eigen_file(_legacy("eigen_fourier.h5")), api.load_eigen_file(_legacy("eigen_fourier.h5"))
-    assert sorted(old) == sorted(new)
-    for m in old:
-        np.testing.assert_array_equal(old[m][0], new[m][0])
-        _same_by_coords(new[m][1], new[m][2], old[m][1], old[m][2], rtol=0)
-
-
-def test_load_former_time_file():
-    to, co, Uo = api.read_time_file(_legacy("time.h5"))
-    tn, cn, Un = api.load_time_file(_legacy("time.h5"))
-    np.testing.assert_array_equal(to, tn)
-    _same_by_coords(cn, Un, co, Uo, rtol=0)
 
 
 # ── format 2 ─────────────────────────────────────────────────────────────────

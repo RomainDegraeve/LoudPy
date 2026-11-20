@@ -19,7 +19,7 @@ from loudpy.model.drives import Force
 
 
 def multidriver(scene):
-    from loudpy.Studies.Cavity_coupling import MultiDriver
+    from loudpy.physics.modal import MultiDriver
     return MultiDriver([d.driver.modes for d in scene.drivers], [d.frame for d in scene.drivers],
                        names=[d.name for d in scene.drivers])
 
@@ -39,7 +39,7 @@ def coil_force(scene, drivers, drive):
 
 def cavity_modes(scene):
     """Cavity modes of the scene's cavity mesh (cached next to it, rebuilt when the mesh is newer)."""
-    from loudpy.Studies.Cavity_coupling import CavityModes
+    from loudpy.physics.modal import CavityModes
     msh = Path(scene.cavity_mesh)
     h5 = msh.with_name(msh.stem + "_modes.h5")
     if not scene._cavity.cache_modes:
@@ -60,7 +60,7 @@ def cavity_modes(scene):
 
 
 def cavity_coupling(scene, drivers, cav):
-    from loudpy.Studies.Cavity_coupling import DriverCavityCoupling
+    from loudpy.physics.modal import DriverCavityCoupling
     patch = ["interface_driver"] if len(scene.drivers) == 1 else None
     return DriverCavityCoupling(cav, drivers, [d.driver.rear for d in scene.drivers], rho=scene.rho, c=scene.c,
                                 eta_air=scene._cavity.eta, patch=patch)
@@ -97,7 +97,7 @@ def solve(study, freqs, store=None, chunk_hz=50.0, rtol=1e-7, log=print):
     from loudpy.results.results import Block
     from loudpy.results.scene import SceneResults
     from loudpy.results.schema import StreamWriter
-    from loudpy.Studies.Exterior_dtn import ExteriorFE, coupled_sweep
+    from loudpy.physics.exterior import ExteriorFE, coupled_sweep
     scene = study.model
     if scene.folder is None:
         raise RuntimeError("mesh the scene first: scene.mesh(folder)")

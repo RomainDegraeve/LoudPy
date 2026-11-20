@@ -15,10 +15,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
+import scipy.sparse as sp
 
 from loudpy.model.drives import Force, Voltage
 from loudpy.model.regions import PML, Air
-from loudpy.results.results import FrequencyResults
+from loudpy.results.results import Block, FrequencyResults
 from loudpy.study import records
 from loudpy.study.base import Study
 
@@ -91,24 +92,59 @@ class FrequencyResponse(Study):
 
     # ── one mesh ───────────────────────────────────────────────────────────
     def _solve_block(self, freqs, label=""):
-        from loudpy.Studies import FreqStudy
-        engine = FreqStudy(self._problem())
-        engine.reuse_factorization = self.reuse_factorization
-        if self.coupled:
-            engine.assemble_domains()
-        else:
-            engine.assemble_meca()
+        """Responses at `freqs` on the current mesh → one Block."""
+        from loudpy.physics.systems import assemble, meshes, nodal
+        from loudpy.solvers.linear import SweepSolver
+        parts = self._parts()
+        s = assemble(parts, air=self.coupled)
+        if s.F is None:
+            raise ValueError("the model has no coil boundary (lp.Coil): nothing drives it")
+        solver = SweepSolver()
+        solver.reuse = self.reuse_factorization and solver.reuse
         d = self.drive
-        for f in freqs:
+        nm, na = s.n_meca, s.n_acou
+        U, P, attrs = [], [], []
+        for f in np.asarray(freqs, float):
+            w = 2 * np.pi * f
+            A_meca = s.K + 1j * w * s.C - w ** 2 * s.M
+            a = {"omega": float(w)}
             if not self.coupled:
-                engine.solve_meca(freq=float(f), force=d.amplitude)
-            elif isinstance(d, Voltage):
-                engine.solve_fsi(freq=float(f), Re=d.Re, Le=d.Le, n=d.n, Bl=d.Bl, u=d.amplitude)
+                rhs = np.zeros(nm, dtype=complex)
+                rhs[:nm] = s.F * d.amplitude
+                U.append(s.meca.expand(solver.solve(A_meca, rhs)))
             else:
-                engine.solve_fsi(freq=float(f), force=d.amplitude)
+                A_acou = s.H - w ** 2 * s.Q
+                fsi = s.rho * w ** 2 * s.Cam
+                if isinstance(d, Voltage):
+                    n = 1 if d.n is None else d.n
+                    Ze = d.Re + (1j * w) ** n * d.Le
+                    b = s.F.reshape(-1, 1)                          # coil force pattern, sums to 1
+                    A = sp.bmat([[A_meca, -s.Cam.T, sp.csr_matrix(-d.Bl * b)],
+                                 [-fsi, A_acou, None],
+                                 [sp.csr_matrix(1j * w * d.Bl * b.T), None, sp.csr_matrix(np.array([[Ze]]))]],
+                                format="csc")
+                    rhs = np.zeros(nm + na + 1, dtype=complex)
+                    rhs[-1] = d.amplitude                           # drive voltage on the electrical DOF
+                else:
+                    A = sp.bmat([[A_meca, -s.Cam.T], [-fsi, A_acou]], format="csc")
+                    rhs = np.zeros(nm + na, dtype=complex)
+                    rhs[:nm] = s.F * d.amplitude
+                x = solver.solve(A, rhs)
+                U.append(s.meca.expand(x[:nm]))
+                P.append(x[nm:nm + na])
+                if isinstance(d, Voltage):
+                    a.update(I_coil=complex(x[-1]), Ze=complex(Ze), Re=float(d.Re), Le=float(d.Le), n=float(n),
+                             Bl=float(d.Bl), U=complex(d.amplitude))
+            attrs.append(a)
+        ms = meshes(s, parts)
+        fields = {"u": nodal(np.array(U), len(s.meca.unique_tags), 2)}
+        if P:
+            fields["p"] = nodal(np.array(P), len(s.acou.unique_tags), 1)
         meta = {"mesh": str(self.model._mesh_path)}
-        block = records.frequency_block(engine._results, engine.dof_maps(), engine.fem_objects, meta, label)
-        return block, records.boundaries_of(engine._interface_meta)
+        self.solver_stats = dict(factorizations=solver.n_factor, gmres_solves=solver.n_gmres,
+                                 gmres_iterations=solver.iters)
+        return Block(ms, np.asarray(freqs, float), fields, records.scalars(attrs), meta, label), \
+            self.model.boundary_nodes()
 
     # ── public ─────────────────────────────────────────────────────────────
     def solve(self, freqs, remesh: PerWavelength | None = None, store=None, **options) -> FrequencyResults:
@@ -129,7 +165,7 @@ class FrequencyResponse(Study):
             blocks = [block]
         else:
             blocks, bounds = self._solve_remeshed(freqs, remesh)
-        self.results = records.frequency_results(blocks, meta, bounds)
+        self.results = FrequencyResults(blocks, meta, bounds)
         return self.results
 
     def _solve_remeshed(self, freqs, rule: PerWavelength):

@@ -1,4 +1,4 @@
-"""Common base of the studies: a meshed Model in, Results out."""
+"""Common base of the studies: a meshed Model (or a Scene) in, Results out."""
 from __future__ import annotations
 
 from loudpy.model.model import Model
@@ -16,10 +16,11 @@ class Study:
         self.model = model
         self.results = None
 
-    def _problem(self):
+    def _parts(self) -> list:
+        """The physics parts of the meshed model."""
         if self.model.meshed is None:
             raise RuntimeError("mesh the model first: model.mesh(path)")
-        return self.model.as_problem()
+        return self.model.parts
 
     def save(self, path, **metadata):
         """Write the last results (loudpy result format 2), with extra metadata (read back in .meta)."""

@@ -1,6 +1,5 @@
 """
-Model layer (phase 1): name selection, validation, materials, equivalence with the former
-Problem, deterministic meshing.
+Model layer: name selection, validation, materials, deterministic meshing.
 """
 import numpy as np
 import pytest
@@ -72,29 +71,6 @@ def test_material_library():
 def test_missing_property_is_explicit():
     with pytest.raises(ValueError, match="has no E"):
         lp.Material("Mystery", rho=1000.0).require("rho", "E")
-
-
-# ── equivalence with the former API ──────────────────────────────────────────
-def _signature(obj):
-    """Class, group name, physical parameters and nodes of a physics object."""
-    keys = ("rho", "E", "nu", "alpha_ray", "beta_ray", "eta", "c", "alpha", "n", "omega_pml",
-            "orientation", "direction")
-    params = tuple((k, np.asarray(getattr(obj, k)).tolist()) for k in keys if hasattr(obj, k))
-    cells = getattr(obj, "tri", getattr(obj, "edges", None))
-    return type(obj).__name__, obj.name, params, np.asarray(cells).tolist()
-
-
-@pytest.mark.parametrize("case", ["plate", "speaker_meca", "speaker_fsi"])
-def test_model_builds_the_same_objects_as_problem(mesh_dir, case):
-    if case == "plate":
-        new, old = api.plate_problem(mesh_dir), api.legacy_plate_problem(mesh_dir)
-    else:
-        acoustic = case == "speaker_fsi"
-        new = api.speaker_problem(mesh_dir, acoustic=acoustic)
-        old = api.legacy_speaker_problem(mesh_dir, acoustic=acoustic)
-    assert [_signature(o) for o in new.fem_objects] == [_signature(o) for o in old.fem_objects]
-    assert np.array_equal(new.nodes.node_tags, old.nodes.node_tags)
-    assert np.array_equal(new.nodes.node_coords, old.nodes.node_coords)
 
 
 def test_mesh_object(mesh_dir):

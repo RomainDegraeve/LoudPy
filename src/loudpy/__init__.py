@@ -6,14 +6,14 @@ loudpy — fluid–structure finite elements for loudspeakers.
     model.add(lp.Solid("membranne", "Paper"), lp.Clamped("interface_constrained"), lp.Coil("interface_forced"))
     model.mesh("mesh.msh")
 
-    res = lp.Modes(model).solve(n=20)
-    lp.plot.mode(res, 0)
+    modes = lp.Modes(model).solve(f_max=5000)
+    lp.plot.mode(modes, 0)
 
-Layers (each importable on its own): loudpy.model, loudpy.geometry, loudpy.fem, loudpy.physics,
-loudpy.solvers, loudpy.study, loudpy.scene, loudpy.results, loudpy.plot. The low-level toolkit of
-the 3D coupling (loudpy.Studies.Cavity_coupling, loudpy.Studies.Exterior_dtn) and the internal
-engines stay importable from their modules; they are not part of the top-level namespace.
-See docs/ (Sphinx) for the user guide and the API reference.
+Layers (each importable on its own, dependencies point down): loudpy.model, loudpy.geometry,
+loudpy.fem, loudpy.physics, loudpy.solvers, loudpy.study, loudpy.scene, loudpy.results, loudpy.plot.
+The 3D coupling toolkit (loudpy.physics.modal, loudpy.physics.exterior) is importable from its
+modules; it is not part of the top-level namespace. See docs/ (Sphinx) for the user guide and the
+API reference.
 """
 
 import os as _os

@@ -52,7 +52,7 @@ class Driver:
     @classmethod
     def from_modes(cls, path, orders, f_max=None, *, geometry, rear: Profile, front: Profile | None = None,
                    coil: str = "interface_forced", name: str | None = None) -> "Driver":
-        from loudpy.Studies.Cavity_coupling import DriverModes
+        from loudpy.physics.modal import DriverModes
         from loudpy.results import load
         modes = DriverModes.from_eigen_h5(path, list(orders), f_max=f_max)
         tags = load(path).boundary(coil)

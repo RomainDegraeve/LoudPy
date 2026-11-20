@@ -13,8 +13,7 @@ import numpy as np
 
 from loudpy.model.drives import Force
 from loudpy.physics.registry import select
-from loudpy.results.results import TimeResults
-from loudpy.study import records
+from loudpy.results.results import Block, TimeResults
 from loudpy.study.base import Study
 
 
@@ -33,7 +32,10 @@ class Transient(Study):
         self.drive, self.rho_inf, self.nr_tol, self.nr_max_iter = drive, rho_inf, nr_tol, nr_max_iter
 
     def solve(self, n_steps: int | None = None, duration: float | None = None) -> TimeResults:
-        from loudpy.Studies import TimeStudy
+        from loudpy.fem.elements.tri6_axi import compute_unit_force_T6
+        from loudpy.physics.structural import MecaAssemblerNL
+        from loudpy.physics.systems import meshes, nodal, System
+        from loudpy.solvers.time import free_dof_reducer, generalized_alpha_newton
         sig = np.asarray(self.drive.amplitude, float)
         dt = 1.0 / float(self.drive.fs)
         if duration is not None:
@@ -41,17 +43,43 @@ class Transient(Study):
         n_steps = len(sig) - 1 if n_steps is None else int(n_steps)
         if n_steps > len(sig) - 1:
             raise ValueError(f"the signal has {len(sig)} samples: at most {len(sig) - 1} steps")
-        problem = self._problem()
-        coil = select(problem.fem_objects, "coil")
-        if not coil:
+        parts = self._parts()
+        coils = select(parts, "coil")
+        if not coils:
             raise ValueError("the model has no coil boundary (lp.Coil)")
-        direction = "_z_" if tuple(coil[0].direction) == (1,) else "_r_"
-        engine = TimeStudy(problem)
-        engine.assemble_init()
-        engine.solve_time_domain_rayleigh_nl(force_amplitude=1.0, force_direction=direction, force_signal=sig,
-                                             dt=dt, n_steps=n_steps, nr_max_iter=self.nr_max_iter,
-                                             nr_tol=self.nr_tol, rho_inf=self.rho_inf)
-        blocks = records.time_blocks(engine._results, engine.dof_maps(), engine.fem_objects)
+        coil = coils[0]
+        comp = 1 if tuple(coil.direction) == (1,) else 0               # axial (z) or radial (r) drive
+
+        nl = MecaAssemblerNL(parts)
+        n_dof = nl.matrix_size
+        free = nl._free_dofs(parts)
+        nl._free = free
+        K_T0, M_full, _, _ = nl.assemble_tangent(np.zeros(n_dof))
+        M_red = M_full[free, :][:, free].tocsc()
+        reduce = free_dof_reducer(K_T0, free)                           # one CSR pattern for every tangent
+
+        # unit coil force pattern on the free DOFs (consistent nodal forces, normalised to a sum of 1)
+        pos = {int(t): i for i, t in enumerate(coil.node_tags)}
+        F = np.zeros(n_dof)
+        for edge in coil.edges:
+            fe = compute_unit_force_T6(np.array([coil.node_coords[pos[int(t)]][:2] for t in edge]))
+            for k, t in enumerate(edge):
+                F[2 * nl.tag_to_local[t] + comp] += fe[k]
+        F_red = F[free] / F[free].sum()
+
+        def tangent(u_full):
+            K_T, _, C, F_int = nl.assemble_tangent(u_full)
+            return K_T, C, F_int
+
+        t, U, V, A, _ = generalized_alpha_newton(
+            tangent, M_red, reduce, free, n_dof, F_red, sig, dt, n_steps, rho_inf=self.rho_inf,
+            nr_max_iter=self.nr_max_iter, nr_tol=self.nr_tol, reuse_tangent=True, reuse_max_iter=3)
+        n = len(nl.unique_tags)
+        fields = {"u": nodal(np.asarray(U), n, 2), "v": nodal(np.asarray(V), n, 2), "a": nodal(np.asarray(A), n, 2)}
+        extra = {"force": np.real(sig)} if len(sig) == len(t) else {}
+        params = dict(dt=dt, n_steps=n_steps, nr_max_iter=self.nr_max_iter, nr_tol=self.nr_tol, rho_inf=self.rho_inf,
+                      t_total=float(t[-1]), force_amplitude=1.0, force_direction="_z_" if comp else "_r_")
+        block = Block(meshes(System(nl, None, None, None), parts), np.asarray(t), fields, extra, params, "run0")
         meta = {"study": "Transient", "fs": float(self.drive.fs), "geometry": str(self.model.geometry)}
-        self.results = records.time_results(blocks, meta, records.boundaries_of(engine._interface_meta))
+        self.results = TimeResults([block], meta, self.model.boundary_nodes())
         return self.results
