@@ -163,16 +163,45 @@ def dtn_system(s: System, parts, center, f_max: float, half: bool = True, n_max:
     R_aux = np.array(R_aux)
     G = (sp.csr_matrix((np.concatenate(G_vals), (np.concatenate(G_rows), np.concatenate(G_cols))),
                        shape=(na, n_aux)) if n_aux else sp.csr_matrix((na, 0)))
-    Raux = sp.csr_matrix((nm, nm)) if R is None else R
-    Zaa = sp.diags(beta_aux * z_aux / (rho * R_aux)) if n_aux else None
-    Caa = sp.diags(-beta_aux / (rho * c)) if n_aux else None
-    Ms = sp.bmat([[M, None, None], [None, -Q / rho, None], [None, None, sp.csr_matrix((n_aux, n_aux))]])
-    Cs = sp.bmat([[Raux, Cam.T, None], [Cam, Dc, None], [None, None, Caa]])
-    Ks = sp.bmat([[K, None, None], [None, -H / rho + Dk, G], [None, G.T, Zaa]])
-    Ks, Ms, Cs = to_csc_complex(Ks, Ms, Cs)
+    pieces = dict(Dk=Dk, Dc=Dc, G=G,
+                  Zaa=sp.diags(beta_aux * z_aux / (rho * R_aux)) if n_aux else None,
+                  Caa=sp.diags(-beta_aux / (rho * c)) if n_aux else None, n_aux=n_aux)
+    builder = symmetric_builder(s, R, pieces)
+    K0, C0, M0 = builder.polynomial()                          # A(s) = K0 + s C0 + s² M0
+    Ks, Ms, Cs = to_csc_complex(K0, M0, C0)
     log.info("structure + air + DtN: %d structural, %d air DOFs, %d arc(s), %d auxiliary unknowns",
              nm, na, len(arcs), n_aux)
-    return Ks, Ms, Cs, dict(nm=nm, na=na, n_aux=n_aux, arcs=info, c=c)
+    return Ks, Ms, Cs, dict(nm=nm, na=na, n_aux=n_aux, arcs=info, c=c, builder=builder)
+
+
+def symmetric_builder(s: System, C, dtn):
+    """
+    The symmetric u–ψ–φ system (p = −sψ) on a SystemBuilder: fields u, psi, phi and the terms of the
+    structure (K, C, M), the air (−H/ρ, −Q/ρ), the coupling (Camᵀ, Cam in s¹) and the DtN radiation
+    (Dk, Dc on ψ; G, Gᵀ, Zaa, Caa on the auxiliaries φ). C may be None (no structural damping).
+    """
+    from loudpy.physics.builder import Field, SystemBuilder, Term
+    rho = s.rho
+    nm, na, n_aux = s.n_meca, s.n_acou, dtn["n_aux"]
+    b = SystemBuilder()
+    b.add_field(Field("u", nm, expand=s.meca.expand))
+    b.add_field(Field("psi", na))
+    b.add_field(Field("phi", n_aux))
+    # structure
+    b.add(Term("u", "u", s.K), Term("u", "u", s.M, power=2))
+    b.add(Term("u", "u", C if C is not None else sp.csr_matrix((nm, nm)), power=1))
+    # air (ψ form) and radiation on ψ
+    b.add(Term("psi", "psi", -s.H / rho), Term("psi", "psi", dtn["Dk"]))
+    b.add(Term("psi", "psi", -s.Q / rho, power=2))
+    b.add(Term("psi", "psi", dtn["Dc"], power=1))
+    # coupling, symmetric
+    b.add(Term("u", "psi", s.Cam.T, power=1), Term("psi", "u", s.Cam, power=1))
+    # DtN auxiliaries
+    b.add(Term("phi", "phi", sp.csr_matrix((n_aux, n_aux)), power=2))
+    if n_aux:
+        b.add(Term("psi", "phi", dtn["G"]), Term("phi", "psi", dtn["G"].T), Term("phi", "phi", dtn["Zaa"]),
+              Term("phi", "phi", dtn["Caa"], power=1))
+    return b
 
 
 def nodal(raw, n_nodes: int, dpn: int) -> np.ndarray:

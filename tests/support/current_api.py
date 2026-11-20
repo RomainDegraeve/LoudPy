@@ -448,11 +448,7 @@ def assembled_operators(mesh_dir: Path):
 DTN_GEO = "LoudPy_exemples/Geometries/Loudspeaker/HPNEW-Sketch_front_rear_dtn.geo"
 
 
-def dtn_system(mesh_dir: Path, f_max=3000.0, n_max=8):
-    """
-    Coupled structure + air + exact DtN radiation (front and rear hemispheres) of the coarse
-    speaker: the symmetric system (Ks, Ms, Cs) of EigenStudy, as order-independent invariants.
-    """
+def _dtn_model_system(mesh_dir: Path, f_max=3000.0, n_max=8):
     model = lp.Model(DTN_GEO, MATERIALS)
     model.add([lp.Solid(n, m, mesh_size=1e-3) for n, m in SPEAKER_PARTS],
               lp.Air("subacou", mesh_size=0.02),
@@ -462,15 +458,43 @@ def dtn_system(mesh_dir: Path, f_max=3000.0, n_max=8):
     model.mesh(mesh_dir / "speaker_dtn.msh")
     from loudpy.physics.systems import assemble, dtn_system
     centers = {"dtn_boundary_front": (0.0, 0.032), "dtn_boundary_rear": (0.0, 0.031)}
-    Ks, Ms, Cs, info = dtn_system(assemble(model.parts, air=True), model.parts, centers, f_max, half=True,
-                                  n_max=n_max)
-    nm, na = info["nm"], info["na"]
+    return dtn_system(assemble(model.parts, air=True), model.parts, centers, f_max, half=True, n_max=n_max)
 
-    def invariants(A):
-        A = A.tocsr()
-        return np.concatenate([[A.shape[0], A.nnz, abs(A).sum(), np.sqrt(abs(A.multiply(A.conj())).sum())],
-                               np.sort(A.diagonal().real), np.sort(np.asarray(abs(A).sum(axis=1)).ravel())])
-    return dict(Ks=invariants(Ks), Ms=invariants(Ms), Cs=invariants(Cs), sizes=np.array([nm, na]))
+
+def _invariants(A):
+    A = sp_csr(A)
+    return np.concatenate([[A.shape[0], A.nnz, abs(A).sum(), np.sqrt(abs(A.multiply(A.conj())).sum())],
+                           np.sort(A.diagonal().real), np.sort(np.asarray(abs(A).sum(axis=1)).ravel())])
+
+
+def sp_csr(A):
+    import scipy.sparse as sp
+    return sp.csr_matrix(A)
+
+
+def dtn_system(mesh_dir: Path, f_max=3000.0, n_max=8):
+    """
+    Coupled structure + air + exact DtN radiation (front and rear hemispheres) of the coarse
+    speaker: the symmetric system (Ks, Ms, Cs) of EigenStudy, as order-independent invariants.
+    """
+    Ks, Ms, Cs, info = _dtn_model_system(mesh_dir, f_max, n_max)
+    return dict(Ks=_invariants(Ks), Ms=_invariants(Ms), Cs=_invariants(Cs), sizes=np.array([info["nm"], info["na"]]))
+
+
+def dtn_system_blocks(mesh_dir: Path, f_max=3000.0, n_max=8):
+    """The same system block by block (fields u, ψ, φ; powers s⁰, s¹, s²): size, nnz, Σ|a|, ‖·‖_F of every
+    non-empty block, so that a change in one block (e.g. the air) is not hidden by the others."""
+    _, _, _, info = _dtn_model_system(mesh_dir, f_max, n_max)
+    b = info["builder"]
+    out = {}
+    for t in b.terms:
+        A = sp_csr(t.matrix)
+        if A.nnz == 0:
+            continue
+        key = f"s{t.power}_{t.row}_{t.col}"
+        inv = np.array([A.shape[0], A.shape[1], A.nnz, abs(A).sum(), np.sqrt(abs(A.multiply(A.conj())).sum())])
+        out[key] = out[key] + inv * np.array([0, 0, 1, 1, 1]) if key in out else inv
+    return out
 
 
 # ── the same files through lp.load (results layer, phase 4) ────────────────────

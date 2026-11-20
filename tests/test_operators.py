@@ -30,3 +30,9 @@ def test_dtn_system(mesh_dir, reference):
     """Structure + air + exact DtN radiation: the symmetric (Ks, Ms, Cs) system of EigenStudy."""
     d = api.dtn_system(mesh_dir)
     reference.check(rtol=RTOL, **d)
+
+
+def test_dtn_system_blocks(mesh_dir, reference):
+    """The coupled DtN system block by block (structure, air, coupling, radiation, auxiliaries)."""
+    for key, inv in api.dtn_system_blocks(mesh_dir).items():
+        reference.check(rtol=RTOL, **{key: inv})

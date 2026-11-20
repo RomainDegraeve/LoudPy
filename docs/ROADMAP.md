@@ -434,3 +434,11 @@ judged negligible (estimated effect ≲ 0.1 % on spider-dominated modes, ≲ 0.0
   E (`c97bd73`, worktree, same machine, direct solves; FSI speaker with front and rear air + PML; 50, 212,
   800, 1500, 4000 Hz; force, and voltage with Re 6 Ω, Bl 5, Le 0.3 mH, n = 0.7): u 4.8e-15 / 1.5e-14,
   p 6.9e-14 / 9.7e-14, coil current 1.4e-14, Ze identical. 3 builder tests; 286 tests pass with `--slow`.
+- **E2a (done)**: the DtN radiation on the builder. `physics.systems.dtn_system` computes the DtN pieces
+  (b_n, auxiliaries) and builds the symmetric u–ψ–φ system with `symmetric_builder` (fields u, psi, phi;
+  structure, air −H/ρ −Q/ρ, coupling Camᵀ / Cam in s¹, radiation Dk / Dc, G, Zaa, Caa) and
+  `builder.polynomial()`; `Modes(physics="coupled")` goes through it unchanged. Ks, Ms, Cs **bit-identical**
+  to the code before E (`c97bd73`). New test `test_dtn_system_blocks` (new reference
+  `tests/reference/test_dtn_system_blocks.npz`, created on purpose, nothing else regenerated): size, nnz,
+  Σ|a|, ‖·‖_F of every term of the system, so that the air block (Σ|a| ≈ 1.2e4 against 1.2e13 for the
+  structure) is checked on its own.
