@@ -8,6 +8,9 @@ versions follow [Semantic Versioning](https://semver.org/) (0.x: the API may sti
 The roadmap of this work is in `docs/ROADMAP.md`.
 
 ### Added
+- Derived fields: `res.field("strain" | "stress" | "von_mises" | "v" | "a" | "particle_velocity" |
+  "intensity", …)` (axisymmetric, from the element gradients and the material data stored with the results;
+  `loudpy.results.derived`); strain / stress components `rr`, `zz`, `rz`, `tt`.
 - `FrequencyResults.far_field(at, radius, center, baffle)`: pressure outside the 2D mesh by the
   Kirchhoff–Helmholtz integral over a sphere in the air (free field or infinite baffle), from the result
   file alone. `Results.arrays()`: the results as plain NumPy arrays.

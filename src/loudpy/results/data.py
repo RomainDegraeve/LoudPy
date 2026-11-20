@@ -25,7 +25,7 @@ from pathlib import Path
 
 import numpy as np
 
-from loudpy.results.quantities import COMPONENTS, Quantity, quantity as as_quantity
+from loudpy.results.quantities import Quantity, quantity as as_quantity
 from loudpy.errors import ResultsError, SelectionError
 
 P_REF = 20e-6
@@ -434,12 +434,13 @@ class Field:
 
     # ── scalar views ───────────────────────────────────────────────────────
     def component(self, c: str) -> "Field":
-        """One component of a vector field: "r", "z" or "theta" (complex amplitude)."""
+        """One component: "r", "z" or "theta" of a vector field; "rr", "zz", "rz", "tt" of strain / stress."""
         if not self.is_vector:
             raise ValueError(f"{self.name} is a scalar field")
-        if COMPONENTS[c] >= self.values.shape[1]:
-            raise ValueError(f"{self.name} has no {c!r} component (axisymmetric field: r, z)")
-        return self._scalar(self.values[:, COMPONENTS[c]], f"{self.name}_{c}")
+        names = list(self.meta.get("components") or ("r", "z", "theta"))
+        if c not in names or names.index(c) >= self.values.shape[1]:
+            raise ValueError(f"{self.name} has no {c!r} component (components: {names[:self.values.shape[1]]})")
+        return self._scalar(self.values[:, names.index(c)], f"{self.name}_{c}")
 
     def magnitude(self) -> "Field":
         """Modulus per node (Euclidean norm of the component moduli for a vector field)."""
@@ -505,8 +506,9 @@ class Field:
             return v[0]
         coords = {sel.dim: sel.coord}
         if v.ndim > 1:
-            coords["component"] = np.array(["r", "z", "theta"][:v.shape[1]])
-        return Data(v, coords, self.quantity, meta={**self.meta, self.coord: self.coordinate, "at": sel.describe()})
+            coords["component"] = np.array(list(self.meta.get("components") or ("r", "z", "theta"))[:v.shape[1]])
+        meta = {k: v_ for k, v_ in self.meta.items() if k != "components"}
+        return Data(v, coords, self.quantity, meta={**meta, self.coord: self.coordinate, "at": sel.describe()})
 
     def revolve(self, order: int | None = None, **kwargs):
         """3D surface (pyvista) of an axisymmetric displacement: see loudpy.results.surfaces.revolve.
@@ -520,7 +522,8 @@ class Field:
         names = ["r", "z"] if self.mesh.dim == 2 else ["x", "y", "z"]
         cols = {n: self.mesh.coords[:, i] for i, n in enumerate(names)}
         v = self.values
-        comps = [""] if v.ndim == 1 else [f"_{c}" for c in ("r", "z", "theta")[:v.shape[1]]]
+        names = list(self.meta.get("components") or ("r", "z", "theta"))
+        comps = [""] if v.ndim == 1 else [f"_{c}" for c in names[:v.shape[1]]]
         for j, c in enumerate(comps):
             vj = v if v.ndim == 1 else v[:, j]
             if np.iscomplexobj(vj):

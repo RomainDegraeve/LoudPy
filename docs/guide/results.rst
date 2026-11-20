@@ -58,6 +58,24 @@ Evaluations
    res.scalar("I_coil")                         # any per-entry quantity as Data
    res.arrays()                                 # plain NumPy arrays (values, fields, meshes, per-entry)
 
+Derived fields
+--------------
+
+.. code-block:: python
+
+   res.field("strain", f=200)        # (ε_rr, ε_zz, γ_rz, ε_θθ) at the nodes (axisymmetric, m = 0)
+   res.field("stress", f=200)        # σ = D(E, ν) ε of each region [Pa]; .component("tt") hoop stress
+   res.field("von_mises", f=200)     # [Pa]; harmonic: the maximum over the cycle
+   res.field("v", f=200)             # jω u (harmonic); "a": −ω² u
+   res.field("particle_velocity", f=500), res.field("intensity", f=500)   # −∇p/(jωρ), ½ Re(p v*) [W/m²]
+
+Gradients come from the elements (isoparametric, any order), averaged at the nodes shared by several
+elements. The material data (E, ν, ρ of each mesh group) are stored in the result file (format 3), so a
+reloaded file is enough; ``loudpy.results.derived`` has the same functions for any Field. Checked against
+analytical fields: uniform and quadratic displacements (exact strain and stress), rigid motion, a
+quadratic pressure (exact velocity), a plane wave (intensity ``|p|²/(2ρc)`` within 0.2 % with P2, kh = 0.08).
+Inside a PML the air quantities are not physical.
+
 Far field
 ---------
 

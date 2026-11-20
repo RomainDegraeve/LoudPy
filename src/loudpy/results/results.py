@@ -40,6 +40,7 @@ from loudpy.results.selection import as_selection
 from loudpy.errors import ResultsError
 
 PHYSICS_OF = {"u": "solid", "v": "solid", "a": "solid", "p": "air"}
+DERIVED = ("strain", "stress", "von_mises", "v", "a", "particle_velocity", "intensity")   # results.derived
 ALIASES = {"u_meca": "u", "v_meca": "v", "a_meca": "a", "p_acou": "p"}     # former field names
 
 
@@ -177,9 +178,16 @@ class Results:
         raise IndexError("entry index out of range")
 
     def field(self, name: str, index: int | None = None, value: float | None = None) -> Field:
-        """One field on its mesh at one entry (by global index, or nearest to a coordinate value)."""
+        """
+        One field on its mesh at one entry (by global index, or nearest to a coordinate value). Besides the
+        stored fields: the derived fields "strain", "stress", "von_mises" (from u), "v", "a" (jω u, −ω² u of a
+        harmonic result), "particle_velocity", "intensity" (from p) — loudpy.results.derived; stress and the
+        air quantities use the physical data of the mesh groups stored with the results (format 3).
+        """
         name = canonical(name)
         b, i, g = self._locate(index, value)
+        if name not in b.fields and name in DERIVED:
+            return self._derived(name, g)
         if name not in b.fields:
             raise ResultsError(f"no field {name!r} (fields: {list(b.fields)})")
         values = np.asarray(b.fields[name][i])
@@ -187,6 +195,32 @@ class Results:
                      "t" if self.dim == "t" else "f", {k: v[i] for k, v in b.extra.items() if np.ndim(v) == 1},
                      meta=self._meta(index=g, block=b.label, **({"order": int(b.meta["order"])}
                                                                  if "order" in b.meta else {})))
+
+    def _groups(self, what) -> dict:
+        if self.model is None or not self.model.groups:
+            raise ResultsError(f"{what} needs the physical data of the mesh groups: results saved with loudpy "
+                               f"format 3 (or loudpy.results.derived with groups={{…}})")
+        return self.model.groups
+
+    def _derived(self, name, index) -> Field:
+        from loudpy.results import derived
+        if name in ("v", "a"):
+            u = self.field("u", index=index)
+            if self.real or u.coord != "f":
+                raise ResultsError(f"no stored field {name!r} in these results")
+            w = 2 * np.pi * u.coordinate
+            k = 1j * w if name == "v" else -w ** 2
+            return Field(name, u.mesh, k * u.values, u.coordinate, u.coord, u.extra, name,
+                         {**u.meta, "derived": "jω u" if name == "v" else "−ω² u"})
+        if name in ("strain", "stress", "von_mises"):
+            u = self.field("u", index=index)
+            if name == "strain":
+                return derived.strain(u)
+            s = derived.stress(u, self._groups("the stress"))
+            return s if name == "stress" else derived.von_mises(s)
+        p = self.field("p", index=index)
+        fn = derived.particle_velocity if name == "particle_velocity" else derived.intensity
+        return fn(p, self._groups(name.replace("_", " ")))
 
     # ── values over all entries ────────────────────────────────────────────
     def probe(self, name: str, at, component: str | None = None) -> Data:

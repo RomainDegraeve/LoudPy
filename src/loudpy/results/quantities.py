@@ -99,6 +99,21 @@ QUANTITIES: dict[str, Quantity] = {
     "share": _q("share", "Share", "", "%"),
     "level": _q("level", "Relative level", r"\Delta L", "dB", "level"),
 }
+# derived fields (loudpy.results.derived)
+QUANTITIES.update({
+    "strain": _q("strain", "Strain", r"\varepsilon", "1", "plain", True),
+    "stress": _q("stress", "Stress", r"\sigma", "Pa", "plain", True),
+    "von_mises": _q("von_mises", "von Mises stress", r"\sigma_\mathrm{vM}", "Pa"),
+    "particle_velocity": _q("particle_velocity", "Particle velocity", "v", "m/s", "plain", True),
+    "intensity": _q("intensity", "Active acoustic intensity", "I", "W/m²"),
+})
+for _c, _lab in {"rr": "radial", "zz": "axial", "rz": "shear", "tt": "hoop"}.items():
+    QUANTITIES[f"strain_{_c}"] = _q(f"strain_{_c}", f"Strain, {_lab}", rf"\varepsilon_{{{_c}}}", "1", "plain", True)
+    QUANTITIES[f"stress_{_c}"] = _q(f"stress_{_c}", f"Stress, {_lab}", rf"\sigma_{{{_c}}}", "Pa", "plain", True)
+for _c in ("r", "z"):
+    QUANTITIES[f"particle_velocity_{_c}"] = _q(f"particle_velocity_{_c}", f"Particle velocity, {_c}", f"v_{_c}",
+                                               "m/s", "plain", True)
+    QUANTITIES[f"intensity_{_c}"] = _q(f"intensity_{_c}", f"Active intensity, {_c}", f"I_{_c}", "W/m²")
 for _f, (_what, _unit) in _VEC.items():
     QUANTITIES[_f] = _q(_f, _what.capitalize(), _f, _unit, "displacement", True)
     for _c, (_adj, _sym) in _COMP.items():

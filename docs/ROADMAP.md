@@ -586,3 +586,13 @@ a 2D FrequencyResponse (explicit error today).
   low frequency — a property of the coarse test setup, to keep in mind for low-frequency SPL in the
   examples (phase M). 3D scenes: the far field computed by a separate Python process from the stored file
   equals the live one bit for bit (slow scene test). 13 tests (`tests/test_interpolation_farfield.py`).
+- **G3 (done)**: derived fields (`results/derived.py`), reachable as `res.field(name, …)`: strain (ε_rr, ε_zz,
+  γ_rz, ε_θθ; on the axis ε_θθ = ∂u_r/∂r), stress σ = D(E, ν) ε of each element's group (E, ν from the
+  file's group data), von Mises (for a harmonic amplitude, the maximum over the cycle, closed form), v = jω u,
+  a = −ω² u, particle velocity −∇p/(jωρ), active intensity ½ Re(p v*). Gradients of the isoparametric field
+  at each element's nodes (any order), averaged at the shared nodes. Gate item "derived fields vs analytical
+  cases": uniform strain exact for P1–P3 and a quadratic displacement for P2–P3 (strain ≤ 6e-14, stress
+  ≤ 4e-11 relative), rigid motion zero, von Mises cycle maximum = brute force (1e-7), quadratic pressure
+  → exact particle velocity, plane wave intensity within 0.2 % (P2, kh = 0.08); from a reloaded speaker
+  file the stress equals the live one bit for bit, and a file without the description is refused with a
+  clear error. 6 tests (`tests/test_derived_fields.py`).
