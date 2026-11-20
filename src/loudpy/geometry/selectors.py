@@ -25,7 +25,7 @@ Where they are evaluated:
     domains, plus those of the named curve groups kept in the mesh. An interface therefore needs no curve
     drawn in the geometry, and a mesh read from a file is selected the same way as a fresh one;
   * a PML layer grows from curves of the geometry: its selector is evaluated before meshing on the curves
-    of the .geo (Curves), with the same rules (sides = the meshed curve loops on each side).
+    of the geometry (Curves), with the same rules (sides = the meshed domains on each side).
 
 A "boundary curve" (lp.Near on edges) is a chain of edges between corners (turn > 30°), junctions (a node
 with more than two boundary edges) and changes of the adjacent domains.
@@ -84,6 +84,29 @@ class Selector:
         return _Difference(as_selector(other), self)
 
 
+class Combinable:
+    """Mixin of the model items (regions, boundaries): `|`, `&`, `-` combine what they cover into selectors
+    (lp.Interface(cone | dustcap, "subacou_front"))."""
+
+    def __or__(self, other):
+        return as_selector(self) | other
+
+    def __ror__(self, other):
+        return as_selector(other) | as_selector(self)
+
+    def __and__(self, other):
+        return as_selector(self) & other
+
+    def __rand__(self, other):
+        return as_selector(other) & as_selector(self)
+
+    def __sub__(self, other):
+        return as_selector(self) - other
+
+    def __rsub__(self, other):
+        return as_selector(other) - as_selector(self)
+
+
 def as_selector(x) -> Selector:
     """A Selector from a selector, a label (str) or a model item (region or boundary)."""
     if isinstance(x, Selector):
@@ -98,7 +121,8 @@ def as_selector(x) -> Selector:
 
 class Group(Selector):
     """The named groups selected by each label (rules of loudpy.geometry.naming; "glue" selects
-    submeca_glue_1 and submeca_glue_2, "glue_*" is a glob). Every label must select a group."""
+    submeca_glue_1 and submeca_glue_2, "glue_*" is a glob). Every label must select a group. For domains, a
+    label that is the name of a region of the model stands for that region (what it covers)."""
 
     def __init__(self, *labels: str):
         if not labels or not all(isinstance(s, str) and s.strip() for s in labels):
@@ -106,7 +130,11 @@ class Group(Selector):
         self.labels_ = tuple(s.strip() for s in labels)
 
     def domains(self, ctx):
-        return _match_labels(self.labels_, ctx.names, f"domain group of {ctx.where}")
+        out = set()
+        for label in self.labels_:
+            out |= set(ctx.regions[label]) if label in ctx.regions else \
+                _match_labels([label], ctx.names, f"domain group of {ctx.where}")
+        return out
 
     def edges(self, ctx):
         for label in self.labels_:
@@ -342,14 +370,11 @@ class Domains:
         self.where = where
 
     @classmethod
-    def from_geometry(cls, geometry, names, regions=None) -> "Domains":
-        """The curve-loop domain groups of a 2D .geo (a path or its GeometryIndex): outlines sampled on the
-        curves (with gmsh, when first needed)."""
-        def outlines():
-            index = geometry if isinstance(geometry, GeometryIndex) else GeometryIndex(geometry)
-            return {n: index.segments(index.groups[n]) for n in names}
-        where = geometry.name if isinstance(geometry, GeometryIndex) else _name(geometry)
-        return cls(names, outlines, dim=2, regions=regions, where=where)
+    def from_geometry(cls, index, names, regions=None) -> "Domains":
+        """The domain groups `names` of a 2D geometry (its sources.GeometryIndex): outlines sampled on their
+        boundary curves."""
+        return cls(names, lambda: {n: index.segments(index.outline[n]) for n in names}, dim=2, regions=regions,
+                   where=index.name)
 
     @classmethod
     def from_mesh(cls, mesh, regions=None) -> "Domains":
@@ -522,22 +547,24 @@ class Edges:
 
 class Curves:
     """
-    The curves of a 2D .geo: what the base of a PML layer is selected on (before meshing), with the rules
-    of Edges. codes: curve tags; sides (k, 2): indices into domain_names of the meshed curve loops on each
-    side (−1: none); curve_groups: the named curve groups that are not meshed loops {name: set of tags}.
-    Every curve is its own "boundary curve" for lp.Near.
+    The curves of a 2D geometry (its sources.GeometryIndex): what the base of a PML layer is selected on
+    (before meshing), with the rules of Edges. codes: curve tags; sides (k, 2): indices into domain_names of
+    the meshed domains on each side (−1: none); curve_groups: the named curve groups that are not meshed
+    loops {name: set of tags}. Every curve is its own "boundary curve" for lp.Near.
     """
 
-    def __init__(self, index: "GeometryIndex", loops, regions: dict | None = None):
+    def __init__(self, index, meshed, regions: dict | None = None):
         self.index = index
-        self.domain_names = list(loops)
+        self.domain_names = list(meshed)
         self.where = index.name
         self.dim = 2
         self.curve_groups = {n: set(t) for n, t in index.groups.items() if n not in set(self.domain_names)}
+        position = {n: gi for gi, n in enumerate(self.domain_names)}
         sides = {}
-        for gi, n in enumerate(self.domain_names):
-            for t in index.groups[n]:
-                sides.setdefault(t, []).append(gi)
+        for t, owners in index.sides.items():
+            for n in owners:
+                if n in position:
+                    sides.setdefault(t, []).append(position[n])
         named = set().union(*self.curve_groups.values()) if self.curve_groups else set()
         tags = sorted(set(sides) | named)              # curves of the meshed loops and of the named groups
         sides = {t: sides.get(t, []) for t in tags}
@@ -569,40 +596,6 @@ class Curves:
     def domain_mask(self, selector: Selector) -> np.ndarray:
         names = selector.domains(self.domains)
         return np.array([n in names for n in self.domain_names] + [False], bool)
-
-
-class GeometryIndex:
-    """
-    The curves of a 2D .geo read once with gmsh: groups {physical curve group: [curve tags]} (in the order of
-    the file) and curves {tag: (samples + 1, 2) points along the curve}.
-    """
-
-    def __init__(self, path, samples: int = 16):
-        from loudpy.geometry.gmsh_session import gmsh_session
-        self.name = _name(path)
-        self.groups: dict[str, list[int]] = {}
-        self.curves: dict[int, np.ndarray] = {}
-        with gmsh_session() as gmsh:
-            gmsh.open(str(path))
-            for _, tag in gmsh.model.getPhysicalGroups(1):
-                name = gmsh.model.getPhysicalName(1, tag).strip()
-                if name:
-                    self.groups.setdefault(name, [])
-                    self.groups[name] += [int(c) for c in gmsh.model.getEntitiesForPhysicalGroup(1, tag)]
-            for _, c in gmsh.model.getEntities(1):
-                lo, hi = gmsh.model.getParametrizationBounds(1, c)
-                t = np.linspace(lo[0], hi[0], samples + 1)
-                self.curves[int(c)] = np.asarray(gmsh.model.getValue(1, c, t)).reshape(-1, 3)[:, :2]
-
-    def segments(self, tags) -> np.ndarray:
-        """(k, 2, 2) segments along the curves `tags`."""
-        segs = [np.stack([x[:-1], x[1:]], axis=1) for x in (self.curves[int(t)] for t in tags)]
-        return np.concatenate(segs) if segs else np.zeros((0, 2, 2))
-
-
-def _name(path) -> str:
-    from pathlib import Path
-    return Path(path).name
 
 
 # ════════════════════════════════════════════════════════════════════════════

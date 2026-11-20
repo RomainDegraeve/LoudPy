@@ -37,6 +37,13 @@ The roadmap of this work is in `docs/ROADMAP.md`.
   `-`, given to any region or boundary as `on=` (the name stays its label). Boundaries are selected on
   the mesh: interfaces, clamps and the coil no longer need curves drawn in the `.geo`.
   `Model.select(selector)` shows what a selector selects; `Field.restrict` accepts selectors.
+- Geometry sources: `lp.Model` takes a `.geo` of curve loops (as before) or of surfaces (Physical
+  Surfaces), a CAD file (`.step`/`.stp`/`.iges`/`.igs` in their own unit, `.brep` in metres: its faces,
+  or the closed regions of a sketch) or a builder function `builder(occ) → {label: surfaces}`. Surfaces
+  are fragmented together (conforming mesh); unnamed surfaces are selected by position and take the
+  region's name in the mesh. The HPNEW speaker can be built from its STEP sketch directly.
+- Regions and boundaries combine with `|`, `&`, `-` like selectors; a string naming a region of the model
+  stands for that region in `lp.Interface` / `lp.BoundaryOf`.
 - `lp.PML(…, on=selector)`: the base curves of the layers, selected on the curves of the geometry (no
   `PML_*` group needed). The geometry of the layers is stored with the mesh (`pml_layers` in
   `<mesh>.msh.json`), not in the surface names; meshes written before are still read.
@@ -60,8 +67,10 @@ The roadmap of this work is in `docs/ROADMAP.md`.
   needs is reused.
 - `Model.add` refuses two items with the same name (the name is the label of the results).
 - PML surfaces of new meshes are named after their curve group or region (`PML_r+_1_front`, `absorber_1`,
-  `…_Corner`), without the layer geometry (`__r0=…__t=…`). `Model.groups("domain")` lists the curve loops
+  `…_Corner`), without the layer geometry (`__r0=…__t=…`). `Model.groups("domain")` lists the domains
   only; the `PML_*` groups are curve groups.
+- Curve loops of a `.geo` are its closed physical curve groups, whatever their names (no `sub` prefix
+  needed).
 - `import loudpy` has no side effects: no environment variable, logging silent by default
   (`lp.set_verbosity("info")` to see progress), the plot style no longer changes matplotlib's
   global settings (`lp.plot.style.use()` to opt in).

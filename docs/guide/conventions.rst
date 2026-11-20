@@ -66,8 +66,10 @@ A group name of the ``.geo`` file is a sequence of tokens separated by ``_``:
 * modifiers: an index (digits), a direction (``r``, ``z``, ``rz``, ``r+``, ``z-`` …), a side
   (``front``, ``rear``), ``Corner`` (PML corners built by the mesher)
 
-The ``sub…`` groups are curve loops (the domains); every other group is a curve group (boundaries,
-PML base curves).
+In a ``.geo`` without surfaces, every closed curve group is a curve loop (a domain), whatever its name;
+the other groups are curve groups (boundaries, PML base curves). The ``sub…`` prefix is only a
+convention of the examples (it is skipped when matching labels: ``"membranne"`` selects
+``submeca_membranne``).
 
 A label (the name of a region or boundary, or an ``lp.Group`` label) **selects** a group when its
 tokens appear whole, at the start of the group or right after the prefix, and every following token

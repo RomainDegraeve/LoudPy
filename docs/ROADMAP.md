@@ -197,6 +197,33 @@ Gates (each phase is committed and pushed only when its gate passes):
   ending at 0.1, overlapping it) while its name still said +z. The new rule grows it outward
   (`test_pml_grows_out_of_the_air`). The example models were not affected.
 
+### C4: geometry sources (done)
+
+- `geometry/sources.py`: `GeometrySource` (a `.geo`, a CAD file or a builder function) loads the geometry
+  into gmsh the same way for the selectors (`GeometryIndex`: layout, domains, named curve groups, sides of
+  every curve, sampled curves) and for the mesher, so the entity tags agree. Layouts: **loops** (a `.geo`
+  without surfaces: every closed physical curve group is a domain, the `sub` prefix is no longer needed)
+  and **surfaces** (physical surface groups, CAD faces, the closed regions of a sketch found by
+  fragmenting a rectangle with its curves, builder parts). Surfaces are fragmented together (conforming);
+  unnamed surfaces are domains `surface_<tag>`, their mesh group takes the region's name. STEP / IGES are
+  read in metres (`Geometry.OCCTargetUnit`). A builder's signature hashes its code, defaults and simple
+  constants. The mesher takes an explicit plan (`DomainPlan`): no name convention left in it.
+- Regions and boundaries combine with `|`, `&`, `-`; a string naming a region stands for it in
+  `Interface` / `BoundaryOf`.
+- Checks (`tests/test_geometry_sources.py`): the plate as curve loops, as a Physical Surface and from a
+  builder gives the same mesh node for node and the same frequencies (bit-identical); a loop `.geo`
+  without the `sub` prefix; named / unnamed surfaces, a surface claimed through two groups, a mesh group
+  name clash; builder mesh reuse. **The HPNEW speaker from its STEP sketch** (115 curves in mm, no
+  names): 10 regions found, selected by points; areas of the curved P2 domains equal to the `.geo` model
+  to ≤ 4e-8 (front air 2e-12), except the spider (6.4e-4: one element across each arc crest in one mesh,
+  several in the other; the exact face area lies between the two) and the rear air next to it (7e-7, the
+  same area), straight boundaries equal to 1e-12, the same six PML layers.
+  In-vacuo modes STEP vs `.geo`: 4.3e-3 at 1 mm, 1.7e-6 at 0.5 mm, 4e-5 at 0.25 mm (the frequencies
+  themselves move by 1.3 % from 1 to 0.25 mm): the same speaker, different meshes. The `.geo` loop path
+  still gives the former deterministic mesh node for node. No reference changed.
+- gmsh traps found: `removePhysicalGroups([])` removes every group; a group dropped by a boolean
+  operation keeps its name, which then blocks a new group of that name (names removed explicitly).
+
 ### Still to do in C
-- Geometry sources: `.geo` Physical Surfaces, STEP, OCC builders.
+
 - Driver wet profiles from the solid–air interface of the 2D driver model (no curve IDs).

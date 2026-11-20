@@ -1,6 +1,9 @@
 """
-Model: a 2D axisymmetric model — a geometry (.geo of the loudpy convention), its regions and
-boundaries, its materials.
+Model: a 2D axisymmetric model — a geometry, its regions and boundaries, its materials.
+
+The geometry (loudpy.geometry.sources) is a .geo (curve loops of the loudpy convention, or surfaces), a
+CAD file (.step/.stp/.iges/.igs/.brep: faces, or the closed regions of a sketch) or a builder function
+drawing with gmsh's OpenCASCADE kernel.
 
     model = lp.Model("HPNEW-Sketch.geo")
     model.add(
@@ -27,8 +30,8 @@ import numpy as np
 
 from loudpy.geometry import naming
 from loudpy.geometry.naming import PMLLayer
-from loudpy.geometry.gmsh_session import physical_groups
-from loudpy.geometry.selectors import Curves, Domains, Edges, GeometryIndex, as_selector
+from loudpy.geometry.selectors import Curves, Domains, Edges, as_selector
+from loudpy.geometry.sources import GeometryIndex, GeometrySource
 from loudpy.geometry.mesh import Mesh
 from loudpy.geometry.meshing2d import DEFAULT_MESH_GRADING, DomainSizing
 from loudpy.model.boundaries import Boundary
@@ -37,15 +40,6 @@ from loudpy.model.regions import PML, Air, Region, Solid
 from loudpy.errors import MeshError, ModelError, SelectionError, StateError
 
 log = logging.getLogger("loudpy.model")
-
-SUBDOMAINS_KEY = "sub"
-
-
-def _is_domain_group(name: str) -> bool:
-    """A curve loop of the .geo convention (submeca_*, subacou_*): the other curve groups are boundaries."""
-    t = naming.tokens(name)
-    return bool(t) and naming.is_prefix(t[0])
-
 
 class Model:
     """An axisymmetric loudspeaker model: a geometry (.geo), regions, boundaries and materials.
@@ -56,14 +50,14 @@ class Model:
     def __init__(self, geometry, materials=None, *, mesh_order: int = 2,
                  grading: float | None = DEFAULT_MESH_GRADING):
         """
-        geometry  : .geo file (loudpy convention: physical curve groups submeca_*, subacou_*,
-                    interface_*, PML_*)
+        geometry  : a .geo (curve loops: every closed physical curve group is a domain; or surfaces), a
+                    CAD file (.step/.stp/.iges/.igs/.brep) or a builder function builder(occ) → {label:
+                    surface tags} (loudpy.geometry.sources)
         materials : material library — a MaterialLibrary, a JSON path, or None (loudpy's default)
         grading   : growth of the element size away from the structure (None: gmsh default)
         """
-        self.geometry = Path(geometry)
-        if not self.geometry.exists():
-            raise FileNotFoundError(f"geometry {self.geometry} not found")
+        self.source = GeometrySource(geometry)
+        self.geometry = self.source.path if self.source.path is not None else geometry
         self.materials: MaterialLibrary = materials if isinstance(materials, MaterialLibrary) \
             else load_materials(materials)
         self.mesh_order = mesh_order
@@ -79,6 +73,8 @@ class Model:
         self._edges: Edges | None = None       # the boundary edges of the mesh (selector evaluation)
         self._pml_bases: dict = {}             # {PML: (base curve tags, {tag: layer name})}
         self._pml_layer: dict = {}             # {PML surface of the mesh: PMLLayer}
+        self._index: GeometryIndex | None = None   # the geometry, read by the last selection()
+        self._plan_names: dict = {}            # {region: its mesh group names}
 
     # ── description ────────────────────────────────────────────────────────
     def add(self, *items) -> "Model":
@@ -104,25 +100,27 @@ class Model:
         raise SelectionError(name)
 
     def groups(self, kind: str | None = None) -> list[str]:
-        """Physical groups of the geometry: kind "domain", "boundary" or None (all)."""
-        names = [n for d, n in physical_groups(self.geometry, dim=1)]
-        names = list(dict.fromkeys(names))
+        """Groups of the geometry: kind "domain" (curve loops, named surface groups, unnamed surfaces
+        "surface_<tag>"), "boundary" (the other named curve groups) or None (all)."""
+        index = GeometryIndex(self.source)
+        bounds = [n for n in index.groups if n not in index.domains]
         if kind == "domain":
-            return [n for n in names if _is_domain_group(n)]
+            return list(index.domains)
         if kind == "boundary":
-            return [n for n in names if not _is_domain_group(n)]
-        return names
+            return bounds
+        return list(dict.fromkeys(list(index.groups) + list(index.domains))) if index.kind == "loops" \
+            else list(index.domains) + bounds
 
     def selection(self) -> dict[str, list[str]]:
         """
         {item name: what it selects in the geometry}, checked (module docstring): for a region the domain
-        groups (curve loops) it covers; for a PML the curve groups its labels select, or its base curves
+        groups (curve loops, surface groups, unnamed surfaces) it covers; for a PML the curve groups its labels select, or its base curves
         ("curve 12") when its selector is not made of labels; for a boundary the named curve groups its
         labels select (kept in the mesh). The edges of a boundary are found on the mesh: model.select(…).
         """
-        index = GeometryIndex(self.geometry)
-        domains = [n for n in index.groups if _is_domain_group(n)]
-        bounds = [n for n in index.groups if not _is_domain_group(n)]
+        index = self._index = GeometryIndex(self.source)
+        domains = list(index.domains)
+        bounds = [n for n in index.groups if n not in index.domains]
         ctx = Domains.from_geometry(index, domains)
         out, owner = {}, {}
         for r in self.regions:
@@ -131,21 +129,23 @@ class Model:
             sel = self._evaluate(r, lambda: r.selector.domains(ctx))
             if not sel:
                 raise SelectionError(f"{type(r).__name__}({r.name!r}) selects no domain group of "
-                                     f"{self.geometry.name}; domain groups: {domains}")
-            for g in sel:
-                if g in owner:
-                    raise SelectionError(f"group {g!r} is selected by both {owner[g]!r} and {r.name!r}")
-                owner[g] = r.name
+                                     f"{self.source.name}; domain groups: {domains}")
+            for g in sel:                      # a curve loop is owned whole; a surface once, whatever its groups
+                for key in ([g] if index.kind == "loops" else index.domains[g]):
+                    if key in owner:
+                        what = f"group {g!r}" if index.kind == "loops" else f"surface {key} (in {g!r})"
+                        raise SelectionError(f"{what} is selected by both {owner[key]!r} and {r.name!r}")
+                    owner[key] = r.name
             out[r.name] = [g for g in domains if g in sel]
-        self._pml_bases = self._select_pml(index, bounds, [g for g in domains if g in owner],
-                                           dict(out), out)
+        meshed = [g for g in domains if any(g in v for v in out.values())]
+        self._pml_bases = self._select_pml(index, bounds, meshed, dict(out), out)
         for b in self.boundaries:
             sel = set()
             for label in b.selector.labels():
                 found = [g for g in bounds if naming.matches(label, g)]
                 if not found:
                     raise SelectionError(f"{type(b).__name__}({b.name!r}): {label!r} selects no boundary group of "
-                                         f"{self.geometry.name}; boundary groups: {bounds}")
+                                         f"{self.source.name}; boundary groups: {bounds}")
                 sel |= set(found)
             out[b.name] = [g for g in bounds if g in sel]
         return {it.name: out[it.name] for it in self.regions + self.boundaries}
@@ -165,7 +165,7 @@ class Model:
         for r in pmls:
             tags = self._evaluate(r, lambda: r.selector.edges(curves))
             if not tags:
-                raise SelectionError(f"PML({r.name!r}) selects no curve of {self.geometry.name} "
+                raise SelectionError(f"PML({r.name!r}) selects no curve of {self.source.name} "
                                      f"(selector {r.selector!r})")
             for t in sorted(tags):
                 if t in taken:
@@ -218,23 +218,24 @@ class Model:
         """
         from loudpy.geometry.meshing2d import MeshManager, PMLBase
         selection = self.selection()                            # checks the names first
-        path = Path(path) if path is not None else self.geometry.with_suffix(".msh")
-        members = {r.name: set(selection[r.name]) for r in self.regions if not isinstance(r, PML)}
+        if path is None and self.source.path is None:
+            raise ModelError("the geometry is a builder function: give the mesh file, model.mesh(path)")
+        path = Path(path) if path is not None else self.source.path.with_suffix(".msh")
         kept = sorted({g for b in self.boundaries for g in selection[b.name]})
         sizing = self._sizing()
+        plan, entries, self._plan_names = self._plan(selection, {sz.name: sz for sz in sizing})
         pml = [PMLBase(sz, *self._pml_bases[sz.name]) for sz in sizing if sz.kind == "pml"]
-        mm = MeshManager(sizing, SUBDOMAINS_KEY, mesh_order=self.mesh_order, grading=self.grading,
-                         interfaces=kept, match=lambda spec, group: group.strip() in members.get(spec, ()),
-                         deterministic=deterministic, groups=self._meshed_groups(selection), pml=pml)
-        ok, why = mm.can_reuse(str(self.geometry), str(path)) if reuse else (False, "")
+        mm = MeshManager(self.source, sizing, plan, mesh_order=self.mesh_order, grading=self.grading,
+                         interfaces=kept, deterministic=deterministic,
+                         groups={"domains": entries, "boundaries": kept}, pml=pml)
+        ok, why = mm.can_reuse(str(path)) if reuse else (False, "")
         if ok:
             log.info("mesh reused: %s", path)
             domains, boundaries, nodes = mm.load_mesh(str(path))
         else:
             if reuse:
                 log.info("meshing %s (%s)", path, why)
-            domains, boundaries, nodes = mm.generate_mesh(str(self.geometry), str(path), True,
-                                                          show_gui=show, extract_mesh_data=True)
+            domains, boundaries, nodes = mm.generate_mesh(str(path), True, show_gui=show, extract_mesh_data=True)
         self._mesh_path = path
         self._selection = selection
         self.meshed = Mesh.from_axisymmetric(domains, boundaries, nodes, str(path))
@@ -246,8 +247,10 @@ class Model:
             if isinstance(r, PML) and layers is not None:
                 tags = set(self._pml_bases[r.name][0])
                 groups = [g.name for g in domains if g.name in layers and layers[g.name]["base"][0] in tags]
-            else:
+            elif isinstance(r, PML):                                    # mesh written before: the names
                 groups = [g.name for g in domains if naming.source_group(g.name) in selection[r.name]]
+            else:
+                groups = [g.name for g in domains if g.name in self._plan_names[r.name]]
             if not groups:
                 raise MeshError(f"{type(r).__name__}({r.name!r}) has no surface in the mesh {path.name} "
                                 f"(remesh with reuse=False)")
@@ -256,14 +259,36 @@ class Model:
         self.parts = self._parts(domains, boundaries)
         return self.meshed
 
-    def _meshed_groups(self, selection) -> dict:
-        """The groups the mesh is built from (its signature): domain groups with kind, size, PML thickness;
-        boundary groups."""
-        sizing = {d.name: d for d in self._sizing()}
-        domains = [[g, sizing[r.name].kind, sizing[r.name].size, sizing[r.name].t]
-                   for r in self.regions for g in selection[r.name]]
-        boundaries = sorted({g for b in self.boundaries for g in selection[b.name]})
-        return {"domains": domains, "boundaries": boundaries}
+    def _plan(self, selection, sizing):
+        """
+        The domains to mesh, in the order of the geometry: [DomainPlan] (one mesh group each: the name of its
+        group, or for unnamed surfaces the name of the region), the signature entries [group, kind, size, PML
+        thickness] (an unnamed surface: "surface_7 as cone"; a PML: its curve groups or "curve 12"), and
+        {region: its mesh group names}.
+        """
+        from loudpy.geometry.meshing2d import DomainPlan
+        index = self._index
+        owner = {g: r for r in self.regions if not isinstance(r, PML) for g in selection[r.name]}
+        plan, entries, names = [], [], {r.name: [] for r in self.regions}
+        used = {}
+        for g, tags in index.domains.items():
+            r = owner.get(g)
+            if r is None:
+                continue
+            sz = sizing[r.name]
+            name, key = (r.name, f"{g} as {r.name}") if g in index.unnamed else (g, g)
+            if used.setdefault(name, r.name) != r.name:
+                raise ModelError(f"mesh group {name!r} would hold domains of {used[name]!r} and {r.name!r}: "
+                                 f"rename the region")
+            plan.append(DomainPlan(sz, name, "loop" if index.kind == "loops" else "surfaces", list(tags)))
+            entries.append([key, sz.kind, sz.size, sz.t])
+            if name not in names[r.name]:
+                names[r.name].append(name)
+        for r in self.regions:
+            if isinstance(r, PML):
+                sz = sizing[r.name]
+                entries += [[g, sz.kind, sz.size, sz.t] for g in selection[r.name]]
+        return plan, entries, names
 
     def _sizing(self) -> list[DomainSizing]:
         out = []
@@ -332,5 +357,5 @@ class Model:
         return out
 
     def __repr__(self):
-        return (f"Model({self.geometry.name}: {len(self.regions)} regions, {len(self.boundaries)} boundaries, "
+        return (f"Model({self.source.name}: {len(self.regions)} regions, {len(self.boundaries)} boundaries, "
                 f"{'meshed' if self.meshed else 'not meshed'})")

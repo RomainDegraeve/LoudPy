@@ -21,6 +21,43 @@ and a material library. Everything is declared with small value objects passed t
    )
    model.mesh("Results/Files/mesh.msh")
 
+Geometry
+--------
+
+The first argument of ``lp.Model`` is the meridian half-plane (r ≥ 0 horizontal, z the axis), in
+metres:
+
+================================= ===============================================================
+``"speaker.geo"``                 a gmsh ``.geo``. Without surfaces (the curve-loop convention), every
+                                  **closed physical curve group** is a domain, made a surface by the
+                                  mesher; with surfaces (``Plane Surface``, ``Physical Surface`` …), its
+                                  physical surface groups are the domains.
+``"section.step"`` / ``.iges``    a CAD file: its faces are the domains; a **sketch** (curves only)
+                                  gives the closed regions of its curves. STEP / IGES lengths are
+                                  converted to metres from the file's unit; ``.brep`` is read as metres.
+``builder``                       a function ``builder(occ)`` drawing with gmsh's OpenCASCADE kernel and
+                                  returning the named parts ``{label: surface tag(s)}``
+================================= ===============================================================
+
+Surfaces are fragmented together, so that the mesh is conforming whatever the drawing. A surface in
+no named group (a STEP face, a region of a sketch) is a domain ``surface_<tag>``: select it by
+position (``lp.Near``, ``lp.Box``), and its mesh group then takes the name of the region.
+
+.. code-block:: python
+
+   # the loudspeaker straight from the CAD sketch (curves in mm, no names): regions by position
+   model = lp.Model("HPNEW-Sketch.step")
+   model.add(lp.Solid("dustcap", "Polypropylene", on=lp.Near((0.0089, 0.0105))),
+             lp.Air("front_air", on=lp.Near((0.02, 0.02))))     # and so on
+
+   # a builder: parts named on the fly
+   def plate(occ):
+       return {"plate": occ.addRectangle(0, 0, 0, 0.1, 0.002)}
+   model = lp.Model(plate)              # give the mesh file: model.mesh("plate.msh")
+
+A builder's mesh is reused while its code, its default arguments and the simple constants it reads
+are unchanged.
+
 Regions
 -------
 
@@ -65,8 +102,9 @@ Every region and boundary takes a selector as ``on=``:
 ``a | b``, ``a & b``, ``a - b``                            union, intersection, difference
 ========================================================= =================================================
 
-A string stands for ``lp.Group(string)``; a region or boundary of the model stands for what it
-covers. Python's precedence applies (``-`` before ``&`` before ``|``): use parentheses when mixing.
+A string stands for ``lp.Group(string)``, or for a region when it is the name of a region of the
+model (``lp.Interface("cone", "front_air")``); a region or boundary stands for what it covers, and
+items combine like selectors (``lp.Interface(cone | dustcap, front_air)``). Python's precedence applies (``-`` before ``&`` before ``|``): use parentheses when mixing.
 
 .. code-block:: python
 

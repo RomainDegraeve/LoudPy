@@ -18,7 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from loudpy.errors import ModelError
-from loudpy.geometry.selectors import Selector, as_selector
+from loudpy.geometry.selectors import Combinable, Selector, as_selector
 
 COMPONENTS = {"r": (0,), "z": (1,), "rz": (0, 1)}       # displacement components (0 = r, 1 = z)
 
@@ -29,7 +29,7 @@ def _check_components(owner, value):
 
 
 @dataclass
-class Boundary:
+class Boundary(Combinable):
     name: str
     on: Selector | str | None = field(default=None, kw_only=True)      # default: Group(name)
 

@@ -19,13 +19,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from loudpy.checks import check
-from loudpy.geometry.selectors import Selector, as_selector
+from loudpy.geometry.selectors import Combinable, Selector, as_selector
 from loudpy.model.damping import Damping, Rayleigh
 from loudpy.model.materials import Material
 
 
 @dataclass
-class Region:
+class Region(Combinable):
     name: str
     on: Selector | str | None = field(default=None, kw_only=True)      # default: Group(name)
 
