@@ -224,7 +224,7 @@ def mesh_cavity(msh_path, cavity_volume, center, r_c, z_b, h_near, h_far, d_near
     f.setAsBackgroundMesh(ft)
     for k, v in (("Mesh.MeshSizeExtendFromBoundary", 0), ("Mesh.MeshSizeFromPoints", 0),
                  ("Mesh.MeshSizeFromCurvature", 0), ("Mesh.ElementOrder", 2),
-                 ("Mesh.SecondOrderLinear", 1), ("Mesh.Algorithm3D", 10)):
+                 ("Mesh.SecondOrderLinear", 0), ("Mesh.Algorithm3D", 10)):
         gmsh.option.setNumber(k, v)
     gmsh.model.mesh.generate(3)
     Path(msh_path).parent.mkdir(parents=True, exist_ok=True)
@@ -347,7 +347,7 @@ def mesh_exterior(msh_path, volume, dtn: HalfSpaceDtN, center, r_f, z_front, h_n
     f.setAsBackgroundMesh(ft)
     for k, v in (("Mesh.MeshSizeExtendFromBoundary", 0), ("Mesh.MeshSizeFromPoints", 0),
                  ("Mesh.MeshSizeFromCurvature", 0), ("Mesh.ElementOrder", 2),
-                 ("Mesh.SecondOrderLinear", 1), ("Mesh.Algorithm3D", 10)):
+                 ("Mesh.SecondOrderLinear", 0), ("Mesh.Algorithm3D", 10)):
         gmsh.option.setNumber(k, v)
     gmsh.model.mesh.generate(3)
     Path(msh_path).parent.mkdir(parents=True, exist_ok=True)
@@ -387,7 +387,7 @@ def mesh_volume(msh_path, volume, classify, refine, h_far):
     f.setAsBackgroundMesh(fm)
     for k, v in (("Mesh.MeshSizeExtendFromBoundary", 0), ("Mesh.MeshSizeFromPoints", 0),
                  ("Mesh.MeshSizeFromCurvature", 0), ("Mesh.MeshSizeMax", h_far),
-                 ("Mesh.ElementOrder", 2), ("Mesh.SecondOrderLinear", 1), ("Mesh.Algorithm3D", 10)):
+                 ("Mesh.ElementOrder", 2), ("Mesh.SecondOrderLinear", 0), ("Mesh.Algorithm3D", 10)):
         gmsh.option.setNumber(k, v)
     gmsh.model.mesh.generate(3)
     Path(msh_path).parent.mkdir(parents=True, exist_ok=True)

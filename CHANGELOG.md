@@ -52,6 +52,14 @@ The roadmap of this work is in `docs/ROADMAP.md`.
   `<mesh>.msh.json`), not in the surface names; meshes written before are still read.
 
 ### Changed
+
+- 3D scenes: P2 tetrahedra are curved (isoparametric). New 3D meshes place the mid-edge nodes on the
+  CAD surfaces, and the 3D operators follow them: the pulsating-hemisphere radiation error falls from
+  1.8 % to 0.011 % (h = 3.5 cm, 200 Hz). Meshes saved before keep their straight edges until rebuilt.
+  Folded curved cells raise a `MeshError`.
+- Internal: every finite-element operator (structure, Fourier orders, nonlinear, air with PML,
+  coupling, coil force, DtN, 3D air) is assembled by one generic core (`loudpy.fem`: Lagrange P1–P3 /
+  Q1–Q2 elements, quadrature, function spaces, Numba kernels). Same results (see ROADMAP, phase D).
 - One air everywhere: the library's `Air` is computed by `lp.air()` at 20 °C, 101.325 kPa, dry
   (ρ = 1.2041 kg/m³, c = 343.24 m/s), and 2D models, 3D scenes and the 3D toolkit defaults
   (`RHO_AIR`, `C_AIR`) all use it. Before, 2D used 1.204 / 343.2 and 3D used 1.2 / 343.0: 2D results

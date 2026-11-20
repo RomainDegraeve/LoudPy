@@ -263,16 +263,17 @@ def rect_cavity_modes(mesh_dir: Path, size=(0.30, 0.20, 0.14), h=0.03, f_max=200
     return cav.solve(f_max), cav
 
 
-def hemisphere_radiation(mesh_dir: Path, freqs, a=0.10, R=0.25, h=0.04):
+def hemisphere_radiation(mesh_dir: Path, freqs, a=0.10, R=0.25, h=0.04, curved=False):
     """
     Pulsating hemisphere (radius a) on a rigid ground, exterior FE + half-space DtN (radius R):
-    FE pressure at 7 points at 1 m and the exact one, per frequency.
+    FE pressure at 7 points at 1 m and the exact one, per frequency. curved=True: gmsh puts the P2
+    mid-edge nodes on the spheres (isoparametric cells); False: straight-sided cells (faceted spheres).
     """
     from loudpy.geometry.gmsh_session import gmsh_module as _gmsh
     from loudpy.fem.tet10 import surface_quadrature
     from loudpy.model.materials import RHO_AIR, C_AIR
     from loudpy.physics.exterior import HalfSpaceDtN, ExteriorFE, _h2
-    msh = mesh_dir / "dtn_shell.msh"
+    msh = mesh_dir / ("dtn_shell_curved.msh" if curved else "dtn_shell.msh")
     if not msh.exists():
         g = _gmsh()
         g.clear()
@@ -292,7 +293,7 @@ def hemisphere_radiation(mesh_dir: Path, freqs, a=0.10, R=0.25, h=0.04):
         for k, (n, ts) in enumerate(groups.items(), start=2):
             g.model.addPhysicalGroup(2, ts, k, name=n)
         for k, v in (("Mesh.MeshSizeMax", h), ("Mesh.MeshSizeMin", h * 0.5), ("Mesh.ElementOrder", 2),
-                     ("Mesh.SecondOrderLinear", 1)):
+                     ("Mesh.SecondOrderLinear", 0 if curved else 1)):
             g.option.setNumber(k, v)
         g.model.mesh.generate(3)
         g.write(str(msh))

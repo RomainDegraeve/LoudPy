@@ -3,7 +3,7 @@ Verification against analytical solutions: the numbers are right, not only uncha
 
   clamped circular plate     axisymmetric + Fourier-order structure vs Kirchhoff plate theory
   rectangular rigid cavity   3D P2 acoustics vs the exact modes, and the observed convergence order
-  pulsating hemisphere       3D exterior FE + half-space DtN vs the exact radiated pressure
+  pulsating hemisphere       3D exterior FE + half-space DtN vs the exact radiated pressure (curved P2)
   air                        lp.air (ideal-gas mixture) vs Cramer's speed-of-sound correlation
   structure–air coupling     swept volume, energy balance, radiated power, piston antisymmetry
 
@@ -72,18 +72,19 @@ def test_rect_cavity_modes_converge_at_order_four(tmp_path):
 # ── pulsating hemisphere on a rigid ground ───────────────────────────────────
 def test_pulsating_hemisphere_radiation(tmp_path):
     """
-    Exterior FE + exact half-space DtN against the analytical monopole field at 1 m. The meshes are
-    straight-sided P2 (faceted sphere): the error is dominated by the geometry and decreases slowly
-    with h. Bound: 2.2 % at h = 3.5 cm, and smaller than at h = 5 cm.
+    Exterior FE + exact half-space DtN against the analytical monopole field at 1 m, on isoparametric
+    P2 tetrahedra (gmsh's mid-edge nodes on the spheres). The former straight-sided cells (faceted
+    spheres) gave 1.8 % / 1.4 % at h = 3.5 cm; curved cells 0.011 % / 0.054 % (200 Hz / 1 kHz).
+    Bound: 0.1 % at h = 3.5 cm, and smaller than at h = 5 cm.
     """
     errs = []
     for h in (0.05, 0.035):
         d = tmp_path / f"h{h}"
         d.mkdir()
-        fe, exact = api.hemisphere_radiation(d, [200.0, 1000.0], h=h)
+        fe, exact = api.hemisphere_radiation(d, [200.0, 1000.0], h=h, curved=True)
         errs.append(np.linalg.norm(fe - exact, axis=1) / np.linalg.norm(exact, axis=1))
     coarse, fine = errs
-    assert np.all(fine < coarse) and fine.max() < 0.022, (coarse, fine)
+    assert np.all(fine < coarse) and fine.max() < 1e-3, (coarse, fine)
 
 
 # ── structure–air coupling ───────────────────────────────────────────────────

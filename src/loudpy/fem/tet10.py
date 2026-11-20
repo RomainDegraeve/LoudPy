@@ -21,7 +21,7 @@ from loudpy.fem.reference import lagrange
 
 __all__ = ["assemble_p2", "surface_quadrature", "CURVED", "straight_cells"]
 
-CURVED = False         # default geometry of the 3D toolkit cells
+CURVED = True          # default geometry of the 3D toolkit cells
 
 # 6-point Dunavant rule on triangles (degree 4), barycentric (l1, l2), weights sum to 1: the rule of the
 # former surface quadrature, kept so that straight faces give the same numbers
@@ -51,6 +51,14 @@ def assemble_p2(nodes, tets, curved: bool | None = None):
     if not curved:
         ec = straight_cells(elem, ec)
     N, dN, w = tabulate(elem, quadrature("tetrahedron", 4))     # exact for straight cells
+    if curved:
+        det = np.linalg.det(np.einsum("eai,qaj->eqij", ec, dN))
+        bad = np.flatnonzero((np.sign(det) != np.sign(det[:, :1])).any(axis=1))
+        if len(bad):
+            from loudpy.errors import MeshError
+            raise MeshError(f"{len(bad)} curved P2 tetrahedra are folded (det J changes sign inside, "
+                            f"e.g. cell {bad[0]}): refine the mesh near curved surfaces, or use "
+                            f"curved=False")
     one = np.ones((len(ec), len(w)))
     Ke = np.empty((len(ec), 100))
     Me = np.empty((len(ec), 100))

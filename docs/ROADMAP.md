@@ -375,3 +375,14 @@ The plan holds; adjustments, decided with the user:
   as the former exact integrals at ≤ 1.3e-15 (K 1.1e-15, M 7.1e-16, surface points / weights / W
   ≤ 1.3e-15 on a P2 ball), every reference unchanged. On that ball (h = 0.4) straight cells give the
   volume −3.5 % and the area −1.9 %; curved (isoparametric) cells −0.015 % and −0.010 %.
+- **D4b, step 2 (done)**: curved 3D cells. `fem.tet10` is isoparametric by default (`CURVED = True`;
+  folded cells — det J changing sign inside — raise a `MeshError`), and the 3D mesher
+  (`geometry/meshing3d.py`, 3 places) now lets gmsh put the P2 mid-edge nodes on the CAD surfaces
+  (`Mesh.SecondOrderLinear = 0`, was 1: straight edges, faceted spheres and cylinders). Pulsating
+  hemisphere vs the exact field at 1 m (200 Hz / 1 kHz): h = 5 cm 2.88 % / 1.99 % → 0.033 % / 0.19 %;
+  3.5 cm 1.84 % / 1.43 % → 0.011 % / 0.054 %; 2.5 cm 0.89 % / 0.69 % → 0.0027 % / 0.016 %. The 2.2 %
+  of phase A was the faceted geometry, as suspected. `test_pulsating_hemisphere_radiation` now runs
+  curved cells with a bound of 0.1 % (was 2.2 %). The committed 3D test meshes have straight mid-edge
+  nodes and are still reused (the scene signature does not include the node placement), so no reference
+  moves; meshes built from now on are curved. **For phase F** (one remeshing rule): put the node
+  placement in the mesh signature so that old straight meshes are rebuilt.
