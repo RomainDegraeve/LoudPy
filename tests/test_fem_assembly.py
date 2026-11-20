@@ -290,8 +290,10 @@ def test_tet10_toolkit_curved():
     a_straight = tet10.surface_quadrature(X, tris, curved=False)[1].sum()
     a_curved = tet10.surface_quadrature(X, tris, curved=True)[1].sum()
     V, A = 4 * np.pi / 3, 4 * np.pi
-    assert abs(V_straight - V) / V > 0.02 and abs(V_curved - V) / V < 5e-4
-    assert abs(a_straight - A) / A > 0.01 and abs(a_curved - A) / A < 5e-4
+    # the gmsh mesh differs between platforms (Linux CI: volume −6.1 % straight, −0.051 % curved; macOS:
+    # −3.5 % and −0.015 %): compare the two geometries rather than fixed numbers
+    for straight, curved, exact in ((V_straight, V_curved, V), (a_straight, a_curved, A)):
+        assert abs(curved - exact) < abs(straight - exact) / 50 and abs(curved - exact) / exact < 2e-3
     np.testing.assert_allclose(M.sum(), V_straight, rtol=1e-13)
     np.testing.assert_allclose(Mc.sum(), V_curved, rtol=1e-13)
     np.testing.assert_allclose(K @ np.ones(len(X)), 0.0, atol=1e-12)
