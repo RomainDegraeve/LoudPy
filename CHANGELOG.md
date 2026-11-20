@@ -8,6 +8,9 @@ versions follow [Semantic Versioning](https://semver.org/) (0.x: the API may sti
 The roadmap of this work is in `docs/ROADMAP.md`.
 
 ### Added
+- `FrequencyResults.far_field(at, radius, center, baffle)`: pressure outside the 2D mesh by the
+  Kirchhoff–Helmholtz integral over a sphere in the air (free field or infinite baffle), from the result
+  file alone. `Results.arrays()`: the results as plain NumPy arrays.
 - Result format 3: every result file holds the model description (tree, items, resolved physical data per
   mesh group, the geometry files or the builder's code) and the study settings (`res.model`, `res.study`,
   `res.model.extract(folder)`); a parametric sweep is one file (`SweepResults.save("x.h5")`, read by
@@ -69,6 +72,9 @@ The roadmap of this work is in `docs/ROADMAP.md`.
   `<mesh>.msh.json`), not in the surface names; meshes written before are still read.
 
 ### Changed
+- Interpolation (`probe`, `pressure`, `spl`, `Field.at` …) uses the mesh's own elements: exact for the FE
+  field in 2D (any order, quadrilaterals, curved cells) and in **tetrahedra** (3D was the nearest node,
+  2D was linear on sub-triangles). `Mesh.interpolation(points, gradient=True)` also gives the gradient.
 
 - Meshing is deterministic by default (`model.mesh(…, deterministic=True)`); the thread count no longer
   decides whether a saved mesh is reused. `FrequencyResponse(remesh=…)` meshes copies of the model and no

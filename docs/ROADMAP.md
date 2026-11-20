@@ -568,3 +568,21 @@ a 2D FrequencyResponse (explicit error today).
   and read back — fields, meshes, extra, meta and boundaries bit-identical, description and settings
   equal; the geometry files extracted from a file give the same digests as the originals. 4 tests
   (`tests/test_results_format3.py`) + format checks in the scene tests; 307 tests pass with `--slow`.
+- **G2 (done)**: `Mesh.interpolation(points, gradient=False)` exact for the mesh's own elements: the cell
+  found by a KD-tree on the cell centres and Newton on the isoparametric map (curved cells included),
+  weights = the cell's Lagrange basis (P1–P3 triangles, Q1–Q2, P1–P3 tetrahedra), gradients through the
+  inverse Jacobian; a point on a node takes that node exactly, a point in no cell the nearest node. Tested
+  exact (≤ 1e-12) for x^p (P1–P3 triangles and tetrahedra), x^p y^p (Q1–Q2), the isoparametric
+  coordinates on curved P2 cells (values and gradients). No regression reference moved (the references are
+  nodal). `Results.arrays()` (plain arrays, what `export` writes). **Far field from the file alone**: 2D
+  axisymmetric Kirchhoff–Helmholtz (`results/farfield.py`, `FrequencyResults.far_field`): p and ∂p/∂n on a
+  sphere (meridian arc, Gauss–Legendre) with the ring Green's function by the trapezoidal rule in φ, rigid
+  infinite baffle by the image Green's function. Analytical monopoles from a saved file, 3 m: free field
+  7.2e-6 (200 Hz) / 3.3e-4 (1 kHz), baffled 4.5e-5 / 5.5e-4 (h = 1 cm; 2.4e-3 at 1 kHz with h = 2 cm,
+  converging). Speaker (committed FSI mesh, baffle z = 0.032): the far field of spheres R = 0.12 and 0.2 m
+  reproduces the FE pressure at 0.26 m to ≤ 1.8e-3 at 500 Hz and 1.5 kHz. **Found**: at 100 Hz both radii
+  agree with each other but differ from the FE pressure by 26 %: the integral keeps the outgoing wave only,
+  so the FE field of this test model (PML 0.1 m thick tuned to 1 kHz, λ = 3.4 m) holds a reflected part at
+  low frequency — a property of the coarse test setup, to keep in mind for low-frequency SPL in the
+  examples (phase M). 3D scenes: the far field computed by a separate Python process from the stored file
+  equals the live one bit for bit (slow scene test). 13 tests (`tests/test_interpolation_farfield.py`).

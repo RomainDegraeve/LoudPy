@@ -152,6 +152,18 @@ def test_open_scene_matches_toolkit(driver, mesh_dir, tmp_path, kind, reference)
     arc = res.spl(at=lp.Arc(2.0, [0, 45, 90], center=(W / 2, H / 2, 0.0), axis="z", toward="x"))
     assert arc.dims == ("f", "angle") and arc.shape == (2, 3)
     assert set(res.driver_surfaces(400.0)) == set(res.drivers)
+    # gate G: the far field from the file alone, in a process that has nothing but the file
+    import subprocess
+    import sys
+    code = ("import sys, numpy as np, loudpy as lp; r = lp.load(sys.argv[1]); "
+            "a = lp.Arc(2.0, [0, 45, 90], center=(%r, %r, 0.0), axis='z', toward='x'); "
+            "np.save(sys.argv[2], np.asarray(r.far_field(a)))" % (W / 2, H / 2))
+    out = subprocess.run([sys.executable, "-c", code, str(tmp_path / "s.h5"), str(tmp_path / "far.npy")],
+                         capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr
+    alone = np.load(tmp_path / "far.npy")
+    live = np.asarray(res.far_field(lp.Arc(2.0, [0, 45, 90], center=(W / 2, H / 2, 0.0), axis="z", toward="x")))
+    np.testing.assert_array_equal(alone, live)
 
 
 # ── F3: the scene follows the model pattern ─────────────────────────────────

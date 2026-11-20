@@ -13,6 +13,8 @@ Results: the outcome of any study, with one interface.
     res.probe("p", at=lp.Line((0, .05), (0, .5)))   any field along any selection
     res.scalar("I_coil"), res.impedance()        per-entry quantities as Data
 
+    res.far_field(lp.Arc(1, range(0, 91, 10)), radius=0.2, baffle=z_b)   pressure outside the mesh (Kirchhoff–Helmholtz)
+    res.arrays()                                 plain NumPy arrays (values, fields, meshes, per-entry quantities)
     res.save("sweep.h5")                         loudpy result format 3 (HDF5, with the model description)
     res.model, res.study                         what produced them: model tree, groups, geometry files; settings
     res.export("sweep.mat")                      MATLAB / NumPy (.npz) export of every field and mesh
@@ -242,6 +244,20 @@ class Results:
             return self.probe("a", at, component)
         return self.displacement(at, component).acceleration()
 
+    # ── plain arrays ───────────────────────────────────────────────────────
+    def arrays(self, block: int | None = None, fields=None):
+        """
+        The results as plain NumPy arrays, per block: {coordinate: (n,), field: (n, n_nodes[, dpn]),
+        f"{field}_mesh": {"coords", "triangles" (2D, linear sub-triangles), "node_tags"}, per-entry quantities}.
+        block: one block's dict (default: a list over the blocks; one block → its dict). This is what
+        res.export writes (.mat / .npz).
+        """
+        from loudpy.results.export import _block_arrays
+        if block is not None:
+            return _block_arrays(self, self.blocks[block], fields)
+        out = [_block_arrays(self, b, fields) for b in self.blocks]
+        return out[0] if len(out) == 1 else out
+
     # ── files ──────────────────────────────────────────────────────────────
     def save(self, path):
         """Write these results in the loudpy result format 3 (loudpy.results.schema): fields, meshes, the
@@ -273,6 +289,41 @@ class FrequencyResults(Results):
     def field(self, name: str, f: float | None = None, index: int | None = None) -> Field:
         """One field on its mesh at the frequency nearest f (or at a global entry index)."""
         return super().field(name, index, f)
+
+    def far_field(self, at, radius: float, center=(0.0, 0.0), baffle: float | None = None,
+                  c: float | None = None) -> Data:
+        """
+        Pressure [Pa] at `at` (points (r, z), lp.Arc …) outside a sphere enclosing the loudspeaker, radiated
+        into free space: the Kirchhoff–Helmholtz integral of p and ∂p/∂n over the sphere (radius [m], centre
+        on the axis; it must lie in the air, not in a PML) — see loudpy.results.farfield. baffle: z of a
+        rigid infinite baffle (then the half sphere above it and the image Green's function). c: speed of
+        sound (default: the air of the result's model description).
+        """
+        from loudpy.results.farfield import kirchhoff_helmholtz
+        c = c or self._sound_speed()
+        sel = as_selection(at)
+        out = []
+        for b in self.blocks:
+            if "p" not in b.fields:
+                raise ResultsError(f"no pressure field in block {b.label!r}: far_field needs the air")
+            out.append(kirchhoff_helmholtz(b.mesh_of("p"), np.asarray(b.fields["p"]), 2 * np.pi * b.values / c,
+                                           sel.points(2), radius, center, baffle))
+        v = np.concatenate(out, axis=0)
+        coords = {"f": self.frequencies}
+        if sel.dim is None:
+            v = v[:, 0]
+        else:
+            coords[sel.dim] = sel.coord
+        return Data(v, coords, quantity("p"), meta=self._meta(
+            at=sel.describe(), far_field=f"Kirchhoff–Helmholtz over a sphere of radius {radius:g} m"
+            + (f", baffle z = {baffle:g} m" if baffle is not None else "")))
+
+    def _sound_speed(self) -> float:
+        groups = self.model.groups if self.model is not None else {}
+        cs = {g["c"] for g in groups.values() if g.get("role") in ("air", "pml") and "c" in g}
+        if len(cs) == 1:
+            return cs.pop()
+        raise ResultsError("give the speed of sound c= (these results do not describe one air)")
 
     def impedance(self) -> Data:
         """Electrical input impedance Z = U / I_coil over frequency (voltage drive) [Ω]."""

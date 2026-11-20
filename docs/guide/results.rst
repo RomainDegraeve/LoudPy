@@ -38,8 +38,9 @@ Every ``at=`` argument takes a point or a *selection* (like COMSOL's cut points 
      - along a segment: an ``s`` dimension (distance [m])
 
 In 3D, ``lp.Arc(R, angles, center=..., axis="z", toward="x")`` sets the plane of the angles (0° along
-``axis``, 90° along ``toward``). On 2D meshes values are interpolated linearly (the P2 triangles
-split through their mid-side nodes); on 3D meshes the nearest node is used.
+``axis``, 90° along ``toward``). Values are interpolated with the elements of the mesh themselves (any
+order, triangles, quadrilaterals, tetrahedra, curved cells: exact for the FE field); a point outside
+the mesh takes the value of the nearest node.
 
 Evaluations
 -----------
@@ -55,6 +56,26 @@ Evaluations
    res.probe("u", at=...)                         # any field; vector fields: a "component" dimension
    res.impedance()                              # U / I_coil over f (voltage drive) [Ω]
    res.scalar("I_coil")                         # any per-entry quantity as Data
+   res.arrays()                                 # plain NumPy arrays (values, fields, meshes, per-entry)
+
+Far field
+---------
+
+A 2D model computes the air in a finite domain. ``res.far_field`` gives the pressure **outside** it,
+radiated into free space (or in front of an infinite rigid baffle), from the result alone: the
+Kirchhoff–Helmholtz integral of p and ∂p/∂n over a sphere around the loudspeaker (a meridian arc of
+the air mesh, revolved).
+
+.. code-block:: python
+
+   ff = res.far_field(lp.Arc(1.0, range(0, 91, 5), center=(0, z_b)),   # 1 m, directivity
+                      radius=0.2, center=(0, z_b), baffle=z_b)          # sphere in the air; baffle plane
+   ff.spl()                                                            # Data over (f, angle)
+
+The sphere must lie in the physical air (not in a PML) and enclose the loudspeaker; the points must be
+outside it. Checked against analytical monopoles (free field and baffled: 3·10⁻⁴ at 1 kHz with 1 cm
+P2 elements) and against the FE field inside the mesh. 3D scenes: ``res.far_field(at)`` uses the exact
+DtN expansion stored in the file.
 
 SPL is **RMS** everywhere in loudpy (``|p| / √2``; ``rms=False`` for peak amplitudes).
 ``lp.spl(p)`` converts any complex amplitudes.
