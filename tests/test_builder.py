@@ -59,3 +59,16 @@ def test_checks():
     b.add_field(Field("q", 1))                               # a field with no term keeps its block
     b.add(Term("u", "u", sp.eye(2)))
     assert b.at(1j).shape == (3, 3)
+
+
+def test_registry_covers_the_roles():
+    """Every contribution belongs to a declared role; the forms are checked; the DtN radiation exists in
+    the symmetric form only."""
+    from loudpy.physics.builder import CONTRIBUTIONS, contribute
+    from loudpy.physics.registry import ROLES
+    assert set(CONTRIBUTIONS) <= set(ROLES)
+    b = SystemBuilder()
+    with pytest.raises(ValueError, match="form"):
+        contribute(b, None, [], None, ["solid"], form="time")
+    with pytest.raises(ModelError, match="symmetric form only"):
+        contribute(b, None, [], None, ["radiation"], form="frequency")

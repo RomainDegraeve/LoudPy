@@ -31,7 +31,8 @@ import scipy.sparse as sp
 
 from loudpy.errors import ModelError
 
-__all__ = ["Field", "Term", "Load", "SystemBuilder", "CONTRIBUTIONS", "contribute", "coupled_builder"]
+__all__ = ["Field", "Term", "Load", "SystemBuilder", "CONTRIBUTIONS", "FORMS", "contribute", "coupled_builder",
+           "symmetric_builder"]
 
 
 @dataclass
@@ -171,24 +172,56 @@ class SystemBuilder:
 # ════════════════════════════════════════════════════════════════════════════
 #  Contributions of the 2D axisymmetric physics, by role
 # ════════════════════════════════════════════════════════════════════════════
-def _structure(b, s, parts, drive):
+# Two forms of the same physics:
+#   "frequency": fields u, p (, I): the forced response, unsymmetric (see the module docstring)
+#   "symmetric": fields u, psi (p = −sψ), phi (DtN auxiliaries): the symmetric quadratic eigenproblem
+#                (s² Ms + s Cs + Ks) x = 0 of the coupled modes
+FORMS = ("frequency", "symmetric")
+
+
+def _structure(b, s, parts, drive, form, extra):
     """Solid regions: K (complex with a loss factor), C = αM + βK, M on the field u."""
-    b.add(Term("u", "u", s.K), Term("u", "u", s.C, power=1), Term("u", "u", s.M, power=2))
+    C = s.C if s.C is not None else sp.csr_matrix(s.K.shape)
+    b.add(Term("u", "u", s.K), Term("u", "u", s.M, power=2), Term("u", "u", C, power=1))
 
 
-def _air(b, s, parts, drive):
-    """Air and PML regions: H and Q on the field p."""
-    b.add(Term("p", "p", s.H), Term("p", "p", s.Q, power=2))
+def _air(b, s, parts, drive, form, extra):
+    """Air and PML regions: H and Q on p (frequency), −H/ρ and −Q/ρ on ψ (symmetric)."""
+    if form == "frequency":
+        b.add(Term("p", "p", s.H), Term("p", "p", s.Q, power=2))
+    else:
+        b.add(Term("psi", "psi", -s.H / s.rho), Term("psi", "psi", -s.Q / s.rho, power=2))
 
 
-def _fluid_structure(b, s, parts, drive):
-    """Coupling with the outward normal of the air: −Camᵀ p on the structure, ρ s² Cam u on the air."""
-    b.add(Term("u", "p", -s.Cam.T), Term("p", "u", s.rho * s.Cam, power=2))
+def _fluid_structure(b, s, parts, drive, form, extra):
+    """Coupling with the outward normal of the air: −Camᵀ p on u and ρ s² Cam u on p (frequency);
+    Camᵀ ψ on u and Cam u on ψ, both in s¹ (symmetric)."""
+    if form == "frequency":
+        b.add(Term("u", "p", -s.Cam.T), Term("p", "u", s.rho * s.Cam, power=2))
+    else:
+        b.add(Term("u", "psi", s.Cam.T, power=1), Term("psi", "u", s.Cam, power=1))
 
 
-def _coil(b, s, parts, drive):
-    """The drive on the coil: a force (load on u) or a voltage with its circuit (field I)."""
+def _radiation(b, s, parts, drive, form, extra):
+    """Exact DtN radiation (symmetric form): Dk, Dc on ψ, auxiliaries φ with G, Gᵀ, Zaa, Caa
+    (pieces computed by physics.systems.dtn_system, passed as extra["dtn"])."""
+    if form != "symmetric":
+        raise ModelError("the exact DtN radiation is available for the coupled modes (symmetric form) only")
+    d = extra["dtn"]
+    n_aux = d["n_aux"]
+    b.add(Term("psi", "psi", d["Dk"]), Term("psi", "psi", d["Dc"], power=1))
+    b.add(Term("phi", "phi", sp.csr_matrix((n_aux, n_aux)), power=2))
+    if n_aux:
+        b.add(Term("psi", "phi", d["G"]), Term("phi", "psi", d["G"].T), Term("phi", "phi", d["Zaa"]),
+              Term("phi", "phi", d["Caa"], power=1))
+
+
+def _coil(b, s, parts, drive, form, extra):
+    """The drive on the coil: a force (load on u) or a voltage with its circuit (field I).
+    Nothing in the symmetric form (free modes)."""
     from loudpy.model.drives import Force, Voltage
+    if form == "symmetric":
+        return
     if s.F is None:
         raise ModelError("the model has no coil boundary (lp.Coil): nothing drives it")
     if isinstance(drive, Voltage):
@@ -211,14 +244,17 @@ CONTRIBUTIONS = {
     "solid": _structure,
     "air": _air,
     "fluid_structure": _fluid_structure,
+    "radiation": _radiation,
     "coil": _coil,
 }
 
 
-def contribute(b: SystemBuilder, s, parts, drive, roles) -> None:
-    """Let every role present in `roles` (once each, in this order) add its terms to the builder."""
+def contribute(b: SystemBuilder, s, parts, drive, roles, form: str = "frequency", **extra) -> None:
+    """Let every role in `roles` (once each, in this order) add its terms to the builder."""
+    if form not in FORMS:
+        raise ValueError(f"form must be one of {FORMS}, got {form!r}")
     for role in roles:
-        CONTRIBUTIONS[role](b, s, parts, drive)
+        CONTRIBUTIONS[role](b, s, parts, drive, form, extra)
 
 
 def coupled_builder(s, parts, drive, coupled: bool) -> SystemBuilder:
@@ -231,4 +267,14 @@ def coupled_builder(s, parts, drive, coupled: bool) -> SystemBuilder:
         roles += ["air", "fluid_structure"]
     roles.append("coil")
     contribute(b, s, parts, drive, roles)
+    return b
+
+
+def symmetric_builder(s, parts, dtn) -> SystemBuilder:
+    """The symmetric u–ψ–φ system (p = −sψ) of the coupled modes with the exact DtN radiation."""
+    b = SystemBuilder()
+    b.add_field(Field("u", s.n_meca, expand=s.meca.expand))
+    b.add_field(Field("psi", s.n_acou))
+    b.add_field(Field("phi", dtn["n_aux"]))
+    contribute(b, s, parts, None, ["solid", "air", "radiation", "fluid_structure"], form="symmetric", dtn=dtn)
     return b

@@ -442,3 +442,11 @@ judged negligible (estimated effect ≲ 0.1 % on spider-dominated modes, ≲ 0.0
   `tests/reference/test_dtn_system_blocks.npz`, created on purpose, nothing else regenerated): size, nnz,
   Σ|a|, ‖·‖_F of every term of the system, so that the air block (Σ|a| ≈ 1.2e4 against 1.2e13 for the
   structure) is checked on its own.
+- **E2b (done)**: one registry for both forms. Each role's contribution (`physics/builder.py`: solid, air,
+  fluid_structure, radiation, coil) takes `form="frequency"` (fields u, p, I: forced response) or
+  `form="symmetric"` (fields u, psi, phi: coupled modes); `coupled_builder` and `symmetric_builder` only
+  declare fields and roles. The voice-coil circuit is the coil's contribution (field I, a non-polynomial
+  term for the semi-inductance sⁿ Le). DtN system still bit-identical, fields ≤ 1e-13 against `c97bd73`.
+  288 tests pass with `--slow`. Not done (a new feature, not in the gate): the exact DtN radiation in
+  `FrequencyResponse` (today a frequency study ignores lp.Radiation, as before E): the frequency form of
+  the radiation contribution raises an error, so the gap is explicit; candidate for phase F.
