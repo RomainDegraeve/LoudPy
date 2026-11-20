@@ -2,7 +2,7 @@
 from numba import njit, prange
 
 
-@njit(parallel=True, cache=True, fastmath=True, boundscheck=False)
+@njit(parallel=True, cache=True, fastmath=False, boundscheck=False)
 def _fsi_local_to_V(out_x, out_y, signs, V):
     """
     Vectorized interleave + sign application, written directly into V.

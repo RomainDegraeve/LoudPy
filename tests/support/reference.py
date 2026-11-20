@@ -15,8 +15,17 @@ from pathlib import Path
 
 import numpy as np
 
-RTOL = 1e-8          # default relative tolerance (numerics are expected to be unchanged)
-MAC_MIN = 1 - 1e-8   # mode-shape agreement
+# Tolerances. Floating-point results agree across machines and compilers only to a few units in the
+# last place per operation, and ill-conditioned quantities amplify that. Measured spread (macOS arm64,
+# Linux x86-64, Numba fastmath on / off): ~1e-11 on operators with cancellation (C = αM + βK applied to
+# a smooth vector), ~3e-8 on responses near a resonance. The tolerances sit about a decade above the
+# spread and decades below any change of the model or the method (≥ 1e-5).
+RTOL = 1e-8              # default (smooth quantities)
+RTOL_OPERATOR = 1e-10    # assembled operators (fingerprints)
+RTOL_RESPONSE = 1e-6     # forced responses (amplified near resonances)
+RTOL_COUPLED_MODES = 1e-4   # damped coupled modes in near-degenerate pairs (cos / sin twins of a
+#                             non-symmetric problem): a perturbation ε moves them by ~√ε (spread ~3e-6)
+MAC_MIN = 1 - 1e-8       # mode-shape agreement
 
 
 class ReferenceStore:

@@ -18,7 +18,7 @@ for _g in range(len_gp):
     _dNdxi[_g] = _dxi
     _w[_g] = _ww
 
-@njit(cache=True, fastmath=True)
+@njit(cache=True, fastmath=False)
 def compute_FSI_T6(edge_coords):
 
     """

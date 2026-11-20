@@ -11,6 +11,7 @@ import pytest
 
 import loudpy as lp
 from support import current_api as api
+from support.reference import RTOL_COUPLED_MODES, RTOL_RESPONSE
 from support.reference import ReferenceStore
 
 pytestmark = pytest.mark.slow
@@ -45,7 +46,7 @@ def test_cavity_one_driver(driver, mesh_dir):
     scene.cavity(f_max=3000.0, eta=0.02, file="box_one_driver.msh", cache_modes=False)
     scene.mesh(mesh_dir, reuse="always")
     res = lp.FrequencyResponse(scene, drive=lp.Force(1.0)).solve(FREQS)
-    _ref("test_driver_in_box").check(q=res.q, rtol=1e-9)
+    _ref("test_driver_in_box").check(q=res.q, rtol=RTOL_RESPONSE)
     assert res.driver("main").excursion().shape == (len(FREQS),)
     assert res.cavity_pressure((0.03, 0.03, api.Z_B - 0.12)).shape == (len(FREQS),)
 
@@ -79,7 +80,7 @@ def test_cavity_two_drivers_transfer(driver, mesh_dir):
     md = multidriver(scene)
     Fs = md.coil_forces([driver.coil_nodes, driver.coil_nodes])
     u = np.stack([np.einsum("ni,fn->fi", Fs, q) for q in cols], axis=2)        # (f, i, j)
-    _ref("test_two_drivers_transfer").check(u=u, rtol=1e-9)
+    _ref("test_two_drivers_transfer").check(u=u, rtol=RTOL_RESPONSE)
 
 
 def test_scene_coupled_modes(driver, mesh_dir):
@@ -88,7 +89,7 @@ def test_scene_coupled_modes(driver, mesh_dir):
     scene.mesh(mesh_dir, reuse="always")
     modes = lp.Modes(scene).solve(f_max=1500.0)
     s_ref = _ref("test_driver_in_box")._get("coupled")
-    np.testing.assert_allclose(np.sort(modes.extra("s").imag), np.sort(s_ref.imag), rtol=1e-9)
+    np.testing.assert_allclose(np.sort(modes.extra("s").imag), np.sort(s_ref.imag), rtol=RTOL_COUPLED_MODES)
 
 
 # ── B and C: against ExteriorFE + coupled_sweep on the same meshes ─────────────

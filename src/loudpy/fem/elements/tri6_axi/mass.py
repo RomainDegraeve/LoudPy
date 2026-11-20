@@ -27,7 +27,7 @@ for _g in range(len_gp):
 PI = np.pi
 
 
-@njit(cache=True, fastmath=True) # Force cache off to ensure update
+@njit(cache=True, fastmath=False) # Force cache off to ensure update
 def compute_M_T6(coords, rho):
     M_e = np.zeros((12, 12))
     for g in range(len_gp):

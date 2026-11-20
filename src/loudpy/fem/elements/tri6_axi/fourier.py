@@ -53,7 +53,7 @@ def _theta_factor(m):
     return 2.0 * np.pi if m == 0 else np.pi
 
 
-@njit(cache=True, fastmath=True)
+@njit(cache=True, fastmath=False)
 def compute_K_T6_fourier(coords, D6, m):
     """Stiffness matrix (18x18) of order m, DOF per node (U_r, U_z, U_θ)."""
     K_e = np.zeros((18, 18))
@@ -87,7 +87,7 @@ def compute_K_T6_fourier(coords, D6, m):
     return K_e
 
 
-@njit(cache=True, fastmath=True)
+@njit(cache=True, fastmath=False)
 def compute_M_T6_fourier(coords, rho, m):
     """Consistent mass matrix (18x18) of order m, DOF per node (U_r, U_z, U_θ)."""
     M_e = np.zeros((18, 18))

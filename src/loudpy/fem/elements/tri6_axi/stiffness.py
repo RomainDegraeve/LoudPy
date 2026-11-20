@@ -23,7 +23,7 @@ for _g in range(len_gp):
 PI = 2*np.pi
 
 
-@njit(cache=True, fastmath=True)
+@njit(cache=True, fastmath=False)
 def compute_K_T6(coords, D):
     """Compute axisymmetric stiffness matrix for T6 element."""
     K_e = np.zeros((12, 12))

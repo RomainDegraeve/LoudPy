@@ -24,7 +24,7 @@ PI = np.pi
 # ─────────────────────────────────────────────────────────────────────────────
 # EXACT COMSOL-STYLE PML STRETCHING
 # ─────────────────────────────────────────────────────────────────────────────
-@njit(cache=True, fastmath=True, inline="always")
+@njit(cache=True, fastmath=False, inline="always")
 def _eval_stretch(r_gp, z_gp,
                   use_r, r0, tr, sgn_r,
                   use_z, z0, tz, sgn_z,
@@ -41,7 +41,7 @@ def _eval_stretch(r_gp, z_gp,
     return sr, sz, r_tilde
 
 
-@njit(cache=True, fastmath=True, inline="always")
+@njit(cache=True, fastmath=False, inline="always")
 def _stretch(x, x0, t, sign, alpha, n, lambda0):
     xi = sign * (x - x0) / t
     if xi <= 0.0:
@@ -58,7 +58,7 @@ def _stretch(x, x0, t, sign, alpha, n, lambda0):
 # ─────────────────────────────────────────────────────────────────────────────
 # MASS MATRIX (Q) — Axisymmetric PML
 # ─────────────────────────────────────────────────────────────────────────────
-@njit(cache=True, fastmath=True)
+@njit(cache=True, fastmath=False)
 def compute_Q_T6_pml(coords, c, use_r, r0, tr, sgn_r, 
                      use_z, z0, tz, sgn_z, alpha, n, omega, sign_val):
     lambda0 = 2.0 * PI * c / omega

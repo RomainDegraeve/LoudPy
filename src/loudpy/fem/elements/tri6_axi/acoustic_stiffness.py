@@ -23,7 +23,7 @@ for _g in range(len_gp):
 PI = np.pi
 
 
-@njit(cache=True, fastmath=True)
+@njit(cache=True, fastmath=False)
 def compute_H_T6(coords, sign_val):
     """Compute element stiffness matrix H for axisymmetric T6 acoustic element."""
     H = np.zeros((6, 6))

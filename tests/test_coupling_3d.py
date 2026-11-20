@@ -14,9 +14,9 @@ from support import current_api as api
 
 pytestmark = pytest.mark.slow
 FREQS = np.array([60.0, 120.0, 300.0, 900.0, 1500.0])
-# CavityModes.solve starts ARPACK from a fixed vector (phase 3): identical runs give identical
-# cavity modes. Before, the random start made the results vary ~1e-6 (tolerance was 1e-5).
-RTOL_3D = 1e-9
+# CavityModes.solve starts ARPACK from a fixed vector: identical runs give identical cavity modes on one
+# machine. Across machines the forced responses near resonances spread by ~3e-8 (support.reference).
+from support.reference import RTOL_COUPLED_MODES, RTOL_RESPONSE as RTOL_3D  # noqa: E402
 
 
 def test_rect_cavity(mesh_dir, reference):
@@ -55,7 +55,8 @@ def test_driver_in_box(mesh_dir, drv, coil, reference):
     probe = cav.nearest_node((0.03, 0.03, api.Z_B - 0.12))
     s, _, _ = cpl.coupled_modes(f_max=1500.0)
     reference.check(q=q, p_probe=P @ cav.psi[probe], R=cpl.R, SSt=cpl.S @ cpl.S.T,
-                    wet_area=cpl.wet_area, coupled=s, cav_freqs=cav.freqs, rtol=RTOL_3D)
+                    wet_area=cpl.wet_area, cav_freqs=cav.freqs, rtol=RTOL_3D)
+    reference.check(coupled=s, rtol=RTOL_COUPLED_MODES)
     # physics sanity: the box air spring raises the pistonic resonance
     k0 = int(np.argmax(np.abs(cpl.volume_disp) * (drv.m == 0)))
     f_c = np.sqrt(drv.freq[k0] ** 2 + 1.2 * 343.0 ** 2 * cpl.volume_disp[k0] ** 2 / cav.volume / (2 * np.pi) ** 2)

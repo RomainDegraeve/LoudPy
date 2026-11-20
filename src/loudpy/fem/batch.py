@@ -4,32 +4,32 @@ from loudpy.fem.elements.tri6_axi import (compute_H_T6, compute_M_T6, compute_Q_
                                          compute_H_T6_pml, compute_Q_T6_pml)
 
 # =============================================================================
-@njit(parallel=True, cache=True, fastmath=True, boundscheck=False)
+@njit(parallel=True, cache=True, fastmath=False, boundscheck=False)
 def _batch_K(ec, D, out):
     for e in prange(ec.shape[0]):
         out[e] = compute_K_T6(ec[e], D).ravel()
 
-@njit(parallel=True, cache=True, fastmath=True, boundscheck=False)
+@njit(parallel=True, cache=True, fastmath=False, boundscheck=False)
 def _batch_M(ec, rho, out):
     for e in prange(ec.shape[0]):
         out[e] = compute_M_T6(ec[e], rho).ravel()
 
-@njit(parallel=True, cache=True, fastmath=True, boundscheck=False)
+@njit(parallel=True, cache=True, fastmath=False, boundscheck=False)
 def _batch_H(ec, sign_val, out):
     for e in prange(ec.shape[0]):
         out[e] = compute_H_T6(ec[e], sign_val).ravel()
 
-@njit(parallel=True, cache=True, fastmath=True, boundscheck=False)
+@njit(parallel=True, cache=True, fastmath=False, boundscheck=False)
 def _batch_Q(ec, c, sign_val, out):
     for e in prange(ec.shape[0]):
         out[e] = compute_Q_T6(ec[e], c, sign_val).ravel()
 
-@njit(parallel=True, cache=True, fastmath=True, boundscheck=False)
+@njit(parallel=True, cache=True, fastmath=False, boundscheck=False)
 def _batch_F(ec, out):
     for e in prange(ec.shape[0]):
         out[e] = compute_unit_force_T6(ec[e])
 
-@njit(parallel=True, cache=True, fastmath=True, boundscheck=False)
+@njit(parallel=True, cache=True, fastmath=False, boundscheck=False)
 def _batch_FSI(ec, out_x, out_y):
     for e in prange(ec.shape[0]):
         Mx, My = compute_FSI_T6(ec[e])
@@ -37,7 +37,7 @@ def _batch_FSI(ec, out_x, out_y):
         out_y[e] = My.ravel()
 
 
-@njit(cache=True, fastmath=True, parallel=True)
+@njit(cache=True, fastmath=False, parallel=True)
 def _batch_TL(ec, u_e_all, D, rho, alpha, beta,
               Ke_out, Me_out, Ce_out, Fe_out):
     """
@@ -73,7 +73,7 @@ def _batch_TL(ec, u_e_all, D, rho, alpha, beta,
                 Ce_out[e, i * 12 + j] = C_e[i, j]
 
 
-@njit(parallel=True, cache=True, fastmath=True, boundscheck=False)
+@njit(parallel=True, cache=True, fastmath=False, boundscheck=False)
 def _batch_H_pml(ec,
                  use_r, r0, tr, sgn_r,
                  use_z, z0, tz, sgn_z,
@@ -86,7 +86,7 @@ def _batch_H_pml(ec,
             alpha, n, omega, c, sign_val
         ).ravel()
 
-@njit(parallel=True, cache=True, fastmath=True, boundscheck=False)
+@njit(parallel=True, cache=True, fastmath=False, boundscheck=False)
 def _batch_Q_pml(ec, c,
                  use_r, r0, tr, sgn_r,
                  use_z, z0, tz, sgn_z,
@@ -105,13 +105,13 @@ from loudpy.fem.elements.tri6_axi.fourier import (
     compute_K_T6_fourier, compute_M_T6_fourier)
 
 
-@njit(parallel=True, cache=True, fastmath=True, boundscheck=False)
+@njit(parallel=True, cache=True, fastmath=False, boundscheck=False)
 def _batch_K_fourier(ec, D6, m, out):
     for e in prange(ec.shape[0]):
         out[e] = compute_K_T6_fourier(ec[e], D6, m).ravel()
 
 
-@njit(parallel=True, cache=True, fastmath=True, boundscheck=False)
+@njit(parallel=True, cache=True, fastmath=False, boundscheck=False)
 def _batch_M_fourier(ec, rho, m, out):
     for e in prange(ec.shape[0]):
         out[e] = compute_M_T6_fourier(ec[e], rho, m).ravel()

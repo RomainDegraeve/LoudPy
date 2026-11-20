@@ -1,7 +1,7 @@
 from numba import njit
 import numpy as np 
 
-@njit(cache=True, fastmath=True)
+@njit(cache=True, fastmath=False)
 def fct_form_T6(xi, eta):
    
     N = np.array([
@@ -23,7 +23,7 @@ def fct_form_T6(xi, eta):
 
 
 
-@njit(cache=True, fastmath=True)
+@njit(cache=True, fastmath=False)
 def jacobian_T6(dN_dxi, dN_deta, coords):
     r = coords[:, 0]
     z = coords[:, 1]
@@ -43,7 +43,7 @@ def fct_form_L3(xi):
     return N, dN_dxi
 
 # STILL NEED TO REMOVE L3 FUNC OUT OF JACOBIAN FOR EFFICIENCY !
-@njit(cache=True, fastmath=True)
+@njit(cache=True, fastmath=False)
 def jacobian_L3(xi, coords):
 
     _, dN_dxi = fct_form_L3(xi)
@@ -55,7 +55,7 @@ def jacobian_L3(xi, coords):
 
     return detJ
 
-@njit(cache=True, fastmath=True)
+@njit(cache=True, fastmath=False)
 def material_matrix_D(E, nu):
     """Material stiffness matrix for axisymmetric case (4x4)
        Ordered for strain vector [e_r, e_z, gamma_rz, e_theta]

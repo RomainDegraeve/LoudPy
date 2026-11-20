@@ -28,7 +28,7 @@ for _g in range(len_gp):
 PI = np.pi
 
 
-@njit(cache=True, fastmath=True)
+@njit(cache=True, fastmath=False)
 def compute_Q_T6(coords, c, sign_val):
     """Compute element mass matrix Q for axisymmetric T6 acoustic element."""
     Q = np.zeros((6, 6))
