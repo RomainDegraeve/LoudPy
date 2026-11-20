@@ -66,21 +66,21 @@ class SolidPart(RegionPart):
 
 
 class AirPart(RegionPart):
-    """Air: ρ, c; orientation ±1 (front / rear side of the structure)."""
+    """Air: ρ, c (the same formulation in every air region: no front / rear sign)."""
     role = "air"
     dofs_per_node = 1
 
-    def __init__(self, group, rho, c, orientation=1.0):
+    def __init__(self, group, rho, c):
         super().__init__(group)
-        self.rho, self.c, self.orientation = rho, c, orientation
+        self.rho, self.c = rho, c
 
 
 class PMLPart(AirPart):
     """PML layer: absorption strength alpha, profile order n, tuned to f_pml; its geometry in `layer`."""
     role = "pml"
 
-    def __init__(self, group, orientation, rho, c, alpha, n, f_pml):
-        super().__init__(group, rho, c, orientation)
+    def __init__(self, group, rho, c, alpha, n, f_pml):
+        super().__init__(group, rho, c)
         self.alpha, self.n = alpha, n
         self.omega_pml = 2 * np.pi * f_pml
         self.layer = pml_layer(self.name)
@@ -106,21 +106,21 @@ class CoilEdge(EdgePart):
 
 
 class CouplingEdge(EdgePart):
-    """Fluid–structure coupling; `direction` is the orientation ±1 of the air side."""
+    """
+    Fluid–structure coupling. `signs` (one per edge): +1 when the edge normal (dz, −dr) given by its
+    node order points out of the adjacent air, −1 otherwise, so that every edge couples with the
+    outward normal of the air. Set by the model from the mesh (geometry.topology), never from names.
+    """
     role = "fluid_structure"
 
-    def __init__(self, group, direction):
+    def __init__(self, group, signs=None):
         super().__init__(group)
-        self.direction = direction
+        self.signs = None if signs is None else np.asarray(signs, float)
 
 
 class RadiationEdge(EdgePart):
-    """Exact non-reflecting (DtN) arc; orientation ±1 of the acoustic region it closes."""
+    """Exact non-reflecting (DtN) arc closing an air region."""
     role = "radiation"
-
-    def __init__(self, group, direction=None):
-        super().__init__(group)
-        self.orientation = 1.0 if direction is None else float(direction)
 
 
 # ── from the model description ───────────────────────────────────────────────
@@ -170,37 +170,42 @@ def region_parameters(region, lib) -> dict:
 
 def region_part(region, group, lib) -> RegionPart:
     """The part of a region on one mesh group."""
-    from loudpy.geometry import naming
     from loudpy.model.regions import PML, Solid
     p = region_parameters(region, lib)
-    orientation = naming.parse(group.name).orientation
     if isinstance(region, Solid):
         return SolidPart(group, **p)
     if isinstance(region, PML):
-        return PMLPart(group, orientation=1.0 if orientation is None else orientation, **p)
-    return AirPart(group, orientation=1.0 if orientation is None else orientation, **p)
-
-
-def boundary_value(boundary, group_name: str):
-    """Blocked / forced components, or orientation ±1, of a boundary group (given, or from its name)."""
-    from loudpy.geometry import naming
-    from loudpy.model.boundaries import Clamped, FluidStructure, Radiation
-    if isinstance(boundary, Clamped) and boundary.dofs is not None:
-        return naming.DIRECTIONS[boundary.dofs]
-    if isinstance(boundary, (FluidStructure, Radiation)) and boundary.side is not None:
-        return naming.SIDES[boundary.side]
-    info = naming.parse(group_name)
-    return info.dofs if info.dofs is not None else info.orientation
+        return PMLPart(group, **p)
+    return AirPart(group, **p)
 
 
 def boundary_part(boundary, group) -> EdgePart:
-    """The part of a boundary on one mesh group."""
-    from loudpy.model.boundaries import Clamped, Coil, FluidStructure, Radiation
-    cls = {Clamped: ClampedEdge, Coil: CoilEdge, FluidStructure: CouplingEdge, Radiation: RadiationEdge}[type(boundary)]
-    value = boundary_value(boundary, group.name)
-    if value is None:
-        if cls is RadiationEdge:
-            return cls(group)
-        raise ModelError(f"{type(boundary).__name__}({boundary.name!r}): group {group.name!r} names no "
-                         f"direction (_r_, _z_, _rz_) nor side (front / rear); give dofs= or side=")
-    return cls(group, value)
+    """The part of a boundary on one mesh group (components from the boundary's parameters)."""
+    from loudpy.model.boundaries import COMPONENTS, Clamped, Coil, FluidStructure, Radiation
+    if isinstance(boundary, Clamped):
+        return ClampedEdge(group, COMPONENTS[boundary.dofs])
+    if isinstance(boundary, Coil):
+        return CoilEdge(group, COMPONENTS[boundary.direction])
+    if isinstance(boundary, FluidStructure):
+        return CouplingEdge(group)
+    if isinstance(boundary, Radiation):
+        return RadiationEdge(group)
+    raise ModelError(f"unknown boundary {boundary!r}")
+
+
+def orient_couplings(parts) -> None:
+    """Per-edge signs of the fluid–structure edges: the outward normal of the adjacent air (from the mesh)."""
+    from loudpy.geometry.topology import EdgeSides
+    airs = [p for p in parts if p.role in ("air", "pml")]
+    couplings = [p for p in parts if p.role == "fluid_structure"]
+    if not airs or not couplings:
+        return
+    sides = EdgeSides(airs)
+    for p in couplings:
+        rows = {int(t): i for i, t in enumerate(np.asarray(p.node_tags))}
+        xy = np.asarray(p.node_coords)[:, :2]
+        try:
+            _, p.signs = sides.outward(p.edges, lambda t: xy[rows[int(t)]])
+        except Exception as e:
+            raise ModelError(f"fluid–structure boundary {p.name!r}: every edge must lie on exactly one air "
+                             f"region ({e})") from None

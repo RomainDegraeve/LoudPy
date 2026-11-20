@@ -15,15 +15,13 @@ log = logging.getLogger("loudpy.mesh")
 
 DEFAULT_MESH_GRADING = 0.3
 
-# Class names written in the mesh signatures (kept so that the meshes saved before stay reusable).
-_SIGNATURE_CLASS = {"solid": "DomainSpecMecaRayleigh", "solid_hysteretic": "DomainSpecMecaHysteretic",
-                    "air": "DomainSpecAcou", "pml": "DomainSpecPML"}
+SIGNATURE_VERSION = 2
 
 
 @dataclass(eq=False)
 class DomainSizing:
-    """What the mesher needs from a region: its name, kind ("solid", "solid_hysteretic", "air",
-    "pml"), element size [m] and, for a PML, its thickness t [m]."""
+    """What the mesher needs from a region: its name, kind ("solid", "air", "pml"), element size [m]
+    and, for a PML, its thickness t [m]."""
     name: str
     kind: str
     size: float
@@ -66,7 +64,7 @@ class MeshManager:
 
     Mesh sizes: each domain (DomainSizing) has its own size (``size``, restricted to its surfaces).
     With ``grading`` (default ``DEFAULT_MESH_GRADING``), the element size also grows linearly
-    with the distance d to every structural domain (kind "solid" / "solid_hysteretic"),
+    with the distance d to every structural domain (kind "solid"),
 
         h = min( size of the region,  size of the structural domain + grading · d ),
 
@@ -95,7 +93,8 @@ class MeshManager:
     def __init__(self, domains: List[DomainSizing], subdomains_key: str = "sub", mesh_order: int = 2,
                  grading: Optional[float] = DEFAULT_MESH_GRADING,
                  interfaces: Optional[List[str]] = None, prune_unused: bool = True,
-                 match: Optional[Callable[[str, str], bool]] = None, deterministic: bool = False):
+                 match: Optional[Callable[[str, str], bool]] = None, deterministic: bool = False,
+                 groups: Optional[Dict[str, Any]] = None):
         self.SimObjects = list(domains)
         self.subdomains_key = subdomains_key
         self.mesh_order = mesh_order
@@ -104,6 +103,7 @@ class MeshManager:
         self.prune_unused = prune_unused and interfaces is not None
         self._match = match or (lambda spec_name, group_name: spec_name in group_name)
         self.deterministic = deterministic
+        self.groups = groups          # what is meshed: {"domains": [[group, kind, size, t]], "boundaries": [group]}
 
     # =========================================================================
     # CORE MESH GENERATION
@@ -153,10 +153,12 @@ class MeshManager:
     # =========================================================================
     # REUSING A SAVED MESH
     # =========================================================================
-    # Every written mesh gets a signature file <msh_path>.json describing what it was built
-    # from: the .geo (and the files it merges), every domain spec (name, class, size, PML
-    # thickness), the subdomain key, the mesh order and the grading. A saved mesh is reused
-    # only if that signature equals the one of the current problem.
+    # Every written mesh gets a signature file <msh_path>.json (version 2) describing what it was
+    # built from: the .geo (and the files it merges), every meshed domain group (kind, size, PML
+    # thickness), every kept boundary group, the mesh order, the grading and the deterministic flag.
+    # It records the groups, not the names that selected them: renaming a region or splitting a
+    # boundary into two selections that cover the same groups keeps the mesh. A saved mesh is reused
+    # only if its signature equals the one of the current model (version-1 signatures never do).
 
     @staticmethod
     def signature_path(msh_path: str) -> str:
@@ -175,14 +177,12 @@ class MeshManager:
         for m in merged:
             mp = m if os.path.isabs(m) else os.path.join(geo_dir, m)
             files[m] = digest(mp) if os.path.exists(mp) else "missing"
-        domains = sorted(
-            [obj.name, _SIGNATURE_CLASS[obj.kind], obj.size, obj.t] for obj in self.SimObjects)
-        interfaces = sorted(self.interfaces) if self.interfaces is not None else None
-        sig = dict(files=files, domains=domains, interfaces=interfaces,
-                   prune_unused=self.prune_unused, subdomains_key=self.subdomains_key,
-                   mesh_order=self.mesh_order, grading=self.grading)
-        if self.deterministic:              # only when set: older signatures stay valid
-            sig["deterministic"] = True
+        if self.groups is None:
+            raise MeshError("MeshManager.mesh_signature needs the meshed groups (groups=)")
+        sig = dict(version=SIGNATURE_VERSION, files=files,
+                   domains=sorted([list(d) for d in self.groups["domains"]]),
+                   boundaries=sorted(self.groups["boundaries"]),
+                   mesh_order=self.mesh_order, grading=self.grading, deterministic=bool(self.deterministic))
         return sig
 
     def _write_signature(self, geo_path: str, msh_path: str) -> None:

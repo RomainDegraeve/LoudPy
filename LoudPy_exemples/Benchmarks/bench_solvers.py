@@ -39,7 +39,7 @@ PARTS = [("membranne", "Paper"), ("coil", "Copper"), ("surround", "Rubber"), ("s
 def structure(geo=GEO, coil=0.0005):
     model = lp.Model(geo)
     model.add([lp.Solid(n, m, mesh_size=coil if n == "coil" else 0.0005) for n, m in PARTS],
-              lp.Clamped("interface_constrained"), lp.Coil("interface_forced"),
+              lp.Clamped("interface_constrained_rz"), lp.Clamped("interface_constrained_r", dofs="r"), lp.Coil("interface_forced"),
               lp.FluidStructure("interface_acou_meca_front"))
     return model
 

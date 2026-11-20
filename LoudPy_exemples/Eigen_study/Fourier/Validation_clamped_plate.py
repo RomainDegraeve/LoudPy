@@ -28,7 +28,7 @@ LAMBDA2 = {(0, 1): 10.2158, (0, 2): 39.771, (1, 1): 21.260, (1, 2): 60.829,
 steel = lp.Material("Steel", rho=rho, E=E, nu=nu)
 model = lp.Model(geometry).add(
     lp.Solid("plate", steel, damping=lp.Undamped(), mesh_size=h / 3),
-    lp.Clamped("interface_constrained"),
+    lp.Clamped("interface_constrained_rz"), lp.Clamped("interface_constrained_r", dofs="r"),
 )
 model.mesh(mesh_path)
 modes = lp.Modes(model).solve(f_min=10.0, f_max=4000.0, orders=range(5), n_per_shift=10)

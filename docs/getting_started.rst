@@ -42,7 +42,7 @@ pick groups by name:
        lp.Solid("former", "Kapton"),
        lp.Solid("glue", "SolidGlue"),
        lp.Solid("dustcap", "Polypropylene"),
-       lp.Clamped("interface_constrained"),
+       lp.Clamped("interface_constrained_rz"), lp.Clamped("interface_constrained_r", dofs="r"),
        lp.Coil("interface_forced"),
    )
    model.mesh("Results/Files/mesh.msh")            # reused while the inputs are unchanged

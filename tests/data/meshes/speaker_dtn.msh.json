@@ -1,67 +1,82 @@
 {
+ "version": 2,
  "files": {
   "HPNEW-Sketch_front_rear_dtn.geo": "5c8e3d238296fd4562488d391d7d6399de1e90597ac2301f998540557434c3a4",
   "HPNEW-Sketch.brep": "8ff82eb8c034ddf697f42c433a86fdfd9e60a2e1a28c276cf54fc72afd89671e"
  },
  "domains": [
   [
-   "coil",
-   "DomainSpecMecaRayleigh",
-   0.001,
-   null
-  ],
-  [
-   "dustcap",
-   "DomainSpecMecaRayleigh",
-   0.001,
-   null
-  ],
-  [
-   "former",
-   "DomainSpecMecaRayleigh",
-   0.001,
-   null
-  ],
-  [
-   "glue",
-   "DomainSpecMecaRayleigh",
-   0.001,
-   null
-  ],
-  [
-   "membranne",
-   "DomainSpecMecaRayleigh",
-   0.001,
-   null
-  ],
-  [
-   "spider",
-   "DomainSpecMecaRayleigh",
-   0.001,
-   null
-  ],
-  [
-   "subacou",
-   "DomainSpecAcou",
+   "subacou_front",
+   "air",
    0.02,
    null
   ],
   [
-   "surround",
-   "DomainSpecMecaRayleigh",
+   "subacou_rear",
+   "air",
+   0.02,
+   null
+  ],
+  [
+   "submeca_coil",
+   "solid",
+   0.001,
+   null
+  ],
+  [
+   "submeca_dustcap",
+   "solid",
+   0.001,
+   null
+  ],
+  [
+   "submeca_former",
+   "solid",
+   0.001,
+   null
+  ],
+  [
+   "submeca_glue_1",
+   "solid",
+   0.001,
+   null
+  ],
+  [
+   "submeca_glue_2",
+   "solid",
+   0.001,
+   null
+  ],
+  [
+   "submeca_membranne",
+   "solid",
+   0.001,
+   null
+  ],
+  [
+   "submeca_spider",
+   "solid",
+   0.001,
+   null
+  ],
+  [
+   "submeca_surround",
+   "solid",
    0.001,
    null
   ]
  ],
- "interfaces": [
-  "dtn_boundary",
+ "boundaries": [
+  "dtn_boundary_front",
+  "dtn_boundary_rear",
   "interface_acou_meca_front",
   "interface_acou_meca_rear",
-  "interface_constrained",
-  "interface_forced"
+  "interface_constrained_r_1",
+  "interface_constrained_rz_1",
+  "interface_constrained_rz_2",
+  "interface_forced_z_1"
  ],
- "prune_unused": true,
- "subdomains_key": "sub",
  "mesh_order": 2,
- "grading": 0.3
+ "grading": 0.3,
+ "deterministic": false
 }

@@ -18,9 +18,9 @@ Cost unit: one *session* ≈ one long working block (3–5 h). Status: ✅ done 
 |---|---|---|---|
 | A | Foundations: no import side effects, OpenMP, exceptions, SI checks, packaging, CI, verification tests | 1 | ✅ |
 | B | Materials and air: library v2 (units, temperature, provenance), damping separate, air from (T, p, RH), one air for 2D and 3D | 1 | ✅ |
-| C | Selections and geometry: selection objects, three geometry sources, nothing read from names, PML by selection, driver profiles from selections | 3 | ○ |
+| C | Selections and geometry: selection objects, three geometry sources, nothing read from names, PML by selection, driver profiles from selections | 3 | ◐ |
 | D | Own generic FE core: Lagrange P1–P3 on lines / triangles / quads / tetrahedra, quadrature, spaces, generic kernels and assembly, curved (isoparametric) elements; old kernels removed | 5 | ○ |
-| E | Physics interfaces and couplings: one contribution protocol, generic system builder, sign convention fixed, electrical circuit as physics, 3D on the same protocol | 4 | ○ |
+| E | Physics interfaces and couplings: one contribution protocol, generic system builder, electrical circuit as physics, 3D on the same protocol (the sign convention was fixed in C) | 4 | ○ |
 | F | One model for 2D and 3D: `lp.Model(dim=…)`, typed mesh and solver settings, one remeshing rule, immutable model during solves, deterministic meshing by default, examples rewritten | 3 | ○ |
 | G | Results format 3: one results family, self-contained files, public arrays, derived fields (stress, strain, velocity, intensity) and values (power, volume velocity), interpolation in tetrahedra, ParaView series | 3 | ○ |
 | H | Error estimation and adaptivity: recovery and residual indicators, `lp.Adaptive`, `lp.convergence` | 3 | ○ |
@@ -35,10 +35,12 @@ Gates (each phase is committed and pushed only when its gate passes):
 - **A** CI green; `import loudpy` changes nothing (environment, logging, matplotlib); tests pass without
   `KMP_DUPLICATE_LIB_OK`; analytical validations in the test suite.
 - **B** 2D and 3D use identical air; 3D references regenerated on purpose, change documented.
-- **C** existing models give the same parts, orientations and PML layers; P2 regressions unchanged.
+- **C** existing models give the same parts and PML layers; P2 regressions unchanged except the coupled
+  ones, which change by the coupling fix below, checked by physical invariants (energy balance, swept volume).
 - **D** patch tests; exact integration; manufactured-solution orders ≈ p + 1 for P1 / P2 / P3 and Q1 / Q2;
   old operators reproduced at 1e-12.
-- **E** same fields (rear air included) at 1e-10; coupled modes and impedance unchanged.
+- **E** same fields (rear air included) at 1e-10 as after phase C; coupled modes and impedance unchanged;
+  energy balance and swept-volume checks still exact.
 - **F** one model pattern for 2D and 3D; identical meshes twice; no user object mutated; examples run.
 - **G** format-3 round trip; far field from the file alone; derived fields vs analytical cases.
 - **H** estimator effectivity 0.8–1.5; adaptive loop beats uniform refinement; expected orders reported.
@@ -113,3 +115,42 @@ Gates (each phase is committed and pushed only when its gate passes):
   100 Hz and 1 kHz (`lp.Rayleigh.from_loss_factor`, the rule the other fits follow). Only the
   damping-dependent references changed (C operators, damped modes and responses; K, M unchanged).
   Rubber and PhenolicCloth fits do not match their own η either (to be reviewed with the author).
+
+## Phase C — in progress
+
+### C1: names carry no physics; coupling normals from the mesh (done)
+
+- `lp.Clamped(…, dofs="rz")` and `lp.Coil(…, direction="z")` are parameters with defaults;
+  `lp.FluidStructure` and `lp.Radiation` have no `side`; air and PML regions have no orientation.
+  `geometry.naming` is now only the label-matching rule (the `_r_`, `front`, … tokens are modifiers
+  for matching, nothing else).
+- The fluid–structure coupling uses, on every edge, the outward normal of the adjacent air, found
+  from the mesh (`geometry.topology.EdgeSides`). With it, every air region has the same formulation.
+- **Two errors in the former coupling, found while doing this:**
+  1. One ±1 per boundary group, while the edge normal follows the direction in which each curve of
+     the `.geo` is drawn: on the HPNEW speaker, 136 of 357 rear edges (the spider zigzag) and 4 of
+     82 front edges coupled with the wrong sign. The volume swept by a unit rigid translation was
+     −13.7 % (front) and −18.3 % (rear) off π r_max²; it is now exact (1e-9).
+  2. The "front / rear" convention (rear air matrices × −1) left the front pressure with the wrong
+     sign and made the rear air push back on the structure with the wrong sign: the power into the
+     front air came out negative and the energy balance (coil power = structural losses + radiated
+     power) was off by 0.2–4 %. Now each radiated power is positive, the balance closes to 1e-10,
+     and front and rear pressures are in antiphase for the pistonic cone.
+  Effect on the speaker (same mesh, 1 N on the coil): resonance level −1.1 dB (same frequency,
+  115 Hz), cone displacement and front SPL ±2 dB over 50–600 Hz, rear SPL up to +6 dB near 200 Hz.
+  New tests: `test_coupling_sweeps_the_right_volume`, `test_coupled_energy_balance`,
+  `test_piston_front_and_rear_in_antiphase`. References regenerated on purpose: Cam, H, Q, the
+  coupled responses (force, voltage) and the DtN system; the structural ones unchanged.
+- Mesh signature version 2: the meshed groups (with kind, size, PML thickness), not the selector
+  names; the committed test meshes were migrated after checking that their inputs match (the
+  `.msh` files are unchanged), other saved meshes are rebuilt once. A test run that rewrites a
+  committed mesh now fails.
+
+### Still to do in C
+
+- Selection objects (`Group`, `Groups`, `Box`, `Near`, `Interface`, `BoundaryOf`, `|`, `&`, `-`),
+  evaluated on the mesh.
+- `lp.PML(on=selection, …)`: layer extruded along the outward normal of the air, its geometry stored
+  as metadata (not in names).
+- Geometry sources: `.geo` Physical Surfaces, STEP, OCC builders.
+- Driver wet profiles from the solid–air interface of the 2D driver model (no curve IDs).

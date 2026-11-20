@@ -14,7 +14,7 @@ and a material library. Everything is declared with small value objects passed t
        lp.Solid("surround", "Rubber", damping=lp.Hysteretic(eta=0.1)),
        lp.Air("subacou", mesh_size=5e-3),
        lp.PML("PML", order=2, strength=1.5),
-       lp.Clamped("interface_constrained"),
+       lp.Clamped("interface_constrained_rz"), lp.Clamped("interface_constrained_r", dofs="r"),
        lp.Coil("interface_forced"),
        lp.FluidStructure("interface_acou_meca_front"),
        lp.FluidStructure("interface_acou_meca_rear"),
@@ -39,9 +39,9 @@ Boundaries
 ----------
 
 ========================================================= =========================================
-:class:`lp.Clamped <loudpy.Clamped>`                       fixed displacement (``dofs="r"``, ``"z"``, ``"rz"``; default from the group names)
-:class:`lp.Coil <loudpy.Coil>`                             where the drive acts
-:class:`lp.FluidStructure <loudpy.FluidStructure>`         structure ↔ air interface (``side="front"`` / ``"rear"``)
+:class:`lp.Clamped <loudpy.Clamped>`                       fixed displacement (``dofs="rz"`` by default, ``"r"`` or ``"z"``)
+:class:`lp.Coil <loudpy.Coil>`                             where the drive acts (``direction="z"`` by default)
+:class:`lp.FluidStructure <loudpy.FluidStructure>`         structure ↔ air interface (normal from the mesh)
 :class:`lp.Radiation <loudpy.Radiation>`                   exact DtN radiation condition on a spherical boundary
 ========================================================= =========================================
 

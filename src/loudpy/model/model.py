@@ -6,7 +6,7 @@ boundaries, its materials.
     model.add(
         lp.Solid("membranne", "Paper", mesh_size=0.5e-3),
         lp.Solid("surround", "Rubber", damping=lp.Hysteretic()),
-        lp.Clamped("interface_constrained"),
+        lp.Clamped("interface_constrained_rz"), lp.Clamped("interface_constrained_r", dofs="r"),
         lp.Coil("interface_forced"),
     )
     mesh = model.mesh("Results/mesh.msh")          # reused when nothing changed
@@ -26,7 +26,6 @@ from loudpy.geometry.gmsh_session import physical_groups
 from loudpy.geometry.mesh import Mesh
 from loudpy.geometry.meshing2d import DEFAULT_MESH_GRADING, DomainSizing
 from loudpy.model.boundaries import Boundary
-from loudpy.model.damping import Hysteretic
 from loudpy.model.materials import MaterialLibrary, load_materials
 from loudpy.model.regions import PML, Air, Region, Solid
 from loudpy.errors import ModelError, SelectionError, StateError
@@ -45,7 +44,7 @@ class Model:
     """An axisymmetric loudspeaker model: a geometry (.geo), regions, boundaries and materials.
 
         model = lp.Model("speaker.geo")
-        model.add(lp.Solid("membrane", "Paper"), lp.Clamped("interface_constrained"), lp.Coil("interface_forced"))
+        model.add(lp.Solid("membrane", "Paper"), lp.Clamped("interface_constrained_rz"), lp.Clamped("interface_constrained_r", dofs="r"), lp.Coil("interface_forced"))
         model.mesh("mesh.msh")                 # gmsh, P2 triangles; reused while the inputs are unchanged"""
     def __init__(self, geometry, materials=None, *, mesh_order: int = 2,
                  grading: float | None = DEFAULT_MESH_GRADING):
@@ -134,11 +133,11 @@ class Model:
         show          : open the gmsh window after meshing
         """
         from loudpy.geometry.meshing2d import MeshManager
-        self.selection()                                        # checks the names first
+        selection = self.selection()                            # checks the names first
         path = Path(path) if path is not None else self.geometry.with_suffix(".msh")
         mm = MeshManager(self._sizing(), SUBDOMAINS_KEY, mesh_order=self.mesh_order, grading=self.grading,
                          interfaces=[b.name for b in self.boundaries], match=naming.matches,
-                         deterministic=deterministic)
+                         deterministic=deterministic, groups=self._meshed_groups(selection))
         ok, why = mm.can_reuse(str(self.geometry), str(path)) if reuse else (False, "")
         if ok:
             log.info("mesh reused: %s", path)
@@ -153,12 +152,20 @@ class Model:
         self.meshed = Mesh.from_axisymmetric(domains, boundaries, nodes, str(path))
         return self.meshed
 
+    def _meshed_groups(self, selection) -> dict:
+        """The groups the mesh is built from (its signature): domain groups with kind, size, PML thickness;
+        boundary groups."""
+        sizing = {d.name: d for d in self._sizing()}
+        domains = [[g, sizing[r.name].kind, sizing[r.name].size, sizing[r.name].t]
+                   for r in self.regions for g in selection[r.name]]
+        boundaries = sorted({g for b in self.boundaries for g in selection[b.name]})
+        return {"domains": domains, "boundaries": boundaries}
+
     def _sizing(self) -> list[DomainSizing]:
         out = []
         for r in self.regions:
             if isinstance(r, Solid):
-                out.append(DomainSizing(r.name, "solid_hysteretic" if isinstance(r.damping, Hysteretic) else "solid",
-                                        r.mesh_size))
+                out.append(DomainSizing(r.name, "solid", r.mesh_size))
             elif isinstance(r, PML):
                 out.append(DomainSizing(r.name, "pml", r.mesh_size, r.thickness))
             elif isinstance(r, Air):
@@ -169,7 +176,7 @@ class Model:
 
     def _parts(self, domains, boundaries):
         """The physics parts: one per (item, selected mesh group), regions first."""
-        from loudpy.physics.parts import boundary_part, region_part
+        from loudpy.physics.parts import boundary_part, orient_couplings, region_part
         out = []
         for g in domains:
             for r in self.regions:
@@ -179,6 +186,7 @@ class Model:
             for b in self.boundaries:
                 if naming.matches(b.name, g.name):
                     out.append(boundary_part(b, g))
+        orient_couplings(out)                    # coupling normals from the mesh (outward of the air)
         return out
 
     def boundary_nodes(self) -> dict:

@@ -94,13 +94,14 @@ def dtn_system(s: System, parts, center, f_max: float, half: bool = True, n_max:
     DtN unknowns):  (s² Ms + s Cs + Ks) [u; ψ; φ] = [F; 0; 0]
 
       Ms = diag(M, −Q/ρ, 0)
-      Cs = [[C, Camᵀ, 0], [Cam, −Σ σβ_n b_n b_nᵀ/(ρc), 0], [0, 0, −σβ/(ρc) I]]
-      Ks = [[K, 0, 0], [0, −H/ρ − Σ σβ_n b_n b_nᵀ/(ρR), G], [0, Gᵀ, diag(σβ z_i/(ρR))]]
-      G[:, i] = σ β_n √z_i b_n/(ρR)  for the i-th root z_i of order n
+      Cs = [[C, Camᵀ, 0], [Cam, −Σ β_n b_n b_nᵀ/(ρc), 0], [0, 0, −β/(ρc) I]]
+      Ks = [[K, 0, 0], [0, −H/ρ − Σ β_n b_n b_nᵀ/(ρR), G], [0, Gᵀ, diag(β z_i/(ρR))]]
+      G[:, i] = β_n √z_i b_n/(ρR)  for the i-th root z_i of order n
 
-    One DtN operator per radiation arc (e.g. front and rear hemispheres), each with its own
-    centre, radius, orders and auxiliary unknowns; σ = ±1 is the orientation of the arc (the sign
-    of the air region it closes). center: (0, z0) for every arc, {arc name: (0, z0)}, or None
+    (Cam with the outward normal of the air, the same air formulation in every region: see
+    physics.coupling.) One DtN operator per radiation arc (e.g. front and rear hemispheres), each
+    with its own centre, radius, orders and auxiliary unknowns. center: (0, z0) for every arc,
+    {arc name: (0, z0)}, or None
     (each arc: centre on the axis at the height of its node farthest from the axis).
     Returns (Ks, Ms, Cs, info) with info: nm, na, n_aux, arcs, c.
     """
@@ -118,7 +119,7 @@ def dtn_system(s: System, parts, center, f_max: float, half: bool = True, n_max:
     Dk = sp.csr_matrix((na, na))
     Dc = sp.csr_matrix((na, na))
     G_rows, G_cols, G_vals = [], [], []
-    z_aux, beta_aux, sign_aux, R_aux = [], [], [], []
+    z_aux, beta_aux, R_aux = [], [], []
     info = []
     for bd in arcs:
         xy = np.asarray(bd.node_coords).reshape(len(bd.node_tags), -1)[:, :2]
@@ -128,7 +129,6 @@ def dtn_system(s: System, parts, center, f_max: float, half: bool = True, n_max:
             ctr = tuple(center)
         else:
             ctr = (0.0, float(xy[np.argmax(xy[:, 0]), 1]))
-        sign = float(getattr(bd, "orientation", 1.0))
         _, R_b = dtn_boundary_vectors(bd.edges, bd.node_tags, bd.node_coords, s.acou.tag_to_local, na, ctr, [0])
         orders, _ = dtn_orders(R_b, f_max, c, half, n_max)
         Bvec, R_b = dtn_boundary_vectors(bd.edges, bd.node_tags, bd.node_coords, s.acou.tag_to_local, na, ctr,
@@ -140,33 +140,32 @@ def dtn_system(s: System, parts, center, f_max: float, half: bool = True, n_max:
         for j, n in enumerate(orders):
             beta = (2 * n + 1) / ((2.0 if half else 4.0) * np.pi * R_b ** 2)
             b = Bvec[j, bnd]
-            dk -= sign * beta / (rho * R_b) * np.outer(b, b)
-            dc -= sign * beta / (rho * c) * np.outer(b, b)
+            dk -= beta / (rho * R_b) * np.outer(b, b)
+            dc -= beta / (rho * c) * np.outer(b, b)
             for zi in reverse_bessel_roots(n):
                 G_rows.append(bnd)
                 G_cols.append(np.full(bnd.size, len(z_aux)))
-                G_vals.append(sign * beta * np.sqrt(zi) / (rho * R_b) * b)
+                G_vals.append(beta * np.sqrt(zi) / (rho * R_b) * b)
                 z_aux.append(zi)
                 beta_aux.append(beta)
-                sign_aux.append(sign)
                 R_aux.append(R_b)
         ii, jj = np.meshgrid(bnd, bnd, indexing="ij")
         Dk = Dk + sp.csr_matrix((dk.ravel(), (ii.ravel(), jj.ravel())), shape=(na, na))
         Dc = Dc + sp.csr_matrix((dc.ravel(), (ii.ravel(), jj.ravel())), shape=(na, na))
-        info.append(dict(name=bd.name, R=R_b, center=ctr, orders=orders, sign=sign,
+        info.append(dict(name=bd.name, R=R_b, center=ctr, orders=orders,
                          n_aux=len(z_aux) - n_aux0, n_bnd=bnd.size))
-        log.info("DtN arc %s: R = %.4f m, centre %s, orientation %+.0f, orders %d..%d (%s), "
-                 "%d auxiliary unknowns, %d boundary nodes", bd.name, R_b, ctr, sign, orders[0], orders[-1],
+        log.info("DtN arc %s: R = %.4f m, centre %s, orders %d..%d (%s), "
+                 "%d auxiliary unknowns, %d boundary nodes", bd.name, R_b, ctr, orders[0], orders[-1],
                  "even, baffled hemisphere" if half else "all, sphere", len(z_aux) - n_aux0, bnd.size)
 
     n_aux = len(z_aux)
     z_aux, beta_aux = np.array(z_aux), np.array(beta_aux)
-    sign_aux, R_aux = np.array(sign_aux), np.array(R_aux)
+    R_aux = np.array(R_aux)
     G = (sp.csr_matrix((np.concatenate(G_vals), (np.concatenate(G_rows), np.concatenate(G_cols))),
                        shape=(na, n_aux)) if n_aux else sp.csr_matrix((na, 0)))
     Raux = sp.csr_matrix((nm, nm)) if R is None else R
-    Zaa = sp.diags(sign_aux * beta_aux * z_aux / (rho * R_aux)) if n_aux else None
-    Caa = sp.diags(-sign_aux * beta_aux / (rho * c)) if n_aux else None
+    Zaa = sp.diags(beta_aux * z_aux / (rho * R_aux)) if n_aux else None
+    Caa = sp.diags(-beta_aux / (rho * c)) if n_aux else None
     Ms = sp.bmat([[M, None, None], [None, -Q / rho, None], [None, None, sp.csr_matrix((n_aux, n_aux))]])
     Cs = sp.bmat([[Raux, Cam.T, None], [Cam, Dc, None], [None, None, Caa]])
     Ks = sp.bmat([[K, None, None], [None, -H / rho + Dk, G], [None, G.T, Zaa]])

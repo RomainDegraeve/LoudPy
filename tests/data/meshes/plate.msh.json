@@ -1,20 +1,21 @@
 {
+ "version": 2,
  "files": {
   "clamped_plate.geo": "e57b98e02b1a93f6db7ec6ab693a732f9b9e159345fa2f1ca675f6c32b6273f1"
  },
  "domains": [
   [
-   "plate",
-   "DomainSpecMecaRayleigh",
+   "submeca_plate",
+   "solid",
    0.002,
    null
   ]
  ],
- "interfaces": [
-  "interface_constrained"
+ "boundaries": [
+  "interface_constrained_r_1",
+  "interface_constrained_rz_1"
  ],
- "prune_unused": true,
- "subdomains_key": "sub",
  "mesh_order": 2,
- "grading": 0.3
+ "grading": 0.3,
+ "deterministic": false
 }

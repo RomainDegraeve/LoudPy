@@ -78,6 +78,19 @@ start of the group or right after the prefix, and every following token is a mod
 ``"glue_*"``                glob on the name, with or without the prefix
 =========================== =======================================================
 
+**Names are labels.** The modifiers only matter for matching: nothing physical is read from a
+name. Clamped components and the coil direction are parameters (``lp.Clamped(…, dofs="rz")`` by
+default, ``lp.Coil(…, direction="z")``); the fluid–structure coupling uses the outward normal of the
+adjacent air on every edge, computed from the mesh, so the direction in which the curves of the
+geometry are drawn does not matter, and every air region has the same formulation (no front / rear
+sign).
+
+Saved meshes are reused while their signature (``<mesh>.msh.json``, version 2) matches: the
+geometry files, the meshed domain groups with their kind, size and PML thickness, the kept boundary
+groups, the mesh order, the grading and the deterministic flag. The signature records groups, not
+the names that selected them. Meshes saved by earlier versions (signature version 1) are rebuilt
+once.
+
 File layout of an example
 -------------------------
 

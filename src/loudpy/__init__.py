@@ -3,7 +3,7 @@ loudpy — fluid–structure finite elements for loudspeakers.
 
     import loudpy as lp
     model = lp.Model("speaker.geo")
-    model.add(lp.Solid("membranne", "Paper"), lp.Clamped("interface_constrained"), lp.Coil("interface_forced"))
+    model.add(lp.Solid("membranne", "Paper"), lp.Clamped("interface_constrained_rz"), lp.Clamped("interface_constrained_r", dofs="r"), lp.Coil("interface_forced"))
     model.mesh("mesh.msh")
 
     modes = lp.Modes(model).solve(f_max=5000)

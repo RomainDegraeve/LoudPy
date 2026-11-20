@@ -48,7 +48,7 @@ import loudpy as lp
 
 model = lp.Model("LoudPy_exemples/Geometries/Loudspeaker/HPNEW-Sketch.geo")
 model.add(lp.Solid("membranne", "Paper"), lp.Solid("surround", "Rubber"), lp.Solid("coil", "Copper"),
-          lp.Clamped("interface_constrained"), lp.Coil("interface_forced"))
+          lp.Clamped("interface_constrained_rz"), lp.Clamped("interface_constrained_r", dofs="r"), lp.Coil("interface_forced"))
 model.mesh("mesh.msh")
 
 lp.set_verbosity("info")                              # progress messages (silent by default)

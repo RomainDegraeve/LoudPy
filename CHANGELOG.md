@@ -45,6 +45,11 @@ The roadmap of this work is in `docs/ROADMAP.md`.
   `humidity`, `source`. Library solid values are marked "typical value, unverified".
 - PML settings belong to `lp.PML` (`strength=3.0`, `order=1.0` by default), no longer to the air material.
 - `lp.Scene(cabinet, drivers, rho=…, c=…)` → `lp.Scene(cabinet, drivers, air=…)`.
+- Names are labels only: `lp.Clamped(…, dofs="rz")` (default fully clamped; was read from `_r_` /
+  `_rz_` in the group names: write `lp.Clamped("interface_constrained_r", dofs="r")` for a radial
+  condition), `lp.Coil(…, direction="z")`; `lp.FluidStructure` / `lp.Radiation` lose `side=`.
+- Mesh signature version 2 (`<mesh>.msh.json`): records the meshed groups, not the selector names.
+  Meshes saved before are rebuilt once.
 - `import loudpy` has no side effects: no environment variable, logging silent by default
   (`lp.set_verbosity("info")` to see progress), the plot style no longer changes matplotlib's
   global settings (`lp.plot.style.use()` to opt in).
@@ -54,6 +59,15 @@ The roadmap of this work is in `docs/ROADMAP.md`.
   `loudpy[plot]`, `loudpy[3d]`, `loudpy[all]`; minimum dependency versions relaxed.
 
 ### Fixed
+- **2D fluid–structure coupling** (all coupled results change): (1) the coupling sign was set per
+  boundary group while the edge normals follow the drawing direction of each curve, so the curves
+  drawn the other way coupled with the wrong sign (HPNEW speaker: 38 % of the rear edges, 5 % of the
+  front edges; swept volume 14–18 % low); (2) the front/rear convention (rear air matrices × −1) gave
+  the front pressure the wrong sign and reversed the reaction of the rear air on the structure
+  (energy not conserved by 0.2–4 %). The coupling now uses the outward normal of the adjacent air on
+  every edge, from the mesh, and the same formulation in every air region: energy balance exact to
+  1e-10, radiated powers positive, swept volume exact. Speaker response: up to ±2 dB in front, +6 dB
+  behind. New verification tests.
 - Library material `SolidGlue` (cured epoxy): its Rayleigh fit (α = 8e-5 1/s, β = 1.2e-7 s) gave a loss
   factor of 1e-4 – 8e-4 instead of its own 0.03; now the fit of η = 0.03 at 100 Hz and 1 kHz
   (α = 17.136 1/s, β = 4.34e-6 s). Results of models with Rayleigh-damped glue change (damping only).

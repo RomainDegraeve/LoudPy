@@ -33,7 +33,7 @@ def plate_model():
     steel = lp.Material("Steel", rho=PLATE["rho"], E=PLATE["E"], nu=PLATE["nu"])
     return lp.Model(PLATE_GEO).add(
         lp.Solid("plate", steel, damping=lp.Undamped(), mesh_size=PLATE["h"]),
-        lp.Clamped("interface_constrained"),
+        lp.Clamped("interface_constrained_rz"), lp.Clamped("interface_constrained_r", dofs="r"),
     )
 
 
@@ -41,7 +41,7 @@ def speaker_model(size=1e-3, acoustic=False, rear=False):
     """HPNEW loudspeaker (structure only, or with the air and a PML for the FSI case)."""
     model = lp.Model(SPEAKER_GEO, MATERIALS)
     model.add([lp.Solid(n, m, mesh_size=size) for n, m in SPEAKER_PARTS],
-              lp.Clamped("interface_constrained"), lp.Coil("interface_forced"),
+              lp.Clamped("interface_constrained_rz"), lp.Clamped("interface_constrained_r", dofs="r"), lp.Coil("interface_forced"),
               lp.FluidStructure("interface_acou_meca_front"))
     if acoustic or rear:
         model.add(lp.FluidStructure("interface_acou_meca_rear"))
@@ -138,6 +138,53 @@ def speaker_fsi(mesh_dir: Path, freq, voltage=None):
     I = res.extra("I_coil")[0] if "I_coil" in b.extra else 0j
     return dict(coords_u=b.mesh_of("u").coords, u=b.fields["u"][0], coords_p=b.mesh_of("p").coords,
                 p=b.fields["p"][0][:, None], I_coil=np.array(I))
+
+
+def speaker_fsi_energy(mesh_dir: Path, freqs):
+    """
+    Physical checks of the structure–air coupling of the speaker (front and rear air, PML), per
+    fluid–structure boundary: the volume swept by a unit rigid axial translation, and at each
+    frequency the power given by the coil, dissipated in the structure and radiated into each air
+    region (P = ½ Re ∫ p* iω u·n_s dA, n_s the outward normal of the structure), and the pressure on
+    the axis just in front of and behind the dust cap.
+    """
+    from loudpy.physics.acoustic import AcouAssembler
+    from loudpy.physics.coupling import FsiAssembler
+    from loudpy.physics.forcing import ForceAssembler
+    from loudpy.physics.structural import MecaAssembler
+    model = _meshed(speaker_model(acoustic=True), mesh_dir, _speaker_tag(1e-3, True, False))
+    meca, acou = MecaAssembler(model.parts), AcouAssembler(model.parts)
+    K, M, C = meca.assemble()
+    F = ForceAssembler(model.parts, meca).assemble()
+    mesh = model.meshed
+    key = lambda c: tuple(np.round(np.asarray(c)[:2], 10))
+    tag_of = {key(mesh.coords[mesh.rows_of(np.array([t]))[0]]): t
+              for t in np.concatenate([meca.unique_tags, acou.unique_tags])}
+    couplings = {p.name: FsiAssembler([p], meca, acou).assemble() for p in model.parts if p.role == "fluid_structure"}
+    r_max = {p.name: float(np.abs(p.node_coords[:, 0]).max()) for p in model.parts if p.role == "fluid_structure"}
+    uz = np.zeros(meca.matrix_size)
+    uz[1::2] = 1.0
+    out = dict(swept={n: -(Cn @ uz).sum() for n, Cn in couplings.items()}, r_max=r_max, freqs=np.asarray(freqs),
+               P_in=[], P_diss=[], P_air={n: [] for n in couplings}, p_front=[], p_rear=[])
+    for f in freqs:
+        b = lp.FrequencyResponse(model, drive=lp.Force(1.0)).solve([f]).blocks[0]
+        u = np.zeros(meca.matrix_size, complex)
+        p = np.zeros(acou.matrix_size, complex)
+        for c, val in zip(b.mesh_of("u").coords, b.fields["u"][0]):
+            i = np.searchsorted(meca.unique_tags, tag_of[key(c)])
+            u[2 * i:2 * i + 2] = val
+        for c, val in zip(b.mesh_of("p").coords, b.fields["p"][0]):
+            p[np.searchsorted(acou.unique_tags, tag_of[key(c)])] = val
+        w = 2 * np.pi * f
+        out["P_in"].append(0.5 * np.real(np.conj(F) @ (1j * w * u)))
+        out["P_diss"].append(0.5 * w ** 2 * np.real(np.conj(u) @ (C @ u)))
+        for n, Cn in couplings.items():
+            out["P_air"][n].append(-0.5 * np.real(np.conj(p) @ (1j * w * (Cn @ u))))
+        xy, pa = b.mesh_of("p").coords, b.fields["p"][0]
+        axis = np.abs(xy[:, 0]) < 1e-9
+        out["p_front"].append(pa[axis][np.argmin(np.abs(xy[axis, 1] - 0.033))])
+        out["p_rear"].append(pa[axis][np.argmin(np.abs(xy[axis, 1] + 0.008))])
+    return out
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -385,7 +432,7 @@ def dtn_system(mesh_dir: Path, f_max=3000.0, n_max=8):
     model = lp.Model(DTN_GEO, MATERIALS)
     model.add([lp.Solid(n, m, mesh_size=1e-3) for n, m in SPEAKER_PARTS],
               lp.Air("subacou", mesh_size=0.02),
-              lp.Clamped("interface_constrained"), lp.Coil("interface_forced"),
+              lp.Clamped("interface_constrained_rz"), lp.Clamped("interface_constrained_r", dofs="r"), lp.Coil("interface_forced"),
               lp.FluidStructure("interface_acou_meca_front"), lp.FluidStructure("interface_acou_meca_rear"),
               lp.Radiation("dtn_boundary"))
     model.mesh(mesh_dir / "speaker_dtn.msh")

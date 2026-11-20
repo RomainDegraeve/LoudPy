@@ -13,7 +13,7 @@ and 3D enclosures with one or several drivers.
    model = lp.Model("HPNEW-Sketch.geo")
    model.add(lp.Solid("membranne", "Paper"), lp.Solid("surround", "Rubber"),
              lp.Air("subacou"), lp.PML("PML"),
-             lp.Clamped("interface_constrained"), lp.Coil("interface_forced"),
+             lp.Clamped("interface_constrained_rz"), lp.Clamped("interface_constrained_r", dofs="r"), lp.Coil("interface_forced"),
              lp.FluidStructure("interface_acou_meca_front"), lp.FluidStructure("interface_acou_meca_rear"))
    model.mesh("mesh.msh")
 

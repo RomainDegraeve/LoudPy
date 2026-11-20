@@ -51,7 +51,7 @@ model.add(
     lp.Solid("dustcap", "Polypropylene", mesh_size=size),
     lp.Air("subacou", mesh_size=0.005),
     lp.PML("PML"),                              # strength and profile order of the Air material
-    lp.Clamped("interface_constrained"),
+    lp.Clamped("interface_constrained_rz"), lp.Clamped("interface_constrained_r", dofs="r"),
     lp.Coil("interface_forced"),
     lp.FluidStructure("interface_acou_meca_front"),
     lp.FluidStructure("interface_acou_meca_rear"),

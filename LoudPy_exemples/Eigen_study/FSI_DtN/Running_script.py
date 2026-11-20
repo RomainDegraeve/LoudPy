@@ -75,7 +75,7 @@ model.add(
     lp.Solid("glue", "SolidGlue", mesh_size=size),
     lp.Solid("dustcap", "Polypropylene", mesh_size=size),
     lp.Air("subacou", mesh_size=AIR_SIZE),              # subacou_front and subacou_rear
-    lp.Clamped("interface_constrained"),
+    lp.Clamped("interface_constrained_rz"), lp.Clamped("interface_constrained_r", dofs="r"),
     lp.Coil("interface_forced"),                        # used by the goal check
     lp.FluidStructure("interface_acou_meca_front"),
     lp.FluidStructure("interface_acou_meca_rear"),

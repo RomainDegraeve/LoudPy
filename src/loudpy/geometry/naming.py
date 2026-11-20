@@ -12,6 +12,9 @@ A group name is a sequence of tokens separated by "_":
   modifiers      : an index (digits), a direction (r, z, rz, zr, r+, r-, z+, z-),
                    a side (front, rear), "Corner" (PML corners built by the mesher)
 
+Names are labels: the modifiers only matter for matching. No physical setting is read from a name
+(clamped components, coil direction and orientations are parameters or come from the mesh).
+
 A selector matches a group when its tokens appear whole, either at the start of the group or
 right after a physics prefix, and every token after them is a modifier:
 
@@ -32,9 +35,10 @@ import fnmatch
 import re
 from dataclasses import dataclass
 
-DIRECTIONS = {"r": (0,), "z": (1,), "rz": (0, 1), "zr": (0, 1)}
+# modifier tokens (matching only)
+DIRECTIONS = {"r", "z", "rz", "zr"}
 PML_DIRECTIONS = {"r+", "r-", "z+", "z-"}
-SIDES = {"front": +1.0, "rear": -1.0}
+SIDES = {"front", "rear"}
 _DIGITS = re.compile(r"^\d+$")
 
 
@@ -72,33 +76,6 @@ def matches(selector: str, group: str) -> bool:
         if g[start:start + len(s)] == s and all(is_modifier(t) for t in g[start + len(s):]):
             return True
     return False
-
-
-@dataclass(frozen=True)
-class GroupInfo:
-    """What a group name says beyond its base: index, direction, side."""
-    name: str
-    index: int | None
-    direction: str | None          # "r", "z", "rz", "zr" (constrained / forced DOFs)
-    side: str | None               # "front" / "rear"
-
-    @property
-    def dofs(self):
-        """Constrained DOF indices (0 = r, 1 = z) from the direction token, or None."""
-        return DIRECTIONS.get(self.direction) if self.direction else None
-
-    @property
-    def orientation(self):
-        """+1 (front) / −1 (rear), or None."""
-        return SIDES.get(self.side) if self.side else None
-
-
-def parse(group: str) -> GroupInfo:
-    toks = tokens(group)
-    index = next((int(t) for t in toks if _DIGITS.match(t)), None)
-    direction = next((t for t in toks if t in DIRECTIONS), None)
-    side = next((t for t in toks if t in SIDES), None)
-    return GroupInfo(group, index, direction, side)
 
 
 # ════════════════════════════════════════════════════════════════════════════

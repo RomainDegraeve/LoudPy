@@ -5,6 +5,7 @@ Verification against analytical solutions: the numbers are right, not only uncha
   rectangular rigid cavity   3D P2 acoustics vs the exact modes, and the observed convergence order
   pulsating hemisphere       3D exterior FE + half-space DtN vs the exact radiated pressure
   air                        lp.air (ideal-gas mixture) vs Cramer's speed-of-sound correlation
+  structure–air coupling     swept volume, energy balance, radiated power, piston antisymmetry
 
 Each case states its tolerance and why. They run in a few seconds (fast suite, every CI run).
 """
@@ -37,7 +38,7 @@ def test_clamped_plate_matches_kirchhoff(tmp_path):
     """
     steel = lp.Material("Steel", rho=RHO, E=E, nu=NU)
     model = lp.Model(api.PLATE_GEO).add(lp.Solid("plate", steel, damping=lp.Undamped(), mesh_size=H / 2),
-                                        lp.Clamped("interface_constrained"))
+                                        lp.Clamped("interface_constrained_rz"), lp.Clamped("interface_constrained_r", dofs="r"))
     model.mesh(tmp_path / "plate.msh", deterministic=True)
     modes = lp.Modes(model).solve(f_min=10.0, f_max=2500.0, orders=[0, 1, 2], n_per_shift=10)
     scale = np.sqrt(E * H ** 3 / (12 * (1 - NU ** 2)) / (RHO * H)) / (2 * np.pi * A ** 2)
@@ -83,6 +84,45 @@ def test_pulsating_hemisphere_radiation(tmp_path):
         errs.append(np.linalg.norm(fe - exact, axis=1) / np.linalg.norm(exact, axis=1))
     coarse, fine = errs
     assert np.all(fine < coarse) and fine.max() < 0.022, (coarse, fine)
+
+
+# ── structure–air coupling ───────────────────────────────────────────────────
+@pytest.fixture(scope="module")
+def fsi_energy(mesh_dir):
+    return api.speaker_fsi_energy(mesh_dir, [50.0, 300.0, 2000.0])
+
+
+def test_coupling_sweeps_the_right_volume(fsi_energy):
+    """
+    A unit rigid axial translation of the structure sweeps π r_max² through each interface (both
+    span from the axis to r_max): front +, rear − (n_s points into the front / rear air). Checks the
+    coupling normal of every edge, whatever the direction of the curves in the geometry.
+    """
+    for name, V in fsi_energy["swept"].items():
+        exact = np.pi * fsi_energy["r_max"][name] ** 2
+        assert abs(abs(V) - exact) < 1e-9 * exact, (name, V, exact)
+        assert np.sign(V) == (1 if "front" in name else -1), name
+
+
+def test_coupled_energy_balance(fsi_energy):
+    """
+    Power given by the coil = power dissipated in the structure + power radiated into each air
+    region, each radiated power positive (the PML absorbs it). Exact for the discrete system when
+    the coupling is consistent: 1e-8 (measured ~1e-10). A sign error on one side breaks it at the
+    percent level.
+    """
+    e = fsi_energy
+    for k, f in enumerate(e["freqs"]):
+        radiated = [P[k] for P in e["P_air"].values()]
+        assert all(P > 0 for P in radiated), (f, radiated)
+        residual = e["P_in"][k] - e["P_diss"][k] - sum(radiated)
+        assert abs(residual) < 1e-8 * e["P_in"][k], (f, residual / e["P_in"][k])
+
+
+def test_piston_front_and_rear_in_antiphase(fsi_energy):
+    """At 50 Hz the cone moves as a piston: the pressure on the axis is opposite in front and behind it."""
+    pf, pr = fsi_energy["p_front"][0], fsi_energy["p_rear"][0]
+    assert np.real(pf * np.conj(pr)) < 0, (pf, pr)
 
 
 # ── air ──────────────────────────────────────────────────────────────────────

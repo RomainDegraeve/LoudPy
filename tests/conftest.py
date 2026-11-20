@@ -55,6 +55,30 @@ def _repo_root():
     os.chdir(old)
 
 
+MESH_DIR = ROOT / "tests" / "data" / "meshes"
+
+
+def _mesh_digests() -> dict:
+    import hashlib
+    return {f.name: hashlib.sha256(f.read_bytes()).hexdigest() for f in sorted(MESH_DIR.glob("*.msh"))}
+
+
+def pytest_sessionstart(session):
+    session.config._mesh_digests = _mesh_digests() if MESH_DIR.exists() else {}
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """A committed mesh rewritten by a test (its signature no longer matched) would silently change
+    every regression number tied to it: fail the run instead."""
+    before = getattr(session.config, "_mesh_digests", {})
+    changed = sorted(n for n, d in _mesh_digests().items() if n in before and before[n] != d) if before else []
+    if changed:
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
+        print(f"\nERROR: committed meshes were rewritten during the tests: {changed}\n"
+              f"(a model no longer matches the mesh signature). Restore them with "
+              f"`git checkout tests/data/meshes` and fix the model or the signature.")
+
+
 @pytest.fixture(scope="session")
 def mesh_dir():
     """
@@ -62,11 +86,11 @@ def mesh_dir():
 
     gmsh meshes with several threads are not reproducible (the same .geo gives slightly
     different triangulations from run to run, ~1e-6 on the frequencies), so the regression
-    numbers are tied to these files. They are written by the first run if missing.
+    numbers are tied to these files. They are written by the first run if missing; a run that
+    rewrites one fails (pytest_sessionfinish).
     """
-    d = ROOT / "tests" / "data" / "meshes"
-    d.mkdir(parents=True, exist_ok=True)
-    return d
+    MESH_DIR.mkdir(parents=True, exist_ok=True)
+    return MESH_DIR
 
 
 @pytest.fixture(scope="session")

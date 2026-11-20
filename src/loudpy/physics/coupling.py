@@ -1,8 +1,13 @@
 """
 Fluid–structure coupling on the boundaries with role "fluid_structure".
 
-FsiAssembler: rectangular matrix (n_dof_acou × n_dof_meca); each edge carries the orientation ±1
-(`direction`) of the air side it couples.
+FsiAssembler: rectangular matrix (n_dof_acou × n_dof_meca), C_ij = ∫ N_i (N_j e · n) 2πr ds with n the
+outward normal of the air on each edge (CouplingEdge.signs, from the mesh). The coupled problem is then
+
+    (K − ω²M + iωC) u − Cᵀ p = F          (pressure load −p n_s = p n on the structure)
+    −ρω² C u + (H − ω²Q) p = 0            (∂p/∂n = ρω² u·n on the air boundary)
+
+in every air region alike.
 """
 from __future__ import annotations
 
@@ -13,6 +18,7 @@ from loudpy.fem.batch_coupling import _fsi_local_to_V
 from loudpy.fem.indexing import _fill_ij_rect
 from loudpy.fem.sparse import _SparseAssemblerBase, _local_coords
 from loudpy.physics.registry import select
+from loudpy.errors import StateError
 
 
 class FsiAssembler(_SparseAssemblerBase):
@@ -47,7 +53,9 @@ class FsiAssembler(_SparseAssemblerBase):
             flat_tags = edges.ravel()
 
             ec = _local_coords(iface.node_tags, iface.node_coords, flat_tags, n_e, n_p, dim=2)
-            signs = np.full(n_e, iface.direction, dtype=np.float64)
+            if iface.signs is None:
+                raise StateError(f"fluid–structure boundary {iface.name!r} is not oriented (no air next to it?)")
+            signs = np.asarray(iface.signs, dtype=np.float64)
 
             # acoustic row DOFs (1 per node)
             p_gdofs = np.searchsorted(self.acou_unique, flat_tags).reshape(n_e, n_p).astype(np.int32)

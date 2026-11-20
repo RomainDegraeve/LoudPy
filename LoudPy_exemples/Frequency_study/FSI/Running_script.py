@@ -45,7 +45,7 @@ model.add(
     lp.Solid("dustcap", "Polypropylene", mesh_size=size),
     lp.Air("subacou", mesh_size=0.005),                         # at most 5 mm (see remesh)
     lp.PML("PML", order=2, strength=1.5),                       # quadratic profile
-    lp.Clamped("interface_constrained"),
+    lp.Clamped("interface_constrained_rz"), lp.Clamped("interface_constrained_r", dofs="r"),
     lp.Coil("interface_forced"),
     lp.FluidStructure("interface_acou_meca_front"),
     lp.FluidStructure("interface_acou_meca_rear"),

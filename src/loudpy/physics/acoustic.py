@@ -30,7 +30,7 @@ class AcouAssembler(ElementAssembler):
         for sd, ec, gdofs, s0, s1, n_e in self.prep:
             He = np.empty((n_e, self.block), dtype=dtype)
             Qe = np.empty((n_e, self.block), dtype=dtype)
-            sign_val = sd.orientation
+            sign_val = 1.0                      # same formulation in every air region
 
             if sd.role == "pml":
                 L = sd.layer

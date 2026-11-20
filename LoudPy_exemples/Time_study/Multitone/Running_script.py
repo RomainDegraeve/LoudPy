@@ -83,7 +83,7 @@ model.add(
     lp.Solid("former", "Kapton", mesh_size=size),
     lp.Solid("glue", "SolidGlue", mesh_size=size),
     lp.Solid("dustcap", "Polypropylene", mesh_size=size),
-    lp.Clamped("interface_constrained"),
+    lp.Clamped("interface_constrained_rz"), lp.Clamped("interface_constrained_r", dofs="r"),
     lp.Coil("interface_forced"),
     lp.FluidStructure("interface_acou_meca_front"),
 )

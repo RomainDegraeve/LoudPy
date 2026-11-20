@@ -32,10 +32,19 @@ def test_selector_rules(selector, group, expected):
     assert naming.matches(selector, group) is expected
 
 
-def test_group_info():
-    info = naming.parse("interface_constrained_rz_2")
-    assert (info.index, info.dofs, info.orientation) == (2, (0, 1), None)
-    assert naming.parse("interface_acou_meca_rear").orientation == -1.0
+def test_names_are_labels_only():
+    """A group name selects; it sets nothing physical (components are parameters, normals come from the mesh)."""
+    from types import SimpleNamespace
+    from loudpy.physics.parts import boundary_part
+    group = SimpleNamespace(name="interface_constrained_r_1", node_tags=np.arange(3), node_coords=np.zeros((3, 3)),
+                            edges=np.array([[0, 1, 2]]))
+    assert boundary_part(lp.Clamped("interface_constrained_r"), group).direction == (0, 1)      # default "rz"
+    assert boundary_part(lp.Clamped("interface_constrained_r", dofs="r"), group).direction == (0,)
+    assert boundary_part(lp.Coil("interface_forced_r"), group).direction == (1,)                # default "z"
+    with pytest.raises(ValueError, match="components"):
+        lp.Clamped("x", dofs="xy")
+    with pytest.raises(TypeError):
+        lp.FluidStructure("interface_acou_meca_front", side="front")              # no side: from the mesh
 
 
 # ── validation ───────────────────────────────────────────────────────────────
@@ -55,8 +64,8 @@ def test_selection_of_the_speaker():
     sel = api.speaker_model(acoustic=True).selection()
     assert sel["glue"] == ["submeca_glue_1", "submeca_glue_2"]
     assert sel["subacou"] == ["subacou_front", "subacou_rear"]
-    assert sel["interface_constrained"] == ["interface_constrained_r_1", "interface_constrained_rz_1",
-                                            "interface_constrained_rz_2"]
+    assert sel["interface_constrained_rz"] == ["interface_constrained_rz_1", "interface_constrained_rz_2"]
+    assert sel["interface_constrained_r"] == ["interface_constrained_r_1"]
 
 
 # ── materials ────────────────────────────────────────────────────────────────
