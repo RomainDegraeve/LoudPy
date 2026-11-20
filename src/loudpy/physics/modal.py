@@ -303,10 +303,6 @@ class MultiDriver:
                               for j in range(self.n_drivers)])
         return Fs if amplitudes is None else Fs @ np.asarray(amplitudes)
 
-    def surface(self, j, q, **kwargs):
-        """Deformed surface of driver j in its frame (driver_surface) from the stacked amplitudes q."""
-        return driver_surface(self.modes[j], np.asarray(q)[self.slice(j)], self.frames[j], **kwargs)
-
     def __repr__(self):
         return (f"MultiDriver({self.n_drivers} drivers, {len(self)} modes: "
                 + ", ".join(f"{nm} {len(d)} @ {fr.origin.round(4).tolist()}"

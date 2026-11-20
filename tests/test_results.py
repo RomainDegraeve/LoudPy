@@ -7,7 +7,7 @@ import pytest
 
 import loudpy as lp
 from support import current_api as api
-from test_files import LEGACY, _same_by_coords
+from test_files import LEGACY
 
 
 def _legacy(name):

@@ -1,8 +1,7 @@
 """
-Regression test harness for the loudpy refactor (docs/ARCHITECTURE.md, phase 0).
-
-The tests freeze the numbers of the current code in small, fast cases (coarse meshes) and
-check that every refactoring step reproduces them:
+Test harness of loudpy: regression tests (numbers frozen from the reference code, matched by node
+coordinates and MAC), verification against analytical solutions (test_verification.py), and tests of
+the model, results and plotting layers.
 
     pytest                        the fast tests (~10 s)
     pytest --slow                 all of them, with the 3D coupling (~30 s)
@@ -19,7 +18,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 os.environ.setdefault("NUMBA_CACHE_DIR", str(Path(tempfile.gettempdir()) / "loudpy_numba_cache"))
-os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 os.environ.setdefault("MPLBACKEND", "Agg")
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -86,3 +84,14 @@ def reference(request):
                            update=request.config.getoption("--update-reference"))
     yield store
     store.finish()
+
+
+def pytest_runtest_logreport(report):
+    """On GitHub Actions, report each failing test as an annotation (readable without the job log)."""
+    if os.environ.get("GITHUB_ACTIONS") != "true" or not report.failed:
+        return
+    path, line, _ = report.location
+    text = "\n".join(str(report.longrepr).splitlines()[-25:])
+    text = text.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+    sys.__stdout__.write(f"\n::error file={path},line={(line or 0) + 1},title={report.nodeid}::{text}\n")
+    sys.__stdout__.flush()

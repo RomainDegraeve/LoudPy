@@ -165,7 +165,6 @@ BOX = (0.26, 0.20, 0.15)                                # inner box W × H × D 
 
 def rect_cavity_modes(mesh_dir: Path, size=(0.30, 0.20, 0.14), h=0.03, f_max=2000.0):
     """Rigid rectangular box: CavityModes frequencies."""
-    import gmsh
     from loudpy.physics.modal import CavityModes
     from loudpy.geometry.gmsh_session import gmsh_module as _gmsh
     msh = mesh_dir / "rect_box.msh"

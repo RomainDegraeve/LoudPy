@@ -10,6 +10,8 @@
 """
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import fnmatch
 from pathlib import Path
 
@@ -18,6 +20,9 @@ import numpy as np
 from loudpy.geometry.frame import as_frame, _is_single
 from loudpy.geometry.gmsh_session import gmsh_module as _gmsh
 from loudpy.errors import MeshError
+
+if TYPE_CHECKING:                                        # annotations only (physics is a higher layer)
+    from loudpy.physics.exterior import HalfSpaceDtN
 
 
 def sample_profile(geo_path, curves, start, n_per_curve=40):
