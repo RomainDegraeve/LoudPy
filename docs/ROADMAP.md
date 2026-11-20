@@ -67,5 +67,11 @@ Gates (each phase is committed and pushed only when its gate passes):
   order ≈ 3.9 for the theoretical 4), pulsating hemisphere (2.2 %, limited by straight-sided P2
   geometry: curved elements in phase D).
 - CI: ruff errors, fast tests on Linux and macOS at every push, slow tests weekly, docs with warnings
-  as errors.
+  as errors; failing tests are reported as GitHub annotations. Green on the first full run.
+- Found by CI: two undefined names (a `MultiDriver.surface` calling a moved function, a type
+  annotation), and results that were not reproducible across machines at the regression tolerances.
+  The Numba kernels are now compiled without `fastmath` (IEEE arithmetic, no CPU-dependent
+  reassociation; no speed cost), and the tolerances come from the measured floating-point spread
+  (`tests/support/reference.py`): operators 1e-10, forced responses 1e-6, damped coupled modes in
+  near-degenerate pairs 1e-4 (√ε sensitivity). The references are unchanged.
 - Still to do outside the code: the repository has no `LICENSE` file (the GPLv3 text must be added).

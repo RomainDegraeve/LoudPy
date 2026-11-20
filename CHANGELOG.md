@@ -32,8 +32,12 @@ The roadmap of this work is in `docs/ROADMAP.md`.
   (`lp.set_verbosity("info")` to see progress), the plot style no longer changes matplotlib's
   global settings (`lp.plot.style.use()` to opt in).
 - Non-convergence of Newton–Raphson, GMRES and ARPACK is reported as a `ConvergenceWarning`.
+- Numba kernels compiled without `fastmath`: results reproducible across CPUs (IEEE arithmetic).
 - Packaging: SPDX license expression, version read from `loudpy.__version__`, optional extras
   `loudpy[plot]`, `loudpy[3d]`, `loudpy[all]`; minimum dependency versions relaxed.
+
+### Fixed
+- `MultiDriver.surface` called a function that had moved (removed; use `DriverResponse.surface`).
 
 ### Removed
 - The former packages (`Studies`, `Plotter`, `Files_Loader`, `Files_Saver`, `SubDomains`, `Interfaces`,
