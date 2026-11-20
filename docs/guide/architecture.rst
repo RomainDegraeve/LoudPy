@@ -40,12 +40,33 @@ Rules
 * **Composition, not inheritance**: a study holds a model, a drive and solver options.
 * **Explicit selectors**: regions and boundaries select mesh groups by token rules
   (:doc:`conventions`); orientation and clamped directions are parameters.
-* **A registry of roles**: each region / boundary type declares what it contributes; a new
-  physics is one new class.
+* **A registry of roles**: each region / boundary type declares what it contributes to the system
+  (see below); a new physics is one new contribution.
 * **Values everywhere**: materials, damping and drives are small immutable objects.
 * **One result model** and one versioned file format (:doc:`file_format`).
 * **Reproducible**: fixed ARPACK start vectors, deterministic meshing option, mesh reuse by
   signature.
+
+Systems: fields, terms and contributions
+----------------------------------------
+
+Every study solves a system declared on a ``loudpy.physics.builder.SystemBuilder``;
+no study assembles blocks itself.
+
+* **Fields** are the unknowns: structural displacement ``u``, air pressure ``p``, coil current ``I``,
+  the auxiliaries of the exact radiation ``phi``, driver modal coordinates ``q`` and cavity modes ``a``
+  in 3D scenes.
+* **Terms** are blocks f(s)·B between two fields, with s = jω: B times s⁰, s¹ or s², or any function of
+  s (the semi-inductance sⁿ Le, a cavity eliminated through its modes), and ``LowRank`` operator blocks
+  that are dense on a boundary only and never assembled (the 3D half-space DtN).
+* **Contributions**: each role (solid, air, fluid–structure, radiation, coil, …) adds its own terms, in
+  the frequency form (forced responses) or the symmetric form (coupled modes). A new physics is one
+  contribution and its role; nothing else changes.
+
+The builder gives A(s) for a frequency sweep, the polynomial form (K, C, M) for eigenproblems (refused if
+a term is not polynomial), and a ``BlockSolver`` that eliminates
+small dense fields exactly and runs GMRES on the Schur complement of the large one with a preconditioner
+— the scheme of the 3D scenes (driver and cavity modes eliminated, exterior FE air iterated).
 
 Results and plots
 -----------------

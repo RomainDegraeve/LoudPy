@@ -233,7 +233,8 @@ class BlockSolver:
 
     A_bb may contain LowRank operators (never assembled). `preconditioner(s)` returns a LinearOperator
     approximating A_bb⁻¹ (e.g. an LU at a nearby frequency); the caller decides when to refresh it.
-    Without `big`, the small system is solved directly (several right-hand sides allowed).
+    Without `big`, the small system is solved directly (several right-hand sides allowed); without small
+    fields (small=[]), GMRES runs on the big field alone.
     """
 
     def __init__(self, builder: SystemBuilder, small, big: str | None = None, rtol=1e-8, restart=150,
@@ -281,32 +282,34 @@ class BlockSolver:
         import scipy.sparse.linalg as spla
         b = self.b.rhs(s) if rhs is None else rhs
         off = self.b.offsets
-        idx_s = np.concatenate([np.arange(off[n], off[n] + self.b.fields[n].size) for n in self.small])
-        A_ss = self._small_matrix(s, self.small, self.small)
-        lu = sla.lu_factor(A_ss)
-        b_s = np.asarray(b)[idx_s]
-        if self.big is None:
-            x_s = sla.lu_solve(lu, b_s)
-            return self._split_small(x_s), 0, 0
+        if self.small:
+            idx_s = np.concatenate([np.arange(off[n], off[n] + self.b.fields[n].size) for n in self.small])
+            lu = sla.lu_factor(self._small_matrix(s, self.small, self.small))
+            b_s = np.asarray(b)[idx_s]
+            if self.big is None:
+                return self._split_small(sla.lu_solve(lu, b_s)), 0, 0
+        elif self.big is None:
+            raise ModelError("BlockSolver needs eliminated fields or a big field")
         nb = self.b.fields[self.big].size
         b_b = np.asarray(b)[off[self.big]:off[self.big] + nb]
         A_bb, ops = self.b.block(self.big, self.big, s)
         A_bb = sp.csr_matrix(A_bb)
-        A_sb = self._coupling(s, self.small, [self.big])
-        A_bs = self._coupling(s, [self.big], self.small)
+        if self.small:
+            A_sb = self._coupling(s, self.small, [self.big])
+            A_bs = self._coupling(s, [self.big], self.small)
 
         def mv(v):
             out = A_bb @ v
             for op in ops:
                 out = out + op @ v
-            return out - A_bs @ sla.lu_solve(lu, A_sb @ v)
+            return out - A_bs @ sla.lu_solve(lu, A_sb @ v) if self.small else out
         S = spla.LinearOperator((nb, nb), matvec=mv, dtype=complex)
         it = [0]
-        x_b, info = spla.gmres(S, b_b - A_bs @ sla.lu_solve(lu, b_s), x0=x0, M=preconditioner, rtol=self.rtol,
-                               restart=self.restart, maxiter=self.maxiter,
-                               callback=lambda r: it.__setitem__(0, it[0] + 1), callback_type="pr_norm")
-        x_s = sla.lu_solve(lu, b_s - A_sb @ x_b)
-        out = self._split_small(x_s)
+        rhs_b = b_b - A_bs @ sla.lu_solve(lu, b_s) if self.small else b_b
+        x_b, info = spla.gmres(S, rhs_b, x0=x0, M=preconditioner, rtol=self.rtol, restart=self.restart,
+                               maxiter=self.maxiter, callback=lambda r: it.__setitem__(0, it[0] + 1),
+                               callback_type="pr_norm")
+        out = self._split_small(sla.lu_solve(lu, b_s - A_sb @ x_b)) if self.small else {}
         out[self.big] = x_b
         return out, it[0], info
 

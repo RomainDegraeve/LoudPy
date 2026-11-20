@@ -53,6 +53,12 @@ The roadmap of this work is in `docs/ROADMAP.md`.
 
 ### Changed
 
+- Internal: every study solves a system declared on one builder (`loudpy.physics.builder`): fields
+  (displacement, pressure, coil current, radiation auxiliaries, modal coordinates), terms as functions of
+  s = jω, contributions by role. The voice-coil circuit is a physics like the others; the 3D scenes use
+  the same builder with low-rank boundary blocks and a block-elimination solver. Same results (see
+  ROADMAP, phase E).
+
 - 3D scenes: P2 tetrahedra are curved (isoparametric). New 3D meshes place the mid-edge nodes on the
   CAD surfaces, and the 3D operators follow them: the pulsating-hemisphere radiation error falls from
   1.8 % to 0.011 % (h = 3.5 cm, 200 Hz). Meshes saved before keep their straight edges until rebuilt.

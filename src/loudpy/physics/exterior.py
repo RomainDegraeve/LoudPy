@@ -182,32 +182,34 @@ class ExteriorFE:
                        options=dict(SymmetricMode=True))
         return spla.LinearOperator(A.shape, matvec=lu.solve, dtype=complex)
 
-    def operator(self, k, extra=None):
-        """K − k²M − D (+ extra(v), a low-rank term) as a LinearOperator."""
-        nh = self.dtn.n_harm(self.dtn.n_max(k))
-        G, gam, gn = self.G[:, :nh], self.dtn.gamma(k, self.dtn.n_max(k)), self.gnodes
-        A0 = (self.K - k * k * self.M).tocsr()
-
-        def mv(v):
-            out = A0 @ v
-            out[gn] -= G @ (gam * (G.T @ v[gn]))
-            if extra is not None:
-                out += extra(v)
-            return out
-        return spla.LinearOperator(A0.shape, matvec=mv, dtype=complex)
-
     def coefficients(self, p, k):
         nh = self.dtn.n_harm(self.dtn.n_max(k))
         return 2.0 / self.dtn.R ** 2 * (self.G[:, :nh].T @ p[self.gnodes])
 
-    def solve(self, k, f, precond=None, x0=None, rtol=1e-8, extra=None):
-        """Exterior field for the load f (no structure unless `extra`)."""
-        M = precond or self.preconditioner(k)
-        it = [0]
-        p, info = spla.gmres(self.operator(k, extra), f, x0=x0, M=M, rtol=rtol, restart=150,
-                             maxiter=20, callback=lambda r: it.__setitem__(0, it[0] + 1),
-                             callback_type="pr_norm")
-        return p, it[0], info
+    def solve(self, k, f, precond=None, x0=None, rtol=1e-8):
+        """Exterior field for the load f (no structure), on the builder: GMRES on K − k²M − D."""
+        from loudpy.physics.builder import BlockSolver, Field, Load, SystemBuilder
+        b = SystemBuilder()
+        b.add_field(Field("p", len(self.nodes)))
+        add_exterior(b, self, self.c)
+        b.add_load(Load("p", np.asarray(f, complex)))
+        x, it, info = BlockSolver(b, small=[], big="p", rtol=rtol, restart=150, maxiter=20).solve(
+            1j * k * self.c, x0=x0, preconditioner=precond or self.preconditioner(k))
+        return x["p"], it, info
+
+
+def add_exterior(b, ext, c, field="p"):
+    """Terms of the exterior FE air on `field`: (K + s² M/c²) p − G γ(k) Gᵀ p on Γ (half-space DtN, LowRank)."""
+    from loudpy.physics.builder import LowRank, Term
+    n = len(ext.nodes)
+    b.add(Term(field, field, ext.K), Term(field, field, ext.M / (c * c), power=2))
+
+    def dtn(z):
+        k = z.imag / c
+        n_max = ext.dtn.n_max(k)
+        nh = ext.dtn.n_harm(n_max)
+        return LowRank((n, n), ext.gnodes, ext.G[:, :nh], -ext.dtn.gamma(k, n_max))
+    b.add(Term(field, field, dtn))
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -225,7 +227,7 @@ def scene_builder(ext, F, w_s, zeta, S, R, kappa2, eta_air=0.0, rho=RHO_AIR, c=C
 
     ext: an ExteriorFE with couple_driver done (pnodes, Bf).
     """
-    from loudpy.physics.builder import Field, Load, LowRank, SystemBuilder, Term
+    from loudpy.physics.builder import Field, Load, SystemBuilder, Term
     from loudpy.physics.modal import add_driver_modes
     n_x = 0 if H_extra is None else H_extra(1.0).shape[0]
     n_y, n = len(w_s) + n_x, len(ext.nodes)
@@ -233,15 +235,7 @@ def scene_builder(ext, F, w_s, zeta, S, R, kappa2, eta_air=0.0, rho=RHO_AIR, c=C
     b.add_field(Field("q", n_y))
     b.add_field(Field("p", n))
     add_driver_modes(b, w_s, zeta, S, R, kappa2, rho, c, eta_air, H_extra)
-    # exterior air and its DtN on Γ
-    b.add(Term("p", "p", ext.K), Term("p", "p", ext.M / (c * c), power=2))
-
-    def dtn(z):
-        k = z.imag / c
-        n_max = ext.dtn.n_max(k)
-        nh = ext.dtn.n_harm(n_max)
-        return LowRank((n, n), ext.gnodes, ext.G[:, :nh], -ext.dtn.gamma(k, n_max))
-    b.add(Term("p", "p", dtn))
+    add_exterior(b, ext, c)
     # wet surface: structure ↔ exterior air
     pn, Bf = ext.pnodes, ext.Bf
     Bq = sp.csr_matrix((Bf.ravel(), (np.repeat(pn, n_y), np.tile(np.arange(n_y), len(pn)))), shape=(n, n_y))

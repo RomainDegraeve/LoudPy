@@ -28,7 +28,7 @@ Cost unit: one *session* ≈ one long working block (3–5 h). Status: ✅ done 
 | B | Materials and air: library v2 (units, temperature, provenance), damping separate, air from (T, p, RH), one air for 2D and 3D | 1 | ✅ |
 | C | Selections and geometry: selection objects, three geometry sources, nothing read from names, PML by selection, driver profiles from selections | 3 | ✅ |
 | D | Own generic FE core: Lagrange P1–P3 on lines / triangles / quads / tetrahedra, quadrature, spaces, generic kernels and assembly, curved (isoparametric) elements; old kernels removed | 5 | ✅ |
-| E | Physics interfaces and couplings: one contribution protocol, generic system builder, electrical circuit as physics, 3D on the same protocol (the sign convention was fixed in C) | 4 | ◐ |
+| E | Physics interfaces and couplings: one contribution protocol, generic system builder, electrical circuit as physics, 3D on the same protocol (the sign convention was fixed in C) | 4 | ✅ |
 | F | One model for 2D and 3D: `lp.Model(dim=…)`, COMSOL-like tree (print, `check()`, mesh controls by selection, study steps), parameters and parametric sweeps, selectors and geometry sources in 3D scenes, typed mesh and solver settings, one remeshing rule, immutable model during solves, deterministic meshing by default, examples rewritten | 4 | ○ |
 | G | Results format 3: one results family, self-contained files (with the model description and parameters), public arrays, derived fields (stress, strain, velocity, intensity) and values (power, volume velocity, impedance, SPL, Thiele–Small parameters), interpolation in tetrahedra, ParaView series | 3 | ○ |
 | H | Error estimation and adaptivity: recovery and residual indicators, `lp.Adaptive`, `lp.convergence` | 3 | ○ |
@@ -424,7 +424,7 @@ Beyond the gate: curved 3D cells (hemisphere 1.8 % → 0.011 %); every element o
 **Gate D accepted by the user (2026-11-20)**, the 1.2e-11 included: the nearly inverted spider cell was
 judged negligible (estimated effect ≲ 0.1 % on spider-dominated modes, ≲ 0.01 % elsewhere; not measured).
 
-## Phase E — in progress
+## Phase E — done (gate report at the end of this section)
 
 - **E1 (done)**: `physics/builder.py`: fields (unknowns with their size and expand), terms (a block times
   s⁰, s¹, s² or any function of s = jω), loads, `SystemBuilder` (`at(s)`, `rhs(s)`, `split(x)`,
@@ -464,3 +464,22 @@ judged negligible (estimated effect ≲ 0.1 % on spider-dominated modes, ≲ 0.0
   modes bit-identical. Same speed (scene script 31.5 → 30.3 s). 3D references unchanged. 3 new builder
   tests (BlockSolver = dense direct solve with a LowRank block, 1e-9; small-only multi-RHS). 290 tests
   pass with `--slow`.
+- **E4 (done)**: clean-up and documentation. The exterior FE terms are one function
+  (`physics.exterior.add_exterior`), shared by the scene builder and `ExteriorFE.solve` (now a builder +
+  `BlockSolver` with no eliminated field; its unused `extra` argument and `ExteriorFE.operator`, the former
+  matrix-free operator, are removed). `docs/guide/architecture.rst`: "Systems: fields, terms and
+  contributions"; `physics/__init__` map; CHANGELOG. 290 tests pass with `--slow`.
+
+**Gate E report.**
+
+| Gate item | Result |
+|---|---|
+| same fields (rear air included) at 1e-10 as before E | 2D FSI speaker, front + rear air + PML, force and voltage (semi-inductance n = 0.7), 5 frequencies: u ≤ 1.5e-14, p ≤ 9.7e-14, coil current 1.4e-14 |
+| coupled modes and impedance unchanged | coupled DtN system Ks, Ms, Cs bit-identical; Ze identical; 3D scene coupled modes bit-identical |
+| energy balance and swept-volume checks exact | unchanged (1e-10, 1e-9) |
+| per-block fingerprint of the coupled DtN system | `test_dtn_system_blocks` (new reference, created on purpose) |
+| one contribution protocol, circuit as physics, 3D on the same protocol | `physics/builder.py` (fields, terms in s, LowRank, contributions by role, two forms, BlockSolver); the coil contributes the circuit; 3D scenes (cavity, cavity + exterior, merged, coupled modes) on the builder: q ≤ 6.7e-16, exterior p ≤ 2e-12 (complex64), cavity ≤ 2.3e-18, same speed |
+| committed references | all unchanged |
+
+Known gap (explicit, not in the gate): the exact DtN radiation in a 2D `FrequencyResponse` (its frequency
+form raises an error; the 2D frequency study still ignores lp.Radiation, as before E).
