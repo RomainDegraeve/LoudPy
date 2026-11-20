@@ -54,6 +54,9 @@ The front radiates into the half-space above a perfectly reflective ground:
 Check: at 50 Hz the far field is omnidirectional, and p·r is within 1.4 % of a monopole on a rigid ground, ρω²V/2π.
 
 
+## Sealed box with elastic walls (shells)
+`Running_walls.py`: the sealed box of `Running_script.py` with MDF walls 12 mm thick (MITC3 shells on the walls of the cavity mesh, panel edges and the driver cut-out rim clamped, lp.Rayleigh damping of the MDF fit), coupled to the cavity air through their in-vacuo modes; the driver front and the outside of the walls are in vacuo. Writes `walls_modes.csv` (wall modes), `coupled_walls.h5` and `walls_response.png` (coil excursion with rigid / elastic walls; walls' volume velocity relative to the driver's rear volume velocity). `python3 Running_walls.py --smoke` runs 4 frequencies (about 7 min, mostly the cavity modes and the static correction).
+
 ## Vented box (bass reflex) on a rigid ground
 Walls 15 mm thick, a port of radius 20 mm and length 62 mm through the front face (its tube protrudes into the box). Two models:
 

@@ -40,6 +40,7 @@ NumPy, pandas and files.
    guide/postprocessing
    guide/plotting
    guide/scenes
+   guide/shells
    guide/examples
 
 .. toctree::

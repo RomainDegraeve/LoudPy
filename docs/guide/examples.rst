@@ -33,8 +33,9 @@ The plotting scripts are short: they only use the result objects (``res.spl(at=â
 ========================================== ===============================================================
 ``Coupling_3D/Driver_in_cavity``            HPNEW in a non-axisymmetric box: cavity modes (A), on a rigid
                                             ground with exterior radiation (B), vented box as one air
-                                            domain (C) and as a hybrid model (toolkit); validations of the
-                                            cavity FE and of the half-space DtN
+                                            domain (C) and as a hybrid model (toolkit); the sealed box
+                                            with elastic MDF walls (``Running_walls.py``, shells);
+                                            validations of the cavity FE and of the half-space DtN
 ``Coupling_3D/Labyrinth``                   folded transmission line ("labyrinth") on a rigid ground (C)
 ``Coupling_3D/Column_labyrinth``            three identical drivers in a column with a folded line: the
                                             multi-driver scene (C)

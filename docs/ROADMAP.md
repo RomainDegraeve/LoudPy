@@ -32,7 +32,7 @@ Cost unit: one *session* ≈ one long working block (3–5 h). Status: ✅ done 
 | F | One model for 2D and 3D: `lp.Model(dim=…)`, COMSOL-like tree (print, `check()`, mesh controls by selection, study steps), parameters and parametric sweeps, selectors and geometry sources in 3D scenes, typed mesh and solver settings, one remeshing rule, immutable model during solves, deterministic meshing by default, examples rewritten | 4 | ✅ |
 | G | Results format 3: one results family, self-contained files (with the model description and parameters), public arrays, derived fields (stress, strain, velocity, intensity) and values (power, volume velocity, impedance, SPL, Thiele–Small parameters), interpolation in tetrahedra, ParaView series | 3 | ✅ |
 | H | Error estimation and adaptivity: recovery and residual indicators, `lp.Adaptive`, `lp.convergence` | 3 | ✅ |
-| I | Shells: MITC3/MITC4 Reissner–Mindlin, direct coupling to the 3D air, wall-mode study, elastic-wall enclosure example | 4 | ◐ |
+| I | Shells: MITC3/MITC4 Reissner–Mindlin, direct coupling to the 3D air, wall-mode study, elastic-wall enclosure example | 4 | ✅ |
 | J | Plotting: scoped style everywhere, selections in 3D views, interactive HTML viewer, image-comparison tests | 1.5 | ○ |
 | K | Verification and validation pipeline: manufactured solutions, analytical benchmarks, COMSOL harness, generated verification report | 3 (spread) | ◐ |
 | L | Code quality and documentation: no private cross-imports, 100 % public docstrings, mypy, theory and verification manuals | 2 | ○ |
@@ -683,7 +683,7 @@ measure; curved P3 cells need curved-cell Hessians). The speaker's solid error s
 (surround–cone junction, surround rim, former foot: half of it in 8 cells on the first mesh), worth knowing for
 phase M's mesh choices.
 
-## Phase I — in progress
+## Phase I — done (gate report at the end of this section)
 
 - **I1 (done)**: shells (`fem/shell.py`). Flat Reissner–Mindlin cells in 3D, six DOFs per node: MITC4
   (Bathe–Dvorkin covariant shear tied at the edge mid-points, 2 × 2 Gauss) and MITC3 (Lee–Bathe, tying points
@@ -713,3 +713,40 @@ phase M's mesh choices.
   added mass); **rigid-wall limit**: all six walls MDF 18 mm (first panel mode 1.08 kHz), the four lowest
   non-uniform cavity modes (572–894 Hz) move by ≤ 3.3e-3 and with E × 10 / × 100 / × 1000 by 1.4e-4 / 1.3e-5 /
   1.3e-6 (as 1/E).
+- **I3 (done)**: elastic walls in scenes. `scene.walls(material, thickness, damping=None, fixed="edges", f_max=None,
+  angle=30)` (lp.P allowed; `check()` refuses walls without the cavity or with the exterior / merged air): MITC3
+  shells on the "walls" faces of the cavity mesh (every committed and example cavity mesh has the group), panel
+  edges (folds > 30°) and the driver cut-out rims clamped (or a mask function of the coordinates), in-vacuo modes
+  up to f_max (default the cavity's; `physics.shell.cavity_walls` → `WallModes`), appended after the driver modes
+  in `DriverCavityCoupling(walls=…)`: same modal form, B = Aᵀ Φ on the cavity nodes, S = Bᵀ ψ and the static
+  correction R for every column (`physics.modal.static_correction`, factored out of the class; drivers'
+  numbers unchanged). `lp.Modes(scene, physics="walls")` (in-vacuo wall modes: u, u_n on the shell mesh, ζ, volume
+  displacement); `lp.Modes(scene)` includes the walls; results: `wall_frequencies`, `wall_q`, `wall_field(f)`,
+  `wall_mode(n)`, `wall_volume_velocity()`, `driver_volume_velocity()` (saved with the file: attachment "walls",
+  cavity "volume_disp"). Checks: modal walls vs the direct shell–air system (one 6 mm MDF wall, uniform pressure
+  load, 60–700 Hz, cavity modes to 6 kHz): wall modes to 1.5 / 3 / 6 kHz give the wall displacement to 3.9 % /
+  1.25 % / 1.1e-4 and the cavity pressure to 3.5 % / 0.42 % / 7e-4 (cavity modes to 1.5 / 3 kHz with walls to 6
+  kHz: pressure 3.3 % / 0.48 %); a point force converges much more slowly (4.5 % with 18 wall modes: the local
+  static deflection, no residual flexibility of the walls — noted). Committed box (18 mm MDF): wall modes from
+  1422 Hz, the driver's excursion within 0.16 % of the rigid box over the test frequencies, file round trip; the
+  rigid-box references unchanged. 3 tests (`test_shell_air.py` ×2, `test_scene.py::test_cavity_elastic_walls`).
+- **I4 (done)**: example `Coupling_3D/Driver_in_cavity/Running_walls.py` (run in full, 700 frequencies 20 Hz–3
+  kHz, ~8 min, 2.9 GB): the sealed box with 12 mm MDF walls, 3415 shell nodes, 50 wall modes to 5.9 kHz (first
+  1099, 1288, 1710 Hz), 263 cavity modes; the walls' volume velocity is −53 dB of the driver's rear volume
+  velocity below 400 Hz (static compliance) and reaches −10.4 dB at 1383 Hz (panel resonances); the coil
+  excursion changes by ≤ 4.1 % (around the panel resonances; `walls_response.png`). Docs: `docs/guide/shells.rst`,
+  examples list, README of the example folder, CHANGELOG.
+
+**Gate I report.**
+
+| Gate item | Result |
+|---|---|
+| plate modes vs analytical within 0.5 % | hard simply supported square plate vs exact Mindlin, first four modes: MITC4 32 × 32 ≤ 0.43 % (h/a = 0.01, 0.001 and 0.1); MITC3 unstructured a/32: 0.18 % (first mode; 0.45 / 0.46 / 0.73 % for the next three, h/a = 0.01); clamped disk vs Kirchhoff (0, 1) / (0, 2): MITC4 0.02 / 0.14 %, MITC3 0.03 / 0.13 % |
+| rigid-wall limit recovered | six MDF walls (18 mm) on a box cavity, direct coupling: the four lowest non-uniform cavity modes move by 3.3e-3; E × 10 / 100 / 1000: 1.4e-4 / 1.3e-5 / 1.3e-6 (as 1/E) |
+| convergence | MITC4 frequencies order 2.0 (8 → 16 → 32), no shear locking (h/a = 1e-3 = 1e-2 errors); clamped disk 0.48 → 0.11 → 0.02 % (R/12 → R/50); modal walls → direct coupled solution (1.1e-4 displacement, 7e-4 pressure with modes to 6 kHz); air spring of a cavity-backed panel −0.16 % (added mass) |
+| wall-mode study, example | `lp.Modes(scene, physics="walls")`, walls in `lp.Modes(scene)` and `lp.FrequencyResponse(scene)`; `Running_walls.py` run in full |
+
+Not done in I, proposed for later: walls radiating outside (configurations exterior / merged: the outer faces are
+not conforming to the inner shells; a projection like the driver fronts' would do), shell offset (mid-surface vs
+inner face), orthotropic walls (plywood), MITC3+ (bubble-enriched triangle without the thin-limit locking), residual
+flexibility of the wall modes (point loads converge slowly), walls in 2D axisymmetric models.

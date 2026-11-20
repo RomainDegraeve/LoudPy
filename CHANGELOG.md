@@ -15,6 +15,11 @@ The roadmap of this work is in `docs/ROADMAP.md`.
   `wall_shells` (MITC3 cells on the TRI6 faces of a P2 air mesh, normals into the air), the conforming
   shell–air coupling and the direct coupled system (`direct_builder`, `direct_modes`, `direct_response`).
 - Material library: MDF, Plywood, Aluminium, Steel (typical values, unverified).
+- Elastic walls in scenes: `scene.walls(material, thickness, damping=…, fixed="edges", f_max=…)` (cavity
+  configuration): shells on the cavity walls coupled through their in-vacuo modes; `lp.Modes(scene,
+  physics="walls")`; `SceneResults.wall_frequencies`, `wall_field(f)`, `wall_mode(n)`, `wall_volume_velocity()`,
+  `driver_volume_velocity()`. `physics.modal.static_correction` (function); `DriverCavityCoupling(walls=…)`.
+  Example `Coupling_3D/Driver_in_cavity/Running_walls.py`; guide page "Elastic walls (shells)".
 - `lp.Adaptive(study, target=…, max_iterations=…)`: a study on meshes adapted to its own error estimate (solids:
   energy norm of the strain recovery; air: pressure-gradient recovery; relative, largest over frequencies /
   modes); `lp.convergence(study, factors=…, quantity=…)`: a study on uniformly refined meshes with observed
