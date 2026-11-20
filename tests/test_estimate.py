@@ -100,3 +100,32 @@ def test_elastic_indicator():
         U = u(sp.node_coords).ravel()
         eff = np.sqrt(est.elastic_indicator(sp, U, D).sum()) / energy(sp, U, eps)
         assert 0.8 <= eff <= 1.5, (p, eff)
+
+
+def test_recovery_one_cell_across_a_thin_layer():
+    """A P2 strip one cell thick (3 levels of nodes across): the cubic fit cannot be determined; the recovery
+    falls back to the quadratic fit and is exact on a quadratic field (the minimum-norm cubic fit was not)."""
+    import gmsh
+    gmsh.initialize()
+    try:
+        gmsh.option.setNumber("General.Terminal", 0)
+        g = gmsh.model.geo
+        p = [g.addPoint(x, y, 0) for x, y in [(0, 0), (1, 0), (1, 0.02), (0, 0.02)]]
+        lines = [g.addLine(p[i], p[(i + 1) % 4]) for i in range(4)]
+        s = g.addPlaneSurface([g.addCurveLoop(lines)])
+        for c, n in zip(lines, (41, 2, 41, 2)):
+            g.mesh.setTransfiniteCurve(c, n)
+        g.mesh.setTransfiniteSurface(s)
+        g.synchronize()
+        gmsh.model.mesh.generate(2)
+        gmsh.model.mesh.setOrder(2)
+        tags, xyz, _ = gmsh.model.mesh.getNodes(2, -1, includeBoundary=True)
+        _, nodes = gmsh.model.mesh.getElementsByType(9)
+    finally:
+        gmsh.finalize()
+    m = dict(node_tags=np.asarray(tags), coords=np.reshape(xyz, (-1, 3))[:, :2],
+             cells=np.reshape(nodes, (-1, 6)).astype(np.int64), gmsh_type=9)
+    sp = make_space(m)
+    x, y = sp.node_coords.T
+    G = est.recover_gradient(sp, x ** 2 + 3 * x * y - 40 * y ** 2)
+    assert np.allclose(G, np.column_stack([2 * x + 3 * y, 3 * x - 80 * y]), atol=1e-9)

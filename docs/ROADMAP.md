@@ -31,7 +31,7 @@ Cost unit: one *session* ≈ one long working block (3–5 h). Status: ✅ done 
 | E | Physics interfaces and couplings: one contribution protocol, generic system builder, electrical circuit as physics, 3D on the same protocol (the sign convention was fixed in C) | 4 | ✅ |
 | F | One model for 2D and 3D: `lp.Model(dim=…)`, COMSOL-like tree (print, `check()`, mesh controls by selection, study steps), parameters and parametric sweeps, selectors and geometry sources in 3D scenes, typed mesh and solver settings, one remeshing rule, immutable model during solves, deterministic meshing by default, examples rewritten | 4 | ✅ |
 | G | Results format 3: one results family, self-contained files (with the model description and parameters), public arrays, derived fields (stress, strain, velocity, intensity) and values (power, volume velocity, impedance, SPL, Thiele–Small parameters), interpolation in tetrahedra, ParaView series | 3 | ✅ |
-| H | Error estimation and adaptivity: recovery and residual indicators, `lp.Adaptive`, `lp.convergence` | 3 | ◐ |
+| H | Error estimation and adaptivity: recovery and residual indicators, `lp.Adaptive`, `lp.convergence` | 3 | ✅ |
 | I | Shells: MITC3/MITC4 Reissner–Mindlin, direct coupling to the 3D air, wall-mode study, elastic-wall enclosure example | 4 | ○ |
 | J | Plotting: scoped style everywhere, selections in 3D views, interactive HTML viewer, image-comparison tests | 1.5 | ○ |
 | K | Verification and validation pipeline: manufactured solutions, analytical benchmarks, COMSOL harness, generated verification report | 3 (spread) | ◐ |
@@ -621,7 +621,7 @@ Not done in G, proposed for later: probes of the derived names over all entries 
 other than the scenes. Found on the way (recorded in G2): the coarse test model's PML (0.1 m, tuned to
 1 kHz) leaves a reflected part of ~26 % at 100 Hz — relevant for low-frequency SPL in phase M.
 
-## Phase H — in progress
+## Phase H — done (gate report at the end of this section)
 
 - **H1 (done)**: estimators (`fem/estimate.py`). Gradient recovery by **polynomial-preserving recovery**
   (least-squares fit of degree p + 1 — 2p on quadrilaterals — to the nodal values of a vertex patch around
@@ -649,3 +649,36 @@ other than the scenes. Found on the way (recorded in G2): the coarse test model'
   recovery effectivity on this singular solution is 1.75 → 1.56 along the loop (pre-asymptotic at the
   corner; the gate's 0.8–1.5 is on smooth solutions, H1). 3 tests (`tests/test_adapt.py`, incl. a plate
   meshed with a size view: refined near the rim, reused / rebuilt by the signature).
+- **H3 (done)**: model level (`study/adaptive.py`). `lp.Adaptive(study, target, max_iterations)`: after each
+  solve the relative error is estimated per cell from the results (solids: elastic-energy recovery indicator /
+  ∫ε_hᴴDε_h 2πr; air outside the PML: pressure-gradient recovery / ∫|∇p|² 2πr; per frequency or mode, a cell
+  keeps its largest value; `estimate_errors(res)`), new sizes for 0.5 × target (the cell count grows after
+  the update: aiming at the target itself made the loop creep), the model copy remeshed with the size view
+  (`<stem>_adapt<i>.msh / .pos`), history in `res.meta["adaptive"]`. `lp.convergence(study, factors,
+  quantity)`: every mesh size × factor; orders in h = N^(-1/2): local (three meshes) and a least-squares fit
+  q ≈ q∞ + C h^r over all meshes (the local orders are noisy on unstructured meshes: 0.2–6.6 on the plate),
+  Richardson value q∞, expected orders for the element order (eigenfrequencies 2p, energy p, L2 p + 1).
+  Two estimator fixes found on the models: (1) the PPR fit of degree p + 1 is undetermined on a patch one cell
+  across a thin layer (3 levels of nodes: z(z−1)(z−2) is in the null space), the minimum-norm fit then mixed
+  that null polynomial into ∂/∂z and the plate's estimate jumped (0.0137 → 0.229 between two meshes); the fit
+  now falls back to the highest degree the patch determines (exact on quadratics, test added); (2) the size
+  view had the solid and the air nodes of an interface twice (fine and coarse sizes), gmsh read the coarse one
+  on the shared curves and the speaker's solid estimate stalled at 0.10 (long interface edges at the corners);
+  nodal sizes are now per node tag over every group (the finer wins). The recovery is a sparse operator built
+  once per space (many frequencies / modes: one product each). 4 tests (`tests/test_adaptive_study.py`, one
+  `--slow`), 1 in `tests/test_estimate.py`.
+
+**Gate H report.**
+
+| Gate item | Result |
+|---|---|
+| estimator effectivity 0.8–1.5 | recovery estimate / true energy error on manufactured solutions at n = 16: triangles P1 1.034, P2 1.007, P3 1.293; Q1 1.012, Q2 1.005; curved unstructured P1 1.028, P2 1.004, P3 1.194; axisymmetric 1.08 / 1.01 / 1.02; elastic energy 1.003 / 1.001 (all → 1 under refinement); on the singular L-shape 1.75 → 1.56 along the adaptive loop (pre-asymptotic at the corner) |
+| the adaptive loop beats uniform refinement | L-shape (r^(2/3) sin(2θ/3), P2): adaptive 1204 DOFs energy error 4.29e-3 = 0.10 × uniform at the same DOFs, 0.27 × uniform at 22 541 DOFs; rate N^(-1.43) vs N^(-1/3). Clamped plate modes (P2): adaptive 1006 → 1948 → 3492 → 4554 DOFs, estimate 0.0525 → 0.0185 → 0.0089 → 0.0053 (target 0.008); uniform 5170 DOFs 0.0207, 15 562 DOFs 0.0119; f1 adaptive 508.634 Hz, uniform 508.705 (5170 DOFs) and 508.657 (15 562), reference 508.633 (fit of uniform 5170–29 310 DOFs, itself uncertain by ~1e-5): f1 error 2e-6 at 4554 DOFs (below the reference's uncertainty) vs 1.4e-4 uniform at 5170 and 4.8e-5 at 15 562. Coupled speaker (structure + air + PML, 200 Hz and 1 kHz, target 0.02): 20 109 → 51 719 → 82 114 → 98 395 DOFs, solid 0.294 → 0.109 → 0.053 → 0.028, air 0.0435 → 0.0107 → 0.0058 → 0.0044 |
+| expected orders reported | `lp.convergence` tables them (eigenfrequencies 2p, energy p, L2 / point values p + 1) next to the observed ones. Plate P2 (expected 4 for f): fit 3.39 / 4.08 (f1 / f2) over 1006–5170 DOFs, 1.88 / 1.89 over 5170–29 310 DOFs (the clamped edge's corners lower the order asymptotically; the coarse meshes are pre-asymptotic) |
+
+Not done in H, proposed for later: adaptation of 3D scenes and of the azimuthal orders m ≥ 1, coarsening
+beyond the regions' mesh sizes (they stay the coarsest sizes), a goal-oriented estimate (error in one output,
+e.g. the SPL at a point, by an adjoint solve), the residual indicator's constant (it ranks cells, it does not
+measure; curved P3 cells need curved-cell Hessians). The speaker's solid error sits at three corners
+(surround–cone junction, surround rim, former foot: half of it in 8 cells on the first mesh), worth knowing for
+phase M's mesh choices.

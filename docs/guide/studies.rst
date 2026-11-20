@@ -84,3 +84,46 @@ parameters; their values then enter the mesh signature.
 Each run is the study on ``model.with_parameters(t=…)``, a copy: the model itself is not changed, and
 each variant is meshed next to the model's mesh (``disc_t_0.0015.msh`` …, reused while unchanged). A
 sweep gives exactly the results of the separate runs.
+
+Adaptive meshing
+----------------
+
+``lp.Adaptive`` runs a study on meshes adapted to its own error estimate, on copies of the model:
+
+.. code-block:: python
+
+    ad = lp.Adaptive(lp.FrequencyResponse(model), target=0.03, max_iterations=4)
+    res = ad.solve(freqs)            # the results on the last mesh
+    print(ad)                        # per mesh: DOFs, cells, estimate (solid, air)
+
+After each solve the error is estimated per cell from the results (``loudpy.fem.estimate``): in the solids
+the energy norm of the difference between a recovered strain (polynomial-preserving recovery) and the FE
+strain, in the air outside the PML the same for the pressure gradient, each relative to the norm of the
+solution, for every frequency or mode; a cell keeps its largest value. While the estimate is above
+``target`` (a relative error, e.g. 0.03), new element sizes are computed (equidistribution of the error) and
+the model is remeshed with them as a gmsh size view (``<mesh>_adapt1.msh`` / ``.pos`` …, next to the
+model's mesh). The regions' mesh sizes stay the coarsest sizes. The history is kept in
+``res.meta["adaptive"]`` (JSON) and saved with the results. Axisymmetric (m = 0) Modes and
+FrequencyResponse; not with ``remesh=lp.PerWavelength``.
+
+Convergence studies
+-------------------
+
+``lp.convergence`` solves a study on meshes with every mesh size multiplied by each factor and tabulates
+a quantity (default for ``lp.Modes``: the mode frequencies):
+
+.. code-block:: python
+
+    table = lp.convergence(lp.Modes(model), factors=(1, 0.7, 0.5, 0.35), f_max=4000)
+    print(table)
+    table.n_dofs, table.values       # per mesh
+    table.order, table.extrapolated  # fit q ≈ q∞ + C h^r over all meshes (h = DOFs^(-1/2))
+    table.errors                     # |q − q∞| / |q∞| per mesh
+    table.expected                   # smooth-solution orders for the element order p
+
+    lp.convergence(lp.FrequencyResponse(model), quantity=lambda r: abs(r.probe("p", lp.Point(0, 1)).values),
+                   freqs=[1000.0])
+
+For elements of order p the expected orders in h are 2p for eigenfrequencies, p for the energy norm and
+p + 1 for the L2 norm and point values, on smooth solutions; re-entrant corners, clamped edges and
+material corners lower them (the clamped plate converges at about 2 instead of 4 on fine meshes).

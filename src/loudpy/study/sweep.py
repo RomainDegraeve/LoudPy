@@ -53,7 +53,7 @@ class Sweep:
         return folder / f"{stem}_{self.parameter}_{value:g}.msh"
 
     def solve(self, *args, **kwargs) -> SweepResults:
-        """Calls study.solve(*args, **kwargs) on each variant of the model."""
+        """Calls ``study.solve(*args, **kwargs)`` on each variant of the model."""
         results = []
         for v in self.values:
             variant = self.study.model.with_parameters(**{self.parameter: v})

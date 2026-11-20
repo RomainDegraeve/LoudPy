@@ -8,10 +8,16 @@ versions follow [Semantic Versioning](https://semver.org/) (0.x: the API may sti
 The roadmap of this work is in `docs/ROADMAP.md`.
 
 ### Added
+- `lp.Adaptive(study, target=…, max_iterations=…)`: a study on meshes adapted to its own error estimate (solids:
+  energy norm of the strain recovery; air: pressure-gradient recovery; relative, largest over frequencies /
+  modes); `lp.convergence(study, factors=…, quantity=…)`: a study on uniformly refined meshes with observed
+  orders, Richardson extrapolation and the expected orders; `loudpy.study.adaptive.estimate_errors(res)`.
 - `loudpy.fem.adapt`: element sizes from error indicators (equidistribution) written as a gmsh size view;
   `model.mesh(path, size_field="sizes.pos")` meshes with it (part of the mesh signature).
 - `loudpy.fem.estimate`: a-posteriori error estimation — polynomial-preserving gradient recovery, recovery
   indicators (scalar, axisymmetric elastic energy) and an explicit residual indicator.
+  The recovery is a sparse operator (`recovery_operator`) and falls back to a lower fit degree on patches one
+  cell across a thin layer; `gradient_energy`, `elastic_energy`: the norms.
 - Derived values: `res.volume_velocity(on=…)`, `res.radiated_power(on=… | radius=…)`, `res.thiele_small(on=…)`
   (voltage drive); ParaView series `res.export("x.pvd")`.
 - Derived fields: `res.field("strain" | "stress" | "von_mises" | "v" | "a" | "particle_velocity" |

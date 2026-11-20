@@ -55,6 +55,10 @@ Studies
    FrequencyResponse
    PerWavelength
    Transient
+   Sweep
+   SweepResults
+   Adaptive
+   convergence
 
 3D scenes
 ---------

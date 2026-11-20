@@ -4,9 +4,12 @@ A-posteriori error estimation on a Lagrange space (2D: triangles, quadrilaterals
     G = recover_gradient(space, U)                 nodal gradients by polynomial-preserving recovery (PPR):
                                                    around each node a least-squares fit of a polynomial of
                                                    degree p + 1 (2p on quadrilaterals) to the nodal values of
-                                                   a patch of cells; its gradient at the node
+                                                   a patch of cells; its gradient at the node (a patch that
+                                                   cannot determine that degree, e.g. one cell across a thin
+                                                   layer, fits the highest degree it can)
     eta = recovery_indicator(space, U)             per cell ∫ |G*u_h − ∇u_h|² (×2πr axisymmetric)
     eta = elastic_indicator(space, U, D)           per cell ∫ (ε* − ε_h)ᵀ D (ε* − ε_h) 2πr (axisymmetric solid)
+    e = gradient_energy(space, U) / elastic_energy(space, U, D)    per cell ∫|∇u_h|² / ∫ε_hᴴDε_h 2πr (the norms)
     eta = residual_indicator(space, U, f, k2)      per cell h_K² ‖f + Δu_h + k² u_h‖² + ½ Σ_E h_E ‖[∂u_h/∂n]‖²
                                                    (Poisson / Helmholtz −Δu − k²u = f; interior edges)
 
@@ -22,7 +25,8 @@ import numpy as np
 
 from loudpy.fem.quadrature import quadrature
 
-__all__ = ["recover_gradient", "recovery_indicator", "elastic_indicator", "residual_indicator", "cell_sizes"]
+__all__ = ["recovery_operator", "recover_gradient", "recovery_indicator", "elastic_indicator", "residual_indicator", "cell_sizes",
+           "gradient_energy", "elastic_energy"]
 
 
 def _fit_degree(element) -> int:
@@ -38,19 +42,22 @@ def _node_cells(space):
     return cells, node_cells
 
 
-def recover_gradient(space, U) -> np.ndarray:
-    """Recovered nodal gradients (n_nodes, gdim) of a scalar field, or (n_nodes, components, gdim)."""
+def recovery_operator(space):
+    """The PPR gradient recovery as a sparse matrix R (2 n_nodes, n_nodes): row 2z + d is ∂/∂x_d at node z of
+    the fit around z. It depends on the mesh only (built once per space, kept on it)."""
+    R = getattr(space, "_ppr", None)
+    if R is not None:
+        return R
+    import scipy.sparse as sps
     if space.gdim != 2:
         raise NotImplementedError("gradient recovery: 2D spaces (triangles, quadrilaterals)")
-    U = np.asarray(U).reshape(space.n_nodes, space.components)
-    deg = _fit_degree(space.element)
-    exps = [(i, s - i) for s in range(deg + 1) for i in range(s + 1)]
-    need = len(exps)
-    i10, i01 = exps.index((1, 0)), exps.index((0, 1))
+    top = _fit_degree(space.element)
+    bases = {g: [(i, s - i) for s in range(g + 1) for i in range(s + 1)] for g in range(1, top + 1)}
+    need = len(bases[top])
     X = space.node_coords
     cells, node_cells = _node_cells(space)
     nv = len(space.element.cell.vertices)
-    G = np.zeros((space.n_nodes, space.components, 2), dtype=np.result_type(U, float))
+    rows, cols, vals = [], [], []
     for z in range(space.n_nodes):
         cs = np.asarray(node_cells[z])
         pts = np.unique(cells[cs])
@@ -63,9 +70,27 @@ def recover_gradient(space, U) -> np.ndarray:
         d = X[pts] - X[z]
         h = np.abs(d).max()
         d = d / h
-        A = np.column_stack([d[:, 0] ** i * d[:, 1] ** j for i, j in exps])
-        c, *_ = np.linalg.lstsq(A, U[pts], rcond=None)
-        G[z, :, 0], G[z, :, 1] = c[i10] / h, c[i01] / h
+        for deg in range(top, 0, -1):                            # a patch that cannot resolve degree p + 1 (one
+            exps = bases[deg]                                    # cell across a thin layer: 3 levels of nodes)
+            A = np.column_stack([d[:, 0] ** i * d[:, 1] ** j for i, j in exps])   # fits the highest it can
+            sv = np.linalg.svd(A, compute_uv=False)
+            if len(sv) == len(exps) and sv[-1] > 1e-8 * sv[0]:
+                break
+        i10, i01 = exps.index((1, 0)), exps.index((0, 1))
+        Ap = np.linalg.pinv(A)                                   # least squares: coefficients = Ap @ values
+        rows += [np.full(len(pts), 2 * z), np.full(len(pts), 2 * z + 1)]
+        cols += [pts, pts]
+        vals += [Ap[i10] / h, Ap[i01] / h]
+    R = sps.csr_matrix((np.concatenate(vals), (np.concatenate(rows), np.concatenate(cols))),
+                       shape=(2 * space.n_nodes, space.n_nodes))
+    space._ppr = R
+    return R
+
+
+def recover_gradient(space, U) -> np.ndarray:
+    """Recovered nodal gradients (n_nodes, gdim) of a scalar field, or (n_nodes, components, gdim)."""
+    U = np.asarray(U).reshape(space.n_nodes, space.components)
+    G = (recovery_operator(space) @ U).reshape(space.n_nodes, 2, space.components).transpose(0, 2, 1)
     return G[:, 0] if space.components == 1 else G
 
 
@@ -122,6 +147,32 @@ def elastic_indicator(space, U, D) -> np.ndarray:
         es = np.einsum("qa,eak->eqk", N, eps_n[nodes])
         de = es - eh
         e2 = np.real(np.einsum("eqk,kl,eql->eq", np.conj(de), np.asarray(Dg), de))
+        out.append(np.sum(dx * 2 * np.pi * x[..., 0] * e2, axis=1))
+    return np.concatenate(out)
+
+
+def gradient_energy(space, U, axisymmetric: bool = False) -> np.ndarray:
+    """Per cell ∫_K |∇u_h|² (2πr dA axisymmetric) of a scalar field: the norm the recovery indicator compares to."""
+    U = np.asarray(U).ravel()
+    rule = quadrature(space.element.cell.name, 2 * space.element.degree)
+    out = []
+    for nodes, N, Gx, dx, x in _cell_data(space, rule):
+        gh = np.einsum("eqai,ea->eqi", Gx, U[nodes])
+        w = dx * (2 * np.pi * x[..., 0] if axisymmetric else 1.0)
+        out.append(np.sum(w * np.sum(np.abs(gh) ** 2, axis=-1), axis=1))
+    return np.concatenate(out)
+
+
+def elastic_energy(space, U, D) -> np.ndarray:
+    """Per cell ∫_K ε_hᴴ D ε_h 2πr dA of an axisymmetric displacement (twice the strain energy of a real field)."""
+    U = np.asarray(U).reshape(space.n_nodes, 2)
+    Ds = D if isinstance(D, (list, tuple)) else [D] * len(space.cell_nodes)
+    rule = quadrature(space.element.cell.name, 2 * space.element.degree)
+    out = []
+    for (nodes, N, Gx, dx, x), Dg in zip(_cell_data(space, rule), Ds):
+        grad = np.einsum("eqai,eac->eqci", Gx, U[nodes])
+        eh = _strain(grad, np.einsum("qa,ea->eq", N, U[nodes][..., 0]), x[..., 0], grad[..., 0, 0])
+        e2 = np.real(np.einsum("eqk,kl,eql->eq", np.conj(eh), np.asarray(Dg), eh))
         out.append(np.sum(dx * 2 * np.pi * x[..., 0] * e2, axis=1))
     return np.concatenate(out)
 

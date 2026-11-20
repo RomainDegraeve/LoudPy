@@ -26,7 +26,8 @@ from .model import (
 from .geometry import Frame, Mesh, Group, Box, Near, Interface, BoundaryOf
 from .results import (load, spl, Results, FrequencyResults, ModeResults, TimeResults, Data, Field,
                       Point, Points, Polar, Arc, Line)
-from .study import Modes, FrequencyResponse, PerWavelength, Transient, Sweep, SweepResults
+from .study import (Modes, FrequencyResponse, PerWavelength, Transient, Sweep, SweepResults, Adaptive,
+                    Convergence, convergence)
 from .scene import Driver, Profile, Scene, Cabinet
 
 from . import errors
@@ -51,7 +52,8 @@ __all__ = [
     # geometry and selections
     "Frame", "Mesh", "Group", "Box", "Near", "Interface", "BoundaryOf",
     # studies
-    "Modes", "FrequencyResponse", "PerWavelength", "Transient", "Sweep", "SweepResults",
+    "Modes", "FrequencyResponse", "PerWavelength", "Transient", "Sweep", "SweepResults", "Adaptive", "Convergence",
+    "convergence",
     # 3D scenes
     "Driver", "Profile", "Scene", "Cabinet",
     # results and evaluation
