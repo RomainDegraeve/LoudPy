@@ -423,3 +423,14 @@ Beyond the gate: curved 3D cells (hemisphere 1.8 % → 0.011 %); every element o
 
 **Gate D accepted by the user (2026-11-20)**, the 1.2e-11 included: the nearly inverted spider cell was
 judged negligible (estimated effect ≲ 0.1 % on spider-dominated modes, ≲ 0.01 % elsewhere; not measured).
+
+## Phase E — in progress
+
+- **E1 (done)**: `physics/builder.py`: fields (unknowns with their size and expand), terms (a block times
+  s⁰, s¹, s² or any function of s = jω), loads, `SystemBuilder` (`at(s)`, `rhs(s)`, `split(x)`,
+  `polynomial()` for eigenproblems, which refuses non-polynomial terms such as a semi-inductance), and the
+  contributions by role (solid, air, fluid_structure, coil: force or voltage with its circuit as a field
+  "I"). `FrequencyResponse` builds no block any more: it asks the builder. Fields against the code before
+  E (`c97bd73`, worktree, same machine, direct solves; FSI speaker with front and rear air + PML; 50, 212,
+  800, 1500, 4000 Hz; force, and voltage with Re 6 Ω, Bl 5, Le 0.3 mH, n = 0.7): u 4.8e-15 / 1.5e-14,
+  p 6.9e-14 / 9.7e-14, coil current 1.4e-14, Ze identical. 3 builder tests; 286 tests pass with `--slow`.

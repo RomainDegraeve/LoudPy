@@ -15,7 +15,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
-import scipy.sparse as sp
 
 from loudpy.checks import check
 from loudpy.model.drives import Force, Voltage
@@ -104,49 +103,29 @@ class FrequencyResponse(Study):
 
     # ── one mesh ───────────────────────────────────────────────────────────
     def _solve_block(self, freqs, label=""):
-        """Responses at `freqs` on the current mesh → one Block."""
+        """Responses at `freqs` on the current mesh → one Block (the system comes from the builder)."""
+        from loudpy.physics.builder import coupled_builder
         from loudpy.physics.systems import assemble, meshes, nodal
         from loudpy.solvers.linear import SweepSolver
         parts = self._parts()
         s = assemble(parts, air=self.coupled)
-        if s.F is None:
-            raise ModelError("the model has no coil boundary (lp.Coil): nothing drives it")
+        builder = coupled_builder(s, parts, self.drive, self.coupled)
         solver = SweepSolver()
         solver.reuse = self.reuse_factorization and solver.reuse
         d = self.drive
-        nm, na = s.n_meca, s.n_acou
         U, P, attrs = [], [], []
         for f in np.asarray(freqs, float):
             w = 2 * np.pi * f
-            A_meca = s.K + 1j * w * s.C - w ** 2 * s.M
+            z = 1j * w
+            x = builder.split(solver.solve(builder.at(z), builder.rhs(z)))
+            U.append(s.meca.expand(x["u"]))
             a = {"omega": float(w)}
-            if not self.coupled:
-                rhs = np.zeros(nm, dtype=complex)
-                rhs[:nm] = s.F * d.amplitude
-                U.append(s.meca.expand(solver.solve(A_meca, rhs)))
-            else:
-                A_acou = s.H - w ** 2 * s.Q
-                fsi = s.rho * w ** 2 * s.Cam
-                if isinstance(d, Voltage):
-                    n = 1 if d.n is None else d.n
-                    Ze = d.Re + (1j * w) ** n * d.Le
-                    b = s.F.reshape(-1, 1)                          # coil force pattern, sums to 1
-                    A = sp.bmat([[A_meca, -s.Cam.T, sp.csr_matrix(-d.Bl * b)],
-                                 [-fsi, A_acou, None],
-                                 [sp.csr_matrix(1j * w * d.Bl * b.T), None, sp.csr_matrix(np.array([[Ze]]))]],
-                                format="csc")
-                    rhs = np.zeros(nm + na + 1, dtype=complex)
-                    rhs[-1] = d.amplitude                           # drive voltage on the electrical DOF
-                else:
-                    A = sp.bmat([[A_meca, -s.Cam.T], [-fsi, A_acou]], format="csc")
-                    rhs = np.zeros(nm + na, dtype=complex)
-                    rhs[:nm] = s.F * d.amplitude
-                x = solver.solve(A, rhs)
-                U.append(s.meca.expand(x[:nm]))
-                P.append(x[nm:nm + na])
-                if isinstance(d, Voltage):
-                    a.update(I_coil=complex(x[-1]), Ze=complex(Ze), Re=float(d.Re), Le=float(d.Le), n=float(n),
-                             Bl=float(d.Bl), U=complex(d.amplitude))
+            if "p" in x:
+                P.append(x["p"])
+            if "I" in x:
+                c = builder.fields["I"].info
+                a.update(I_coil=complex(x["I"][0]), Ze=complex(c["Re"] + z ** c["n"] * c["Le"]), Re=c["Re"],
+                         Le=c["Le"], n=c["n"], Bl=c["Bl"], U=complex(d.amplitude))
             attrs.append(a)
         ms = meshes(s, parts)
         fields = {"u": nodal(np.array(U), len(s.meca.unique_tags), 2)}
