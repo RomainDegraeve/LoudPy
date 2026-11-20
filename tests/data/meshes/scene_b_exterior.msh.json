@@ -30,16 +30,6 @@
   ]
  ],
  "settings": {
-  "cavity": {
-   "mesh_size": [
-    0.006,
-    0.03
-   ],
-   "near": [
-    0.005,
-    0.06
-   ]
-  },
   "open": {
    "kind": "exterior",
    "ground": "y",
