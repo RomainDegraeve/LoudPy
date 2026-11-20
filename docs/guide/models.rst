@@ -78,8 +78,10 @@ still read; ``MaterialLibrary.save`` writes the current format.
 :class:`lp.Hysteretic <loudpy.Hysteretic>` (complex stiffness ``K(1 + iη)``) or
 :class:`lp.Undamped <loudpy.Undamped>`. A coefficient that is not given comes from the
 material's *default damping fit* (``Material.rayleigh = (α [1/s], β [s])``,
-``Material.loss_factor = η``). PML settings belong to the region (``lp.PML(strength=3, order=1)``
-by default), not to the air.
+``Material.loss_factor = η``). ``lp.Rayleigh.from_loss_factor(η, band=(f1, f2))`` gives the α, β
+whose loss factor is η at f1 and f2 (``η(ω) = α/ω + βω``, lower in between); the library fits use
+100 Hz – 1 kHz. PML settings belong to the region (``lp.PML(strength=3, order=1)`` by default), not
+to the air.
 
 Air
 ~~~

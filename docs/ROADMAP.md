@@ -108,6 +108,8 @@ Gates (each phase is committed and pushed only when its gate passes):
   were not rewritten.
 - Found on the way, for later phases: the `test_dtn_system` fingerprint (sums over the whole coupled
   matrix) is dominated by the structure block and cannot see a 1e-4 change of the air block (it
-  moved by 7e-12): phase E will fingerprint each block separately. The library value of SolidGlue
-  `rayleigh α = 80e-6 1/s` is ~1e6 times smaller than the other materials' (probably meant 80):
-  kept as it was, to be confirmed by the author.
+  moved by 7e-12): phase E will fingerprint each block separately. SolidGlue (an epoxy) had a Rayleigh fit
+  (α = 8e-5, β = 1.2e-7) giving η ≈ 1e-4 instead of its 0.03: replaced by the fit of η = 0.03 at
+  100 Hz and 1 kHz (`lp.Rayleigh.from_loss_factor`, the rule the other fits follow). Only the
+  damping-dependent references changed (C operators, damped modes and responses; K, M unchanged).
+  Rubber and PhenolicCloth fits do not match their own η either (to be reviewed with the author).

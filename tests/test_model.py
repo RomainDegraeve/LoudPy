@@ -88,6 +88,14 @@ def test_library_formats(tmp_path):
         lp.Material.from_dict({"name": "X", "rho": 1.0, "colour": "red"})
 
 
+def test_rayleigh_from_loss_factor():
+    r = lp.Rayleigh.from_loss_factor(0.03, band=(100.0, 1000.0))
+    assert np.allclose(r.loss_factor([100.0, 1000.0]), 0.03, rtol=1e-12)
+    assert r.loss_factor(np.sqrt(100.0 * 1000.0)) < 0.03                 # lower in between
+    glue = lp.materials["SolidGlue"]                                     # epoxy: fit of its own η
+    assert np.allclose(lp.Rayleigh(*glue.rayleigh).loss_factor([100.0, 1000.0]), glue.loss_factor, rtol=1e-4)
+
+
 def test_air_model():
     """Ideal-gas air vs tabulated values (dry air at 1 atm: 331.3 m/s at 0 °C, ρ 1.204 at 20 °C)."""
     std = lp.materials["Air"]

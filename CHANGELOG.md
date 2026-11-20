@@ -32,6 +32,7 @@ The roadmap of this work is in `docs/ROADMAP.md`.
   temperature and source of each material, damping fits grouped under `damping`;
   `MaterialLibrary.save`. Format-1 libraries are still read.
 - `lp.Scene(…, air=…)`: the air of a scene, a library name or an `lp.Material`.
+- `lp.Rayleigh.from_loss_factor(eta, band=(f1, f2))` and `Rayleigh.loss_factor(f)`.
 
 ### Changed
 - One air everywhere: the library's `Air` is computed by `lp.air()` at 20 °C, 101.325 kPa, dry
@@ -53,6 +54,9 @@ The roadmap of this work is in `docs/ROADMAP.md`.
   `loudpy[plot]`, `loudpy[3d]`, `loudpy[all]`; minimum dependency versions relaxed.
 
 ### Fixed
+- Library material `SolidGlue` (cured epoxy): its Rayleigh fit (α = 8e-5 1/s, β = 1.2e-7 s) gave a loss
+  factor of 1e-4 – 8e-4 instead of its own 0.03; now the fit of η = 0.03 at 100 Hz and 1 kHz
+  (α = 17.136 1/s, β = 4.34e-6 s). Results of models with Rayleigh-damped glue change (damping only).
 - `MultiDriver.surface` called a function that had moved (removed; use `DriverResponse.surface`).
 
 ### Removed

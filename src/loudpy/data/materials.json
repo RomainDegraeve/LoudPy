@@ -35,8 +35,9 @@
     },
     "SolidGlue": {
       "kind": "solid", "rho": 1200, "E": 3.5e9, "nu": 0.38,
-      "damping": {"rayleigh": [80e-6, 1.2e-7], "loss_factor": 0.03},
-      "temperature": 293.15, "source": "typical value, unverified"
+      "damping": {"rayleigh": [17.1360, 4.3406e-06], "loss_factor": 0.03},
+      "temperature": 293.15,
+      "source": "typical value for a cured epoxy adhesive below its glass transition, unverified; rayleigh: fit of the loss factor at 100 Hz and 1 kHz"
     },
     "Air": {
       "kind": "fluid", "model": "air", "temperature": 293.15, "pressure": 101325.0, "humidity": 0.0
