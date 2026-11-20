@@ -20,8 +20,9 @@
     },
     "Rubber": {
       "kind": "solid", "rho": 950, "E": 3.0e7, "nu": 0.45,
-      "damping": {"rayleigh": [45.0, 2.3e-5], "loss_factor": 0.15},
-      "temperature": 293.15, "source": "typical value, unverified"
+      "damping": {"rayleigh": [85.6798, 2.1703e-05], "loss_factor": 0.15},
+      "temperature": 293.15,
+      "source": "typical value, unverified; rayleigh: fit of the loss factor at 100 Hz and 1 kHz"
     },
     "Kapton": {
       "kind": "solid", "rho": 1720, "E": 2.5e9, "nu": 0.34,
@@ -30,8 +31,9 @@
     },
     "PhenolicCloth": {
       "kind": "solid", "rho": 600, "E": 4.5e7, "nu": 0.35,
-      "damping": {"rayleigh": [90.0, 2.0e-5], "loss_factor": 0.07},
-      "temperature": 293.15, "source": "typical value, unverified"
+      "damping": {"rayleigh": [39.9839, 1.0128e-05], "loss_factor": 0.07},
+      "temperature": 293.15,
+      "source": "typical value, unverified; rayleigh: fit of the loss factor at 100 Hz and 1 kHz"
     },
     "SolidGlue": {
       "kind": "solid", "rho": 1200, "E": 3.5e9, "nu": 0.38,

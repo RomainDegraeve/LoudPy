@@ -99,6 +99,11 @@ The roadmap of this work is in `docs/ROADMAP.md`.
   pointed them away from the centroid of the drawing, which put a layer inside its air when the
   drawing extended beyond it (e.g. a structure above a top PML); the models of the examples were not
   affected (identical meshes and operators).
+- Library materials `Rubber` and `PhenolicCloth`: their Rayleigh fits did not follow their own loss
+  factor (Rubber fitted at 50 Hz–1 kHz, 0.086 instead of 0.15 at 100 Hz; PhenolicCloth about twice too
+  damped everywhere). Now the fits of η at 100 Hz and 1 kHz like the other materials: Rubber (85.6798,
+  2.1703e-5), PhenolicCloth (39.9839, 1.0128e-5). Damped results of models using `lp.Rayleigh()` on them
+  change (speaker: lower modal damping where the spider works).
 - `MultiDriver.surface` called a function that had moved (removed; use `DriverResponse.surface`).
 
 ### Removed

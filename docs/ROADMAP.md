@@ -1,9 +1,11 @@
 # loudpy roadmap — towards a professional, verified FE library
 
-Approved on 2026-11-20. Goal: one consistent API across physics, studies, saving and plotting, ready to
-use, with a test pipeline that checks accuracy (not only regressions). New physics (BEM, magnetics,
-thermal, thermoviscous losses, porous media, anisotropy, motor nonlinearities, parametric sweeps,
-PETSc/MPI) comes later.
+Approved on 2026-11-20, reviewed after phase C (same day, see "Review after phase C"). Goal: one
+consistent API across physics, studies, saving and plotting, ready to use, organised like COMSOL / ANSYS
+(geometry → selections → materials and physics → mesh → studies → results), with a test pipeline that
+checks accuracy (not only regressions). New physics (BEM, magnetics, thermal, thermoviscous losses, porous
+media, anisotropy, motor nonlinearities, PETSc/MPI) comes later; parameters and parametric sweeps were
+moved into phase F.
 
 Decisions: own generic FE core (no external FE library); elements: triangles P1–P3, quads Q1–Q2 (2D /
 axisymmetric), tetrahedra P1–P3 (3D), shells for cabinet walls coupled directly to the air; both 2D
@@ -11,6 +13,11 @@ geometry workflows (gmsh curve loops and Physical Surfaces / STEP), names are la
 plausibility checks; error estimator + adaptive remeshing loop + convergence tool; raster 3D panels in
 PDFs + interactive HTML viewer; material values marked "typical, unverified"; Python ≥ 3.13; full re-run
 of the examples at the end; COMSOL comparison harness now, reference results later.
+After phase C (user, 2026-11-20): **compact model items + a COMSOL-like tree** (keep `lp.Solid` / `lp.Air` …
+bundling domain, physics, material, damping; add the tree view, mesh controls by selection, study steps,
+derived values, the model description saved with the results); **parameters and sweeps in phase F**;
+**phase D next** (API phases after it, on the new core); the coupled 2D examples are **re-run before
+phase M** (phase R); Rubber and PhenolicCloth damping refitted (done).
 
 Cost unit: one *session* ≈ one long working block (3–5 h). Status: ✅ done · ◐ in progress · ○ to do.
 
@@ -19,10 +26,11 @@ Cost unit: one *session* ≈ one long working block (3–5 h). Status: ✅ done 
 | A | Foundations: no import side effects, OpenMP, exceptions, SI checks, packaging, CI, verification tests | 1 | ✅ |
 | B | Materials and air: library v2 (units, temperature, provenance), damping separate, air from (T, p, RH), one air for 2D and 3D | 1 | ✅ |
 | C | Selections and geometry: selection objects, three geometry sources, nothing read from names, PML by selection, driver profiles from selections | 3 | ✅ |
+| R | Re-run of the coupled 2D examples (FSI, FSI_elec, FSI_DtN) with the coupling fix and the damping refits; compare with the stored results; list of the user's own results to recompute | 0.5 + ~2 h compute | ○ |
 | D | Own generic FE core: Lagrange P1–P3 on lines / triangles / quads / tetrahedra, quadrature, spaces, generic kernels and assembly, curved (isoparametric) elements; old kernels removed | 5 | ○ |
 | E | Physics interfaces and couplings: one contribution protocol, generic system builder, electrical circuit as physics, 3D on the same protocol (the sign convention was fixed in C) | 4 | ○ |
-| F | One model for 2D and 3D: `lp.Model(dim=…)`, typed mesh and solver settings, one remeshing rule, immutable model during solves, deterministic meshing by default, examples rewritten | 3 | ○ |
-| G | Results format 3: one results family, self-contained files, public arrays, derived fields (stress, strain, velocity, intensity) and values (power, volume velocity), interpolation in tetrahedra, ParaView series | 3 | ○ |
+| F | One model for 2D and 3D: `lp.Model(dim=…)`, COMSOL-like tree (print, `check()`, mesh controls by selection, study steps), parameters and parametric sweeps, selectors and geometry sources in 3D scenes, typed mesh and solver settings, one remeshing rule, immutable model during solves, deterministic meshing by default, examples rewritten | 4 | ○ |
+| G | Results format 3: one results family, self-contained files (with the model description and parameters), public arrays, derived fields (stress, strain, velocity, intensity) and values (power, volume velocity, impedance, SPL, Thiele–Small parameters), interpolation in tetrahedra, ParaView series | 3 | ○ |
 | H | Error estimation and adaptivity: recovery and residual indicators, `lp.Adaptive`, `lp.convergence` | 3 | ○ |
 | I | Shells: MITC3/MITC4 Reissner–Mindlin, direct coupling to the 3D air, wall-mode study, elastic-wall enclosure example | 4 | ○ |
 | J | Plotting: scoped style everywhere, selections in 3D views, interactive HTML viewer, image-comparison tests | 1.5 | ○ |
@@ -37,11 +45,15 @@ Gates (each phase is committed and pushed only when its gate passes):
 - **B** 2D and 3D use identical air; 3D references regenerated on purpose, change documented.
 - **C** existing models give the same parts and PML layers; P2 regressions unchanged except the coupled
   ones, which change by the coupling fix below, checked by physical invariants (energy balance, swept volume).
+- **R** every coupled 2D example re-run; differences to the stored results explained (coupling fix,
+  damping refit); the figures regenerated.
 - **D** patch tests; exact integration; manufactured-solution orders ≈ p + 1 for P1 / P2 / P3 and Q1 / Q2;
-  old operators reproduced at 1e-12.
+  old operators reproduced at 1e-12 (same machine, former code in a git worktree; the committed
+  references at their tolerances); assembly not slower than the former kernels by more than 1.5×.
 - **E** same fields (rear air included) at 1e-10 as after phase C; coupled modes and impedance unchanged;
   energy balance and swept-volume checks still exact.
-- **F** one model pattern for 2D and 3D; identical meshes twice; no user object mutated; examples run.
+- **F** one model pattern for 2D and 3D; identical meshes twice; no user object mutated; a parametric sweep
+  equals the separate runs; examples run.
 - **G** format-3 round trip; far field from the file alone; derived fields vs analytical cases.
 - **H** estimator effectivity 0.8–1.5; adaptive loop beats uniform refinement; expected orders reported.
 - **I** plate modes vs analytical within 0.5 %; rigid-wall limit recovered; convergence.
@@ -256,3 +268,47 @@ Gates (each phase is committed and pushed only when its gate passes):
   together with the mesh).
 - Documentation: `docs/guide/models.rst` (geometry sources, selections, PML layers), `conventions.rst`,
   `scenes.rst`; CHANGELOG.
+
+## Review after phase C (2026-11-20)
+
+The plan holds; adjustments, decided with the user:
+
+- **API style.** loudpy keeps compact items (`lp.Solid("cone", "Paper", damping=…, mesh_size=…)`), shorter
+  than COMSOL's separate materials / physics / mesh nodes, and gets the COMSOL-like structure around
+  them (phase F): `print(model)` as a model tree (geometry, selections, regions, boundaries, mesh,
+  studies), `model.check()` (everything selected, materials complete, units plausible) before meshing,
+  mesh controls by selection (`lp.MeshSize(on=…, size=…)` next to the per-item `mesh_size`), studies as
+  steps, a preview of what a selector selects (`lp.plot.selection(model, selector)`), and in phase G the
+  model description and parameters saved in the result file (like an .mph) and derived values.
+- **Parameters and sweeps** (phase F, +1 session): `lp.Parameters`, builders `builder(occ, p)` and item
+  values taken from parameters, `lp.Sweep(study, …)` with results stacked over the parameter.
+- **Order.** D stays next: E's contribution protocol and F's model are designed on the generic spaces
+  (orders, quads, 3D), so nothing is written twice.
+- **Phase R** (new, before M; can run while D starts): re-run the coupled 2D examples, compare with the
+  stored results (computed before the coupling fix of C1 and the damping refits), explain, regenerate
+  the figures. The user's own coupled results computed with loudpy before `a5800cd` are affected too.
+- **Phase D, lessons of C**: the mesh data model and the 2D mesher know TRI6 / LINE3 (and TET10) only —
+  D generalizes `geometry.mesh.CELL_TYPES`, `MeshManager.extract_mesh_data` (element types per order,
+  quads via recombination) and the selectors' edge extraction (`selectors._tri_edges`: quads, P3 edges);
+  the gate compares operators with the former code on the same machine (git worktree), as done in C3/C4.
+- **Phase E**: fingerprint the coupled DtN system per block (the global sums barely see the air block).
+- **Phase F**: the 3D scenes take the selectors and geometry sources; the examples drop the curve tags.
+
+## Damping refit of Rubber and PhenolicCloth (after phase C, done)
+
+- A material carries two damping descriptions: its loss factor η (hysteretic, constant in frequency) and
+  a Rayleigh pair (α, β) for `lp.Rayleigh()` (viscous, needed in time studies), whose loss factor
+  η(f) = α/ω + βω can only equal η at two frequencies (in between it dips to 2√(αβ), outside it grows).
+  The library rule is η matched at 100 Hz and 1 kHz. Rubber (surround) was fitted at 50 Hz and 1 kHz
+  (η 0.150 at 50 Hz, 0.086 at 100 Hz, 0.068 at 316 Hz for η = 0.15); PhenolicCloth (spider) matched its
+  η = 0.07 nowhere (minimum 0.085, 0.156 at 100 Hz, 0.140 at 1 kHz: about twice too damped).
+- Refitted with `lp.Rayleigh.from_loss_factor(η, band=(100, 1000))`: Rubber (45, 2.3e-5) → (85.6798,
+  2.1703e-5); PhenolicCloth (90, 2.0e-5) → (39.9839, 1.0128e-5). A test now checks every library fit
+  against its own η at 100 Hz and 1 kHz (within 10 %; Paper, Kapton … are rounded fits within 7 %).
+- References regenerated on purpose, damping-dependent ones only (K, M, H, Q, F, KT, plate: back to the
+  committed files, changes ≤ 2e-13): C operators (C, C_m1, C_nl), damped speaker modes (frequencies
+  move by ≤ 0.03 %, damping ratios fall where the spider works, e.g. 212 Hz ζ 0.029 → 0.022, 423 Hz
+  0.038 → 0.024), forced responses (meca at 2 kHz 17 %, FSI at 200 Hz near the 212 Hz mode up to 83 % of
+  the peak pressure, 1500 Hz 7.5 %, voltage drive 4 %), transient 3 %, the DtN system's Cs, and the 3D
+  tests built on the driver modes (box and two drivers 70 %: lightly damped resonances; open scenes
+  0.4–0.5 %). 134 tests pass with `--slow`.

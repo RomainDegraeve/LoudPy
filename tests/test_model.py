@@ -103,6 +103,10 @@ def test_rayleigh_from_loss_factor():
     assert r.loss_factor(np.sqrt(100.0 * 1000.0)) < 0.03                 # lower in between
     glue = lp.materials["SolidGlue"]                                     # epoxy: fit of its own η
     assert np.allclose(lp.Rayleigh(*glue.rayleigh).loss_factor([100.0, 1000.0]), glue.loss_factor, rtol=1e-4)
+    for m in lp.materials.values():                    # every library fit follows its own η at 100 Hz and 1 kHz
+        if m.kind == "solid":
+            eta = lp.Rayleigh(*m.rayleigh).loss_factor([100.0, 1000.0])
+            assert np.allclose(eta, m.loss_factor, rtol=0.1), (m.name, eta, m.loss_factor)
 
 
 def test_air_model():
