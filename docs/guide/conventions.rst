@@ -93,7 +93,8 @@ sign).
 
 Saved meshes are reused while their signature (``<mesh>.msh.json``, version 2) matches: the
 geometry files, the meshed domain groups with their kind, size and PML thickness, the kept boundary
-groups, the mesh order, the grading and the deterministic flag. The signature records groups, not
+groups, the mesh order and the grading (the deterministic flag is recorded but does not decide reuse:
+a saved file is reproducible). The signature records groups, not
 the names that selected them; a saved mesh with more boundary groups than needed is reused. Meshes
 saved by earlier versions (signature version 1) are rebuilt once.
 

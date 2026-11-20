@@ -19,7 +19,7 @@ API reference.
 
 # ── public API ───────────────────────────────────────────────────────────────
 from .model import (
-    Model, Solid, Air, PML, Clamped, Coil, FluidStructure, Radiation,
+    Model, MeshSize, Solid, Air, PML, Clamped, Coil, FluidStructure, Radiation,
     Rayleigh, Hysteretic, Undamped, Force, Voltage,
     Material, MaterialLibrary, air, load_materials, materials,
 )
@@ -45,7 +45,7 @@ def __getattr__(name):
 
 __all__ = [
     # model
-    "Model", "Solid", "Air", "PML", "Clamped", "Coil", "FluidStructure", "Radiation",
+    "Model", "MeshSize", "Solid", "Air", "PML", "Clamped", "Coil", "FluidStructure", "Radiation",
     "Rayleigh", "Hysteretic", "Undamped", "Force", "Voltage",
     "Material", "MaterialLibrary", "air", "load_materials", "materials",
     # geometry and selections

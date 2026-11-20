@@ -8,6 +8,11 @@ versions follow [Semantic Versioning](https://semver.org/) (0.x: the API may sti
 The roadmap of this work is in `docs/ROADMAP.md`.
 
 ### Added
+
+- `print(model)` / `model.tree(selections=True)`: the model as a tree (geometry, materials, regions,
+  boundaries, mesh controls, mesh); `model.check()` checks selections, materials and settings without
+  meshing and lists every problem at once; `lp.MeshSize(on=…, size=…)`: element size by selection;
+  `model.copy()`.
 - Layered package (`model`, `geometry`, `fem`, `physics`, `solvers`, `study`, `scene`, `results`, `plot`)
   with one public namespace: `import loudpy as lp`.
 - Studies `lp.Modes`, `lp.FrequencyResponse` (with `lp.PerWavelength` remeshing), `lp.Transient`;
@@ -52,6 +57,10 @@ The roadmap of this work is in `docs/ROADMAP.md`.
   `<mesh>.msh.json`), not in the surface names; meshes written before are still read.
 
 ### Changed
+
+- Meshing is deterministic by default (`model.mesh(…, deterministic=True)`); the thread count no longer
+  decides whether a saved mesh is reused. `FrequencyResponse(remesh=…)` meshes copies of the model and no
+  longer changes the regions' sizes while it runs.
 
 - Internal: every study solves a system declared on one builder (`loudpy.physics.builder`): fields
   (displacement, pressure, coil current, radiation auxiliaries, modal coordinates), terms as functions of

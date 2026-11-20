@@ -13,6 +13,8 @@ log = logging.getLogger("loudpy.mesh")
 DEFAULT_MESH_GRADING = 0.3
 
 SIGNATURE_VERSION = 2
+# recorded in the signature but not deciding reuse: a saved file is reproducible whatever the thread count
+REUSE_IGNORES = ("deterministic",)
 
 
 @dataclass(eq=False)
@@ -195,7 +197,7 @@ class MeshManager:
         with open(sig) as fh:
             stored = json.load(fh)
         current = json.loads(json.dumps(self.mesh_signature()))       # same JSON types
-        changed = [k for k in current if stored.get(k) != current[k]
+        changed = [k for k in current if stored.get(k) != current[k] and k not in REUSE_IGNORES
                    and not (k == "boundaries" and set(current[k]) <= set(stored.get(k) or []))]
         return (not changed), ("" if not changed else "changed: " + ", ".join(changed))
 

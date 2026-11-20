@@ -22,7 +22,7 @@ from loudpy.model.regions import PML, Air
 from loudpy.results.results import Block, FrequencyResults
 from loudpy.study import records
 from loudpy.study.base import Study
-from loudpy.errors import ModelError
+from loudpy.errors import ModelError, StateError
 
 
 @dataclass
@@ -102,12 +102,15 @@ class FrequencyResponse(Study):
         self.reuse_factorization = reuse_factorization
 
     # ── one mesh ───────────────────────────────────────────────────────────
-    def _solve_block(self, freqs, label=""):
-        """Responses at `freqs` on the current mesh → one Block (the system comes from the builder)."""
+    def _solve_block(self, freqs, label="", model=None):
+        """Responses at `freqs` on the mesh of `model` (default: the study's) → one Block."""
         from loudpy.physics.builder import coupled_builder
         from loudpy.physics.systems import assemble, meshes, nodal
         from loudpy.solvers.linear import SweepSolver
-        parts = self._parts()
+        model = self.model if model is None else model
+        if model.meshed is None:
+            raise StateError("mesh the model first: model.mesh(path)")
+        parts = model.parts
         s = assemble(parts, air=self.coupled)
         builder = coupled_builder(s, parts, self.drive, self.coupled)
         solver = SweepSolver()
@@ -131,11 +134,11 @@ class FrequencyResponse(Study):
         fields = {"u": nodal(np.array(U), len(s.meca.unique_tags), 2)}
         if P:
             fields["p"] = nodal(np.array(P), len(s.acou.unique_tags), 1)
-        meta = {"mesh": str(self.model._mesh_path)}
+        meta = {"mesh": str(model._mesh_path)}
         self.solver_stats = dict(factorizations=solver.n_factor, gmres_solves=solver.n_gmres,
                                  gmres_iterations=solver.iters)
         return Block(ms, np.asarray(freqs, float), fields, records.scalars(attrs), meta, label), \
-            self.model.boundary_nodes()
+            model.boundary_nodes()
 
     # ── public ─────────────────────────────────────────────────────────────
     def solve(self, freqs, remesh: PerWavelength | None = None, store=None, **options) -> FrequencyResults:
@@ -161,33 +164,28 @@ class FrequencyResponse(Study):
         return self.results
 
     def _solve_remeshed(self, freqs, rule: PerWavelength):
+        """One mesh per band on a copy of the model (the user's model and items are never changed)."""
         if not self.coupled:
             raise ModelError("remesh= adapts the air mesh: it needs the coupled model")
         air = [r for r in self.model.regions if isinstance(r, Air) and not isinstance(r, PML)]
-        pml = [r for r in self.model.regions if isinstance(r, PML)]
-        saved = [(r, r.mesh_size, getattr(r, "thickness", None), getattr(r, "tuned_to", None)) for r in air + pml]
         c = rule.c or self.model.materials.resolve(air[0].material).c
         cap = rule.air_max_size
         folder = Path(rule.folder) if rule.folder else self.model.geometry.parent
         blocks, bounds = [], {}
-        try:
-            for band in rule.split(freqs):
-                f0 = float(band[0])
-                lam = c / f0
-                for r, size0, _, _ in saved[:len(air)]:
-                    r.mesh_size = min(lam / rule.air_elements, cap if cap is not None else size0)
-                for r in pml:
+        for band in rule.split(freqs):
+            f0 = float(band[0])
+            lam = c / f0
+            band_model = self.model.copy()
+            for r in band_model.regions:
+                if isinstance(r, PML):
                     r.thickness = rule.pml_thickness * lam
                     r.mesh_size = r.thickness / rule.pml_elements
                     r.tuned_to = f0
-                self.model.mesh(folder / f"mesh_{f0:.0f}Hz.msh")
-                block, b = self._solve_block(band, label=f"{f0:.0f}Hz")
-                block.meta.update(wavelength=lam, band_start=f0)
-                blocks.append(block)
-                bounds.update(b)
-        finally:
-            for r, size0, t0, tuned0 in saved:
-                r.mesh_size = size0
-                if isinstance(r, PML):
-                    r.thickness, r.tuned_to = t0, tuned0
+                elif isinstance(r, Air):
+                    r.mesh_size = min(lam / rule.air_elements, cap if cap is not None else r.mesh_size)
+            band_model.mesh(folder / f"mesh_{f0:.0f}Hz.msh")
+            block, b = self._solve_block(band, label=f"{f0:.0f}Hz", model=band_model)
+            block.meta.update(wavelength=lam, band_start=f0)
+            blocks.append(block)
+            bounds.update(b)
         return blocks, bounds

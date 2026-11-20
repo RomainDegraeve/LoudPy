@@ -36,6 +36,7 @@ from loudpy.geometry.mesh import Mesh
 from loudpy.geometry.meshing2d import DEFAULT_MESH_GRADING, DomainSizing
 from loudpy.model.boundaries import Boundary
 from loudpy.model.materials import MaterialLibrary, load_materials
+from loudpy.model.mesh_controls import MeshSize
 from loudpy.model.regions import PML, Air, Region, Solid
 from loudpy.errors import MeshError, ModelError, SelectionError, StateError
 
@@ -64,6 +65,7 @@ class Model:
         self.grading = grading
         self.regions: list[Region] = []
         self.boundaries: list[Boundary] = []
+        self.mesh_controls: list[MeshSize] = []
         self.meshed: Mesh | None = None
         self.parts: list = []                  # physics parts of the meshed model (loudpy.physics.parts)
         self._mesh_path: Path | None = None
@@ -78,19 +80,35 @@ class Model:
 
     # ── description ────────────────────────────────────────────────────────
     def add(self, *items) -> "Model":
-        """Add regions and boundaries (or lists of them). Returns the model."""
+        """Add regions, boundaries and mesh controls (lp.MeshSize), or lists of them. Returns the model."""
         for it in items:
             if isinstance(it, (list, tuple)):
                 self.add(*it)
                 continue
+            if isinstance(it, MeshSize):
+                self.mesh_controls.append(it)
+                self.meshed = None
+                continue
             if not isinstance(it, (Region, Boundary)):
-                raise ModelError(f"cannot add {it!r} to a Model (expected a region or a boundary)")
+                raise ModelError(f"cannot add {it!r} to a Model (expected a region, a boundary or lp.MeshSize)")
             if any(o.name == it.name for o in self.regions + self.boundaries):
                 raise ModelError(f"the model already has an item named {it.name!r} (names are the labels of the "
                                  f"results: give each item its own)")
             (self.regions if isinstance(it, Region) else self.boundaries).append(it)
         self.meshed = None
         return self
+
+    def copy(self) -> "Model":
+        """A new, unmeshed model with the same geometry, materials, settings and copies of the items (the
+        studies change copies, never the user's model)."""
+        import copy as _copy
+        m = Model.__new__(Model)
+        Model.__init__(m, self.source.path if self.source.path is not None else self.source.builder,
+                       self.materials, mesh_order=self.mesh_order, grading=self.grading)
+        m.source = self.source
+        m.geometry = self.geometry
+        m.add([_copy.copy(it) for it in self.regions + self.boundaries], [_copy.copy(c) for c in self.mesh_controls])
+        return m
 
     def __getitem__(self, name):
         """The region or boundary added with this name."""
@@ -206,14 +224,16 @@ class Model:
         raise ValueError(f"kind must be 'boundary' or 'domain', got {kind!r}")
 
     # ── meshing ────────────────────────────────────────────────────────────
-    def mesh(self, path=None, *, reuse: bool = True, deterministic: bool = False,
+    def mesh(self, path=None, *, reuse: bool = True, deterministic: bool = True,
              show: bool = False) -> Mesh:
         """
         Mesh the model (only the selected domains and boundaries) and write it to `path`
         (default: next to the geometry) with its signature file.
 
-        reuse         : load the saved mesh when it was built from the same geometry and settings
-        deterministic : one meshing thread, so that the same model always gives the same mesh
+        reuse         : load the saved mesh when it was built from the same geometry and settings (the
+                        thread count is recorded but does not decide: a saved file is reproducible)
+        deterministic : one meshing thread (default), so that the same model always gives the same mesh;
+                        False: all threads (faster, the mesh may change from run to run)
         show          : open the gmsh window after meshing
         """
         from loudpy.geometry.meshing2d import MeshManager, PMLBase
@@ -224,6 +244,7 @@ class Model:
         kept = sorted({g for b in self.boundaries for g in selection[b.name]})
         sizing = self._sizing()
         plan, entries, self._plan_names = self._plan(selection, {sz.name: sz for sz in sizing})
+        sizing += [d.sizing for d in plan if not any(d.sizing is z for z in sizing)]   # lp.MeshSize overrides
         pml = [PMLBase(sz, *self._pml_bases[sz.name]) for sz in sizing if sz.kind == "pml"]
         mm = MeshManager(self.source, sizing, plan, mesh_order=self.mesh_order, grading=self.grading,
                          interfaces=kept, deterministic=deterministic,
@@ -271,11 +292,15 @@ class Model:
         owner = {g: r for r in self.regions if not isinstance(r, PML) for g in selection[r.name]}
         plan, entries, names = [], [], {r.name: [] for r in self.regions}
         used = {}
+        control = self._control_sizes(index, owner)                    # {group: size} of lp.MeshSize
+        overridden = {}
         for g, tags in index.domains.items():
             r = owner.get(g)
             if r is None:
                 continue
             sz = sizing[r.name]
+            if g in control and control[g] != sz.size:                 # one sizing per (region, size)
+                sz = overridden.setdefault((r.name, control[g]), DomainSizing(sz.name, sz.kind, control[g], sz.t))
             name, key = (r.name, f"{g} as {r.name}") if g in index.unnamed else (g, g)
             if used.setdefault(name, r.name) != r.name:
                 raise ModelError(f"mesh group {name!r} would hold domains of {used[name]!r} and {r.name!r}: "
@@ -289,6 +314,24 @@ class Model:
                 sz = sizing[r.name]
                 entries += [[g, sz.kind, sz.size, sz.t] for g in selection[r.name]]
         return plan, entries, names
+
+    def _control_sizes(self, index, owner) -> dict:
+        """{domain group: size} from the mesh controls (the last control selecting a group wins)."""
+        if not self.mesh_controls:
+            return {}
+        domains = list(index.domains)
+        ctx = Domains.from_geometry(index, domains)
+        out = {}
+        for c in self.mesh_controls:
+            try:
+                sel = [g for g in c.selector.domains(ctx) if g in owner]
+            except SelectionError as e:
+                raise SelectionError(f"MeshSize({c.label!r}): {e}") from None
+            if not sel:
+                raise SelectionError(f"MeshSize({c.label!r}) selects no meshed domain group; meshed groups: "
+                                     f"{[g for g in domains if g in owner]}")
+            out.update({g: c.size for g in sel})
+        return out
 
     def _sizing(self) -> list[DomainSizing]:
         out = []
@@ -355,6 +398,103 @@ class Model:
                 else np.zeros((0, 3), np.int64)
             out[b.name] = {"node_tags": tags.astype(np.int64), "edges": edges}
         return out
+
+    # ── overview and checks ────────────────────────────────────────────────
+    def check(self) -> list[str]:
+        """
+        Check the model without meshing: every item selects something (and no domain group twice), every
+        region's material is complete (rho, E, nu for a solid; rho, c for air; damping fits when the
+        damping asks for them) and plausible, a PML has its tuning frequency, the mesh controls select
+        meshed groups. Raises ModelError listing every problem; returns the notes (e.g. no coil).
+        """
+        from loudpy.physics.parts import region_parameters
+        from loudpy.model.boundaries import Coil, FluidStructure
+        problems, notes = [], []
+        if not self.regions:
+            problems.append("no region (add lp.Solid / lp.Air …)")
+        selection = None
+        try:
+            selection = self.selection()
+        except (SelectionError, ModelError) as e:
+            problems.append(str(e))
+        for r in self.regions:
+            try:
+                region_parameters(r, self.materials)
+            except (ModelError, KeyError, ValueError) as e:
+                problems.append(f"{type(r).__name__}({r.name!r}): {e}")
+        if selection is not None and self.mesh_controls:
+            owner = {g: r for r in self.regions if not isinstance(r, PML) for g in selection[r.name]}
+            try:
+                self._control_sizes(self._index, owner)
+            except SelectionError as e:
+                problems.append(str(e))
+        if not any(isinstance(b, Coil) for b in self.boundaries):
+            notes.append("no lp.Coil: modes only (a forced response needs a coil)")
+        if any(isinstance(r, Air) for r in self.regions) and \
+                not any(isinstance(b, FluidStructure) for b in self.boundaries) and \
+                any(isinstance(r, Solid) for r in self.regions):
+            notes.append("air and structure but no lp.FluidStructure: they are not coupled")
+        if problems:
+            raise ModelError("the model has problems:\n  - " + "\n  - ".join(problems))
+        return notes
+
+    def tree(self, selections: bool = False) -> str:
+        """
+        The model as a tree, like COMSOL's model builder: geometry, materials, regions, boundaries, mesh
+        controls, mesh. selections=True evaluates what each item selects (reads the geometry).
+        """
+        sel = self._selection or (self.selection() if selections else {})
+
+        def size(v):
+            return f"{v * 1e3:g} mm"
+
+        def what(it):
+            return f"  → {', '.join(sel[it.name])}" if it.name in sel else ""
+
+        def material(r):
+            m = r.material if isinstance(r.material, str) else r.material.name
+            return m
+        lines = [f"Model {self.source.name}  (2D axisymmetric, P{self.mesh_order} elements, grading {self.grading})",
+                 f"├─ Geometry: {self.source.name}",
+                 f"├─ Materials: {getattr(self.materials, 'path', None) or 'loudpy library'}"]
+        lines.append(f"├─ Regions ({len(self.regions)})")
+        for k, r in enumerate(self.regions):
+            last = k == len(self.regions) - 1
+            extra = []
+            if isinstance(r, Solid):
+                extra += [material(r), type(r.damping).__name__]
+            elif isinstance(r, PML):
+                extra += [f"thickness {size(r.thickness)}", f"tuned to {r.tuned_to} Hz"]
+            else:
+                extra += [material(r)]
+            extra.append(f"h {size(r.mesh_size)}")
+            on = "" if r.on is None else f" on {r.on!r}"
+            lines.append(f"│  {'└' if last else '├'}─ {type(r).__name__} {r.name!r}{on}: {', '.join(extra)}{what(r)}")
+        lines.append(f"├─ Boundaries ({len(self.boundaries)})")
+        for k, b in enumerate(self.boundaries):
+            last = k == len(self.boundaries) - 1
+            extra = {"Clamped": lambda: f"dofs {b.dofs}", "Coil": lambda: f"direction {b.direction}"}.get(
+                type(b).__name__, lambda: "")()
+            on = "" if b.on is None else f" on {b.on!r}"
+            lines.append(f"│  {'└' if last else '├'}─ {type(b).__name__} {b.name!r}{on}"
+                         f"{': ' + extra if extra else ''}{what(b)}")
+        if self.mesh_controls:
+            lines.append(f"├─ Mesh controls ({len(self.mesh_controls)})")
+            for k, c in enumerate(self.mesh_controls):
+                lines.append(f"│  {'└' if k == len(self.mesh_controls) - 1 else '├'}─ MeshSize {c.label}: "
+                             f"h {size(c.size)}")
+        if self.meshed is None:
+            lines.append("└─ Mesh: not meshed")
+        else:
+            cells = {}
+            for g in self.meshed.groups.values():
+                cells[g.cell_type] = cells.get(g.cell_type, 0) + len(g)
+            lines.append(f"└─ Mesh: {self._mesh_path.name if self._mesh_path else ''}, {self.meshed.n_nodes} nodes, "
+                         + ", ".join(f"{n} {t}" for t, n in cells.items()))
+        return "\n".join(lines)
+
+    def __str__(self):
+        return self.tree()
 
     def __repr__(self):
         return (f"Model({self.source.name}: {len(self.regions)} regions, {len(self.boundaries)} boundaries, "

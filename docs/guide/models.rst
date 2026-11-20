@@ -217,12 +217,35 @@ Drives
   (semi-inductance model ``Z_e = Re + (jω)^n Le``); the frequency results then hold the coil
   current ``I_coil`` per frequency.
 
+Overview and checks
+-------------------
+
+``print(model)`` shows the model as a tree, like COMSOL's model builder: geometry, materials, regions
+(material, damping, element size), boundaries, mesh controls and the mesh; ``model.tree(selections=True)``
+adds what each item selects in the geometry. ``model.check()`` checks everything that can be checked
+without meshing — every item selects something and no domain group twice, every material is complete and
+plausible, a PML has its tuning frequency, the mesh controls select meshed groups — raises one error
+listing every problem, and returns notes (no coil, air not coupled to the structure).
+
+Element sizes can also be given by selection, next to each item's ``mesh_size``:
+
+.. code-block:: python
+
+    model.add(lp.MeshSize(on=lp.Group("surround", "spider"), size=0.3e-3, name="suspension"))
+
+A control overrides the regions' size on the domain groups it selects (the last control wins).
+
+``lp.Model(geometry, mesh_order=1 | 2 | 3)`` chooses the element order (P2 by default); every order is
+assembled by the same finite-element core (:doc:`elements`). Studies never change the model: a
+frequency study that remeshes per band (``remesh=lp.PerWavelength(…)``) meshes copies.
+
 Meshing
 -------
 
 :meth:`Model.mesh(path) <loudpy.Model.mesh>` calls gmsh (P2 triangles) and **reuses** the file
 when the geometry, the regions' mesh sizes and the settings are unchanged (a signature is
-stored next to the mesh). ``deterministic=True`` meshes on one thread (bit-reproducible meshes).
+stored next to the mesh). Meshing is deterministic by default (one thread: the same model always gives
+the same mesh); ``deterministic=False`` uses every thread (faster, the mesh may change from run to run).
 The meshed model is an :class:`lp.Mesh <loudpy.Mesh>` with named groups
 (``model.groups()``, ``model.selection()`` show what each item selected in the geometry). A saved
 mesh that keeps more named curve groups than the model needs is reused (they do not change the

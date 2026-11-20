@@ -29,7 +29,7 @@ Cost unit: one *session* ≈ one long working block (3–5 h). Status: ✅ done 
 | C | Selections and geometry: selection objects, three geometry sources, nothing read from names, PML by selection, driver profiles from selections | 3 | ✅ |
 | D | Own generic FE core: Lagrange P1–P3 on lines / triangles / quads / tetrahedra, quadrature, spaces, generic kernels and assembly, curved (isoparametric) elements; old kernels removed | 5 | ✅ |
 | E | Physics interfaces and couplings: one contribution protocol, generic system builder, electrical circuit as physics, 3D on the same protocol (the sign convention was fixed in C) | 4 | ✅ |
-| F | One model for 2D and 3D: `lp.Model(dim=…)`, COMSOL-like tree (print, `check()`, mesh controls by selection, study steps), parameters and parametric sweeps, selectors and geometry sources in 3D scenes, typed mesh and solver settings, one remeshing rule, immutable model during solves, deterministic meshing by default, examples rewritten | 4 | ○ |
+| F | One model for 2D and 3D: `lp.Model(dim=…)`, COMSOL-like tree (print, `check()`, mesh controls by selection, study steps), parameters and parametric sweeps, selectors and geometry sources in 3D scenes, typed mesh and solver settings, one remeshing rule, immutable model during solves, deterministic meshing by default, examples rewritten | 4 | ◐ |
 | G | Results format 3: one results family, self-contained files (with the model description and parameters), public arrays, derived fields (stress, strain, velocity, intensity) and values (power, volume velocity, impedance, SPL, Thiele–Small parameters), interpolation in tetrahedra, ParaView series | 3 | ○ |
 | H | Error estimation and adaptivity: recovery and residual indicators, `lp.Adaptive`, `lp.convergence` | 3 | ○ |
 | I | Shells: MITC3/MITC4 Reissner–Mindlin, direct coupling to the 3D air, wall-mode study, elastic-wall enclosure example | 4 | ○ |
@@ -483,3 +483,16 @@ judged negligible (estimated effect ≲ 0.1 % on spider-dominated modes, ≲ 0.0
 
 Known gap (explicit, not in the gate): the exact DtN radiation in a 2D `FrequencyResponse` (its frequency
 form raises an error; the 2D frequency study still ignores lp.Radiation, as before E).
+
+## Phase F — in progress
+
+- **F1 (done)**: `print(model)` / `model.tree(selections=True)` (geometry, materials, regions with
+  material / damping / size, boundaries, mesh controls, mesh, and what each item selects);
+  `model.check()` (selections, materials complete and plausible, PML tuning, mesh controls; one error
+  listing every problem; notes: no coil, air not coupled); `lp.MeshSize(on=…, size=…, name=…)` (element
+  size by selection, overrides the regions' size on the selected domain groups, last control wins);
+  `model.copy()`. Meshing deterministic by default; the thread count is recorded in the signature but no
+  longer decides reuse (every committed mesh still reused). `FrequencyResponse(remesh=…)` meshes copies
+  (it used to change the regions' sizes and restore them). Gate items covered: identical meshes twice
+  (speaker meshed twice from scratch: same nodes, coordinates and cells), no user object mutated
+  (remeshed sweep test). 6 tests (`tests/test_model_tree.py`); 296 tests pass with `--slow`.

@@ -44,7 +44,7 @@ Rules
   (see below); a new physics is one new contribution.
 * **Values everywhere**: materials, damping and drives are small immutable objects.
 * **One result model** and one versioned file format (:doc:`file_format`).
-* **Reproducible**: fixed ARPACK start vectors, deterministic meshing option, mesh reuse by
+* **Reproducible**: fixed ARPACK start vectors, deterministic meshing by default, mesh reuse by
   signature.
 
 Systems: fields, terms and contributions

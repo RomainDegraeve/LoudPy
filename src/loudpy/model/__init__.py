@@ -6,11 +6,12 @@ from loudpy.model.boundaries import Boundary, Clamped, Coil, FluidStructure, Rad
 from loudpy.model.damping import Hysteretic, Rayleigh, Undamped
 from loudpy.model.drives import Force, Voltage
 from loudpy.model.materials import Material, MaterialLibrary, air, load_materials, materials
+from loudpy.model.mesh_controls import MeshSize
 from loudpy.model.model import Model
 from loudpy.model.regions import PML, Air, Region, Solid
 
 __all__ = [
-    "Model",
+    "Model", "MeshSize",
     "Solid", "Air", "PML", "Region",
     "Clamped", "Coil", "FluidStructure", "Radiation", "Boundary",
     "Rayleigh", "Hysteretic", "Undamped",
