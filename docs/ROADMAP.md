@@ -27,7 +27,7 @@ Cost unit: one *session* ≈ one long working block (3–5 h). Status: ✅ done 
 | A | Foundations: no import side effects, OpenMP, exceptions, SI checks, packaging, CI, verification tests | 1 | ✅ |
 | B | Materials and air: library v2 (units, temperature, provenance), damping separate, air from (T, p, RH), one air for 2D and 3D | 1 | ✅ |
 | C | Selections and geometry: selection objects, three geometry sources, nothing read from names, PML by selection, driver profiles from selections | 3 | ✅ |
-| D | Own generic FE core: Lagrange P1–P3 on lines / triangles / quads / tetrahedra, quadrature, spaces, generic kernels and assembly, curved (isoparametric) elements; old kernels removed | 5 | ○ |
+| D | Own generic FE core: Lagrange P1–P3 on lines / triangles / quads / tetrahedra, quadrature, spaces, generic kernels and assembly, curved (isoparametric) elements; old kernels removed | 5 | ◐ |
 | E | Physics interfaces and couplings: one contribution protocol, generic system builder, electrical circuit as physics, 3D on the same protocol (the sign convention was fixed in C) | 4 | ○ |
 | F | One model for 2D and 3D: `lp.Model(dim=…)`, COMSOL-like tree (print, `check()`, mesh controls by selection, study steps), parameters and parametric sweeps, selectors and geometry sources in 3D scenes, typed mesh and solver settings, one remeshing rule, immutable model during solves, deterministic meshing by default, examples rewritten | 4 | ○ |
 | G | Results format 3: one results family, self-contained files (with the model description and parameters), public arrays, derived fields (stress, strain, velocity, intensity) and values (power, volume velocity, impedance, SPL, Thiele–Small parameters), interpolation in tetrahedra, ParaView series | 3 | ○ |
@@ -314,3 +314,18 @@ The plan holds; adjustments, decided with the user:
 - Found while answering "Rayleigh or hysteretic?": `lp.Transient` silently ran hysteretic regions undamped
   (the nonlinear time integration only uses α, β). It now refuses hysteretic damping with an error
   pointing to `lp.Rayleigh` (test in `test_drive_checks`). Modes and frequency responses accept both.
+
+## Phase D — in progress
+
+- **D1 (done)**: `fem/reference.py`: reference cells (line, triangle, quadrilateral, tetrahedron, gmsh
+  conventions), Lagrange elements P1–P3 on lines / triangles / tetrahedra and Q1–Q2 on quadrilaterals on
+  gmsh's node layouts (11 gmsh types: 1, 2, 3, 4, 8, 9, 10, 11, 21, 26, 29), basis from the inverse
+  Vandermonde, `tabulate` (N, ∇N), facet node tables ordered as the facet element. `fem/quadrature.py`:
+  `quadrature(cell, degree)` (Gauss–Legendre tensor rules, collapsed Gauss–Jacobi on simplices, positive
+  weights, interior points); the former 7-point triangle rule (8-digit values: exact to degree 5 only to
+  ~2e-7) and Gauss lines kept as `legacy_*` so that D3 can reproduce the former operators exactly.
+  92 tests (`tests/test_fem_reference.py`): every layout equals `gmsh.model.mesh.getElementProperties`
+  (1e-15), δ_ij at nodes, partition of unity, exact reproduction of each element's polynomials (values
+  1e-12, gradients 1e-11), facet restriction = facet basis, monomials exact to degree 8 on every cell
+  (1e-13), generic TRI6 / LINE3 equal the former hand-written shape functions (1e-13). 226 tests pass
+  with `--slow`.
