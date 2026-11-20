@@ -15,11 +15,11 @@ from pathlib import Path
 import numpy as np
 
 from loudpy.geometry.gmsh_session import gmsh_module as _gmsh
-from loudpy.geometry.meshing3d import sample_profile, add_driver_cutout
+from loudpy.geometry.meshing3d import add_driver_cutout
 import loudpy as lp
 from loudpy.physics.exterior import HalfSpaceDtN
 from loudpy.geometry.meshing3d import add_driver_front, mesh_volume
-from enclosure import (geo_path, Z_B, Z_F, REAR_CURVES, REAR_START, FRONT_CURVES, FRONT_START, W, X0, Y0,
+from enclosure import (geo_path, Z_B, Z_F, REAR, FRONT, W, X0, Y0,
                        BRACE_Y, BRACE_T, BRACE_DEPTH, back_z, add_box, add_outer_box, outer_corners,
                        PORT_X, PORT_Y, PORT_A, PORT_L, PORT_T, port_tuning)
 
@@ -30,9 +30,9 @@ H_DRIVER, H_PORT = 0.003, 0.005               # mesh size at the driver / at the
 H_CAVITY = 0.012                              # hybrid cavity (modes up to 6 kHz) [m]
 MARGIN, Z_LOW = 0.05, 0.0
 
-rear = sample_profile(geo_path, REAR_CURVES, REAR_START)
+rear = REAR.sample(geo_path)
 rear.append(np.array([rear[-1][-1], [0.0, rear[-1][-1][1]]]))           # rigid lid at the cone foot
-front = sample_profile(geo_path, FRONT_CURVES, FRONT_START)
+front = FRONT.sample(geo_path)
 fpts = np.vstack(front)
 c = outer_corners()
 center = np.array([W / 2, 0.0, 0.5 * (c[:, 2].min() + max(c[:, 2].max(), fpts[:, 1].max()))])

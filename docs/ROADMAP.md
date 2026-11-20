@@ -29,7 +29,7 @@ Cost unit: one *session* ≈ one long working block (3–5 h). Status: ✅ done 
 | C | Selections and geometry: selection objects, three geometry sources, nothing read from names, PML by selection, driver profiles from selections | 3 | ✅ |
 | D | Own generic FE core: Lagrange P1–P3 on lines / triangles / quads / tetrahedra, quadrature, spaces, generic kernels and assembly, curved (isoparametric) elements; old kernels removed | 5 | ✅ |
 | E | Physics interfaces and couplings: one contribution protocol, generic system builder, electrical circuit as physics, 3D on the same protocol (the sign convention was fixed in C) | 4 | ✅ |
-| F | One model for 2D and 3D: `lp.Model(dim=…)`, COMSOL-like tree (print, `check()`, mesh controls by selection, study steps), parameters and parametric sweeps, selectors and geometry sources in 3D scenes, typed mesh and solver settings, one remeshing rule, immutable model during solves, deterministic meshing by default, examples rewritten | 4 | ◐ |
+| F | One model for 2D and 3D: `lp.Model(dim=…)`, COMSOL-like tree (print, `check()`, mesh controls by selection, study steps), parameters and parametric sweeps, selectors and geometry sources in 3D scenes, typed mesh and solver settings, one remeshing rule, immutable model during solves, deterministic meshing by default, examples rewritten | 4 | ✅ |
 | G | Results format 3: one results family, self-contained files (with the model description and parameters), public arrays, derived fields (stress, strain, velocity, intensity) and values (power, volume velocity, impedance, SPL, Thiele–Small parameters), interpolation in tetrahedra, ParaView series | 3 | ○ |
 | H | Error estimation and adaptivity: recovery and residual indicators, `lp.Adaptive`, `lp.convergence` | 3 | ○ |
 | I | Shells: MITC3/MITC4 Reissner–Mindlin, direct coupling to the 3D air, wall-mode study, elastic-wall enclosure example | 4 | ○ |
@@ -484,7 +484,7 @@ judged negligible (estimated effect ≲ 0.1 % on spider-dominated modes, ≲ 0.0
 Known gap (explicit, not in the gate): the exact DtN radiation in a 2D `FrequencyResponse` (its frequency
 form raises an error; the 2D frequency study still ignores lp.Radiation, as before E).
 
-## Phase F — in progress
+## Phase F — done (gate report at the end of this section)
 
 - **F1 (done)**: `print(model)` / `model.tree(selections=True)` (geometry, materials, regions with
   material / damping / size, boundaries, mesh controls, mesh, and what each item selects);
@@ -527,3 +527,26 @@ form raises an error; the 2D frequency study still ignores lp.Radiation, as befo
   D4b numbers (0.011 % / 0.054 %) were computed with it, the repaired mesh gives 0.040 % / 0.081 % (200 Hz /
   1 kHz; h = 5 cm unchanged 0.033 % / 0.19 %). The verification test keeps the 0.1 % bound and compares the
   worst error over the two frequencies (the 200 Hz error no longer falls between 5 and 3.5 cm).
+- **F4 (done)**: the examples on the current API and run. The 3D examples (`enclosure.py`, `column.py`,
+  `labyrinth.py`, `Build_vented.py`) select their driver profiles with selectors (lp.BoundaryOf /
+  lp.Interface) instead of gmsh curve tags: the sampled profiles are identical (difference 0.0).
+  `generate_meshes.py` fixed (an indentation error since phase A; the F1 signature of `_solve_block`).
+  Static check of the 42 scripts (they compile, every lp.<name> and loudpy import exists): 0 problems.
+  Smoke run (`tests/tools/smoke_examples.py`, untracked like the other tools): the 12 Running scripts run as
+  written with the solves stubbed (2D meshing real, reused; 3D scenes checked, not meshed) and the 3
+  validation scripts (clamped plate, rectangular cavity, DtN hemisphere) run in full: 15 / 15. The full
+  computations are phase M.
+
+**Gate F report.**
+
+| Gate item | Result |
+|---|---|
+| one model pattern for 2D and 3D | `lp.Model(geometry)` / `lp.Model(cabinet, dim=3, drivers=…)`: both have parameters, print / tree, check(), copy(), with_parameters(), mesh(), studies, lp.Sweep |
+| identical meshes twice | speaker meshed twice from scratch: same nodes, coordinates and cells (deterministic by default; 3D on one thread) |
+| no user object mutated | remeshed frequency sweep and parametric sweeps work on copies (tests check the items and the mesh after) |
+| a parametric sweep equals the separate runs | bit-identical: plate Young's modulus, builder disc thickness, scene cabinet depth |
+| examples run | 15 / 15 in the smoke run (above); full re-runs in phase M |
+
+Content of F not done, proposed for later (not in the gate): typed mesh / solver settings objects, studies
+as steps (a study list on the model), `lp.plot.selection` (phase J, plotting), the exact DtN radiation in
+a 2D FrequencyResponse (explicit error today).

@@ -31,7 +31,7 @@ EXAMPLES = [
 def run(script):
     import loudpy as lp
 
-lp.set_verbosity("info")                 # progress messages (loudpy is silent by default)
+    lp.set_verbosity("info")                 # progress messages (loudpy is silent by default)
     from loudpy.results.results import Block, ModeResults, TimeResults
     from loudpy.study.base import Study
     from loudpy.study.frequency import FrequencyResponse
@@ -54,7 +54,8 @@ lp.set_verbosity("info")                 # progress messages (loudpy is silent b
     lp.Model.mesh = recording_mesh
     lp.Modes.solve = lambda self, *a, **k: ModeResults([])
     lp.Transient.solve = lambda self, *a, **k: TimeResults([])
-    FrequencyResponse._solve_block = lambda self, freqs, label="": (Block({}, np.asarray(freqs, float), {}), {})
+    FrequencyResponse._solve_block = lambda self, freqs, label="", model=None: (
+        Block({}, np.asarray(freqs, float), {}), {})
     Study.save = lambda self, *a, **k: None
 
     here = os.path.dirname(os.path.abspath(__file__))

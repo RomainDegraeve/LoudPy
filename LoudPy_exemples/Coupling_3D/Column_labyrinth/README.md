@@ -21,8 +21,8 @@ A column loudspeaker on a rigid ground: three identical drivers stacked on the f
 ## How the scene is set up (`lp.Driver` + `lp.Scene`)
 ```python
 hp = lp.Driver.from_modes(eig_path, [0, 1, 2, 3], f_max=6000, geometry=geo_path,
-                          rear=lp.Profile(REAR_CURVES, REAR_START),
-                          front=lp.Profile(FRONT_CURVES, FRONT_START))
+                          rear=REAR,     # lp.Profile(lp.BoundaryOf("subacou_rear"), start=…, end=…)
+                          front=FRONT)   # lp.Profile(lp.Interface(SOLIDS, "subacou_front"), start=…)
 scene = lp.Scene(cabinet, [hp.place(n, at=c) for n, c in zip(NAMES, CENTERS)])
 scene.merged(ground="y", bands=BANDS, points_per_wavelength=4, max_size=0.07, driver_size=0.004)
 scene.mesh(files)                                   # meshes built once, reused afterwards
