@@ -363,3 +363,9 @@ The plan holds; adjustments, decided with the user:
   rotation), order 0 = axisymmetric, TL at u = 0 = linear element and K_T = ∂F_int/∂u (central
   differences, 1e-6), PML coefficients. 271 tests pass with `--slow`.
   **To check with the user**: the committed spider mesh has a nearly inverted P2 cell (see above).
+- **D4a (done)**: boundary kernels on the generic core: `kernels.boundary_normal_mass` (∫ N N n_i ds, the
+  normal from the Jacobian: lines in 2D, triangles in 3D), used by `FsiAssembler` (Cam); the coil force by
+  `boundary_load`; the DtN vectors b_n = ∮ P_n(cos θ) N 2πr ds by `boundary_load` with the same 8-point
+  Gauss rule. Former code, same machine: Cam 2.9e-16, F 2.5e-16, DtN system Ms 1.2e-14, Ks / Cs 1.16e-11
+  (their structure block: the spider cell of D3). Test: divergence theorem ∮ x_i n_i = |Ω|, ∮ n = 0 on
+  the unit square (P1–P3) and cube (P1–P2). 276 tests pass with `--slow`.

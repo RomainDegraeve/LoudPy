@@ -13,9 +13,11 @@ from __future__ import annotations
 
 import numpy as np
 
-from loudpy.fem.batch import _batch_FSI
 from loudpy.fem.batch_coupling import _fsi_local_to_V
 from loudpy.fem.indexing import _fill_ij_rect
+from loudpy.fem.kernels import _boundary_normal_mass_kernel, tabulate
+from loudpy.fem.quadrature import legacy_line
+from loudpy.fem.reference import lagrange
 from loudpy.fem.sparse import _SparseAssemblerBase, _local_coords
 from loudpy.physics.registry import select
 from loudpy.errors import StateError
@@ -76,9 +78,11 @@ class FsiAssembler(_SparseAssemblerBase):
 
     def assemble(self):
         n_e, n_p = self.ec.shape[0], self.n_pts
-        out_x = np.empty((n_e, n_p * n_p), dtype=np.float64)
-        out_y = np.empty((n_e, n_p * n_p), dtype=np.float64)
-        _batch_FSI(self.ec, out_x, out_y)
+        N, dN, w = tabulate(lagrange("line", 2), legacy_line(3))
+        out = np.empty((n_e, 2, n_p * n_p), dtype=np.float64)
+        if n_e:
+            _boundary_normal_mass_kernel(self.ec, N, dN, w, True, out)
+        out_x, out_y = np.ascontiguousarray(out[:, 0]), np.ascontiguousarray(out[:, 1])
         V = np.empty(n_e * self.block, dtype=np.float64)
         _fsi_local_to_V(out_x, out_y, self.signs, V)
         return self._to_csr(V)

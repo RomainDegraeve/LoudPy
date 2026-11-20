@@ -28,7 +28,7 @@ from loudpy.fem.sparse import _SparseAssemblerBase
 from loudpy.fem.sparse_kernels import _scatter_add
 
 __all__ = ["Assembler", "mass", "laplace", "load", "boundary_mass", "boundary_load", "quadrature_points",
-           "coefficient", "tabulate", "expand_components"]
+           "coefficient", "tabulate", "expand_components", "diffusion", "boundary_normal_mass"]
 
 TWO_PI = 2.0 * np.pi
 
@@ -251,6 +251,39 @@ def _boundary_load_kernel(ec, N, dN, w, coef, axisym, out):
                 out[e, a] += c * N[q, a]
 
 
+@njit(parallel=True, cache=True, fastmath=False)
+def _boundary_normal_mass_kernel(ec, N, dN, w, axisym, out):
+    """Blocks ∫_Γ N_a N_b n_i (2π r) ds for every component i of the (unnormalised) normal n ds:
+    (∂z/∂ξ, −∂r/∂ξ) on lines in 2D (the right of the direction of travel), ∂x/∂ξ × ∂x/∂η on
+    triangles in 3D. out (n_e, gdim, n²)."""
+    n_e, n, gdim = ec.shape
+    n_q, _, tdim = dN.shape
+    for e in prange(n_e):
+        J = np.empty((gdim, tdim))
+        nds = np.empty(gdim)
+        Me = np.zeros((gdim, n, n))
+        for q in range(n_q):
+            _jacobian(ec[e], dN[q], J)
+            if tdim == 1:
+                nds[0] = J[1, 0]
+                nds[1] = -J[0, 0]
+            else:
+                nds[0] = J[1, 0] * J[2, 1] - J[2, 0] * J[1, 1]
+                nds[1] = J[2, 0] * J[0, 1] - J[0, 0] * J[2, 1]
+                nds[2] = J[0, 0] * J[1, 1] - J[1, 0] * J[0, 1]
+            common = w[q]
+            if axisym:
+                common = TWO_PI * _radius(ec[e], N[q]) * w[q]
+            for i in range(gdim):
+                c = common * nds[i]
+                for a in range(n):
+                    ca = c * N[q, a]
+                    for b in range(n):
+                        Me[i, a, b] += ca * N[q, b]
+        for i in range(gdim):
+            out[e, i] = Me[i].ravel()
+
+
 # ------------------------------------------------------------------------------------- Python wrappers
 
 def tabulate(element, rule):
@@ -354,6 +387,21 @@ def boundary_mass(space, rule, coef=1.0, axisymmetric=False) -> np.ndarray:
     """Blocks ∫_Γ coef N_a N_b (2π r) ds on boundary cells, (n_cells, n²)."""
     _check_boundary(space)
     return _blocks(_boundary_mass_kernel, space, rule, coef, axisymmetric, True)
+
+
+def boundary_normal_mass(space, rule, axisymmetric=False) -> np.ndarray:
+    """Blocks ∫_Γ N_a N_b n_i (2π r) ds per normal component, (n_cells, gdim, n²); n points to the right
+    of the direction of travel along a line (2D), along ∂x/∂ξ × ∂x/∂η on a triangle (3D)."""
+    _check_boundary(space)
+    N, dN, w = tabulate(space.element, rule)
+    n = space.element.n_nodes
+    out_all = []
+    for ec in space.cell_coords:
+        out = np.empty((len(ec), space.gdim, n * n))
+        if len(ec):
+            _boundary_normal_mass_kernel(ec, N, dN, w, bool(axisymmetric), out)
+        out_all.append(out)
+    return np.concatenate(out_all)
 
 
 def boundary_load(space, rule, f, axisymmetric=False) -> np.ndarray:

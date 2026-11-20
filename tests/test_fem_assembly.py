@@ -261,3 +261,20 @@ def test_curved_cells(p):
         assert order(errs, hs) > 3.2, errs                   # gmsh's interior nodes: ≈ 3.5
         errs = fixed
     assert order(errs, hs) > p + 1 - 0.2, errs
+
+
+@pytest.mark.parametrize("dim,p", [(2, 1), (2, 2), (2, 3), (3, 1), (3, 2)])
+def test_boundary_normals(dim, p):
+    """Divergence theorem with the normal kernel: ∮ x_i n_i ds = |Ω| for each i, ∮ n ds = 0
+    (unit square boundary lines, unit cube boundary triangles)."""
+    m = fem_meshes.unit_square(3, p) if dim == 2 else fem_meshes.unit_cube(0.5, p)
+    elem = element_for_gmsh_type(m["boundary_type"])
+    sp = Space(m["node_tags"], m["coords"], m["boundary_cells"], elem)
+    rule = quadrature(elem.cell.name, 2 * elem.degree + 2)
+    blocks = fk.boundary_normal_mass(sp, rule)                       # (n_e, dim, n²)
+    asm = fk.Assembler(sp)
+    one = np.ones(sp.n_dofs)
+    for i in range(dim):
+        Mi = asm.matrix(np.ascontiguousarray(blocks[:, i]))
+        np.testing.assert_allclose(one @ Mi @ one, 0.0, atol=1e-13)
+        np.testing.assert_allclose(abs(one @ Mi @ sp.node_coords[:, i]), 1.0, rtol=1e-12)

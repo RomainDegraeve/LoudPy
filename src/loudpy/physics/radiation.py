@@ -35,6 +35,9 @@ from math import factorial
 
 import numpy as np
 from loudpy.errors import MeshError
+from loudpy.fem.kernels import _boundary_load_kernel, quadrature_points, tabulate
+from loudpy.fem.quadrature import quadrature
+from loudpy.fem.reference import lagrange
 
 
 # ── Reverse Bessel polynomials θ_n and their roots ─────────────────────────────
@@ -76,7 +79,6 @@ def dtn_kernel(n: int, s, R: float, c: float):
 
 
 # ── Boundary vectors b_n ───────────────────────────────────────────────────────
-_GL_X, _GL_W = np.polynomial.legendre.leggauss(8)
 
 
 def _legendre_all(n_max: int, x: np.ndarray) -> np.ndarray:
@@ -111,20 +113,18 @@ def dtn_boundary_vectors(edges: np.ndarray, node_tags: np.ndarray,
 
     orders = list(orders)
     n_max = max(orders)
+    edges = np.asarray(edges, dtype=np.int64)
+    ec = np.ascontiguousarray(np.array([[xy[int(t)] for t in e] for e in edges]).reshape(len(edges), 3, 2))
+    loc = np.vectorize(lambda t: tag_to_local[int(t)])(edges) if len(edges) else edges
+    N, dN, w = tabulate(lagrange("line", 2), quadrature("line", 15))          # 8-point Gauss
+    x = quadrature_points(ec, N)                                                # (n_e, n_q, 2)
+    cos_t = (x[..., 1] - z0) / np.hypot(x[..., 0] - r0, x[..., 1] - z0)
+    P = _legendre_all(n_max, cos_t.ravel()).reshape(n_max + 1, *cos_t.shape)
     B = np.zeros((len(orders), n_dof))
-    for e in np.asarray(edges, dtype=np.int64):
-        X = np.array([xy[int(t)] for t in e])                    # (3, 2)
-        loc = [tag_to_local[int(t)] for t in e]
-        for xi, w in zip(_GL_X, _GL_W):
-            N = np.array([-0.5 * xi * (1 - xi), 0.5 * xi * (1 + xi), 1 - xi * xi])
-            dN = np.array([xi - 0.5, xi + 0.5, -2 * xi])
-            p = N @ X
-            ds = np.linalg.norm(dN @ X)
-            cos_t = (p[1] - z0) / np.hypot(p[0] - r0, p[1] - z0)
-            Pn = _legendre_all(n_max, np.array([cos_t]))[:, 0]
-            wt = w * 2.0 * np.pi * p[0] * ds
-            for j, n in enumerate(orders):
-                B[j, loc] += wt * Pn[n] * N
+    be = np.empty((len(ec), 3))
+    for j, n in enumerate(orders):                    # b_n,i = ∮ P_n(cos θ) N_i 2πr ds
+        _boundary_load_kernel(ec, N, dN, w, np.ascontiguousarray(P[n]), True, be)
+        np.add.at(B[j], loc, be)
     return B, R
 
 
