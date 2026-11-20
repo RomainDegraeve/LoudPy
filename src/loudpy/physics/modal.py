@@ -353,6 +353,41 @@ def wet_edges(driver: DriverModes, profile, tol=2.5e-4):
 # ════════════════════════════════════════════════════════════════════════════
 #  Coupling
 # ════════════════════════════════════════════════════════════════════════════
+def add_driver_modes(b, w_s, zeta, S, R, kappa2, rho=RHO_AIR, c=C_AIR, eta_air=0.0, H_extra=None, field="q"):
+    """
+    Terms of the driver modes (+ extra coordinates) on the field `field` of a SystemBuilder, the cavity
+    eliminated through its modes (time convention e^{st}, s = jω, k = ω/c):
+
+        [diag(ω_s²) + s diag(2ζω_s) + s² I] q + H_extra(ω) x + ρ s² (S D(s) Sᵀ + R) q,
+        D(s) = 1/(κ² − k² + iη κ k)          (S None or with no column: no cavity)
+    """
+    from loudpy.physics.builder import Term
+    ns = len(w_s)
+    n_y = b.fields[field].size
+
+    def pad(block):
+        out = np.zeros((n_y, n_y), complex)
+        out[:ns, :ns] = block
+        return out
+
+    b.add(Term(field, field, pad(np.diag(w_s ** 2))), Term(field, field, pad(np.diag(2 * zeta * w_s)), power=1),
+          Term(field, field, pad(np.eye(ns)), power=2))
+    if H_extra is not None:
+        def extra(z):
+            out = np.zeros((n_y, n_y), complex)
+            out[ns:, ns:] = H_extra(z.imag)
+            return out
+        b.add(Term(field, field, extra))
+    if S is not None and S.shape[1]:
+        def cavity(z):
+            k = z.imag / c
+            D = 1.0 / (kappa2 - k * k + 1j * eta_air * np.sqrt(kappa2) * k)
+            return rho * ((S * D) @ S.T + R)
+        b.add(Term(field, field, cavity, power=2))
+    elif R is not None and np.any(R):
+        b.add(Term(field, field, rho * np.asarray(R, complex), power=2))
+
+
 def solve_forced(freqs, F, w_s, zeta, S, R, kappa2, rho=RHO_AIR, c=C_AIR, eta_air=0.0):
     """
     Forced response of the coupled system from its modal data (see the module docstring):
@@ -360,21 +395,23 @@ def solve_forced(freqs, F, w_s, zeta, S, R, kappa2, rho=RHO_AIR, c=C_AIR, eta_ai
     S = None gives the driver in vacuo (P = 0).
     F may be (n_s, n_rhs), e.g. one unit coil force per driver (MultiDriver.coil_forces): then
     q is (n_f, n_s, n_rhs) and P (n_f, n_a, n_rhs), one factorisation per frequency.
+    The system is a SystemBuilder (add_driver_modes) solved directly by BlockSolver.
     """
+    from loudpy.physics.builder import BlockSolver, Field, SystemBuilder
     F = np.asarray(F)
     rhs = F.shape[1:]
+    b = SystemBuilder()
+    b.add_field(Field("q", len(w_s)))
+    add_driver_modes(b, w_s, zeta, S, R if S is not None else None, kappa2, rho, c, eta_air)
+    solver = BlockSolver(b, small="q")
     q = np.zeros((len(freqs), len(w_s)) + rhs, complex)
     P = np.zeros((len(freqs), len(kappa2)) + rhs, complex)
     for i, f in enumerate(freqs):
         w = 2 * np.pi * f
-        A = np.diag(w_s ** 2 + 2j * zeta * w_s * w - w ** 2)
-        if S is None:
-            q[i] = np.linalg.solve(A, F)
-            continue
-        D = 1.0 / (kappa2 - (w / c) ** 2 + 1j * eta_air * np.sqrt(kappa2) * w / c)
-        A = A - rho * w ** 2 * ((S * D) @ S.T + R)
-        q[i] = np.linalg.solve(A, F)
-        P[i] = -rho * w ** 2 * D.reshape((-1,) + (1,) * len(rhs)) * (S.T @ q[i])
+        q[i] = solver.solve(1j * w, rhs=F.astype(complex))[0]["q"]
+        if S is not None:                                             # cavity modal pressures
+            D = 1.0 / (kappa2 - (w / c) ** 2 + 1j * eta_air * np.sqrt(kappa2) * w / c)
+            P[i] = -rho * w ** 2 * D.reshape((-1,) + (1,) * len(rhs)) * (S.T @ q[i])
     return q, P
 
 def surface_coupling(nodes, tri, drv, edges, edge_n, center, map_tol=5e-4):
@@ -543,13 +580,17 @@ class DriverCavityCoupling:
     # ── coupled modes ──────────────────────────────────────────────────────
     def coupled_modes(self, f_max=None):
         """Coupled eigenvalues s = −ζω + iω_d and right vectors x = (q, P)."""
+        from loudpy.physics.builder import Field, SystemBuilder, Term
         ns, na = len(self.drivers), len(self.w_a)
-        I_s, I_a = np.eye(ns), np.eye(na)
-        K = np.block([[np.diag(self.w_s ** 2), self.S], [np.zeros((na, ns)), np.diag(self.w_a ** 2)]])
-        C = np.block([[np.diag(2 * self.drivers.zeta * self.w_s), np.zeros((ns, na))],
-                      [np.zeros((na, ns)), np.diag(self.eta_air * self.w_a)]])
-        M = np.block([[I_s + self.rho * self.R, np.zeros((ns, na))],
-                      [-self.rho * self.c ** 2 * self.S.T, I_a]])
+        b = SystemBuilder()                    # fields q (driver modes), a (cavity modes): polynomial form
+        b.add_field(Field("q", ns))
+        b.add_field(Field("a", na))
+        b.add(Term("q", "q", np.diag(self.w_s ** 2)), Term("q", "a", self.S), Term("a", "a", np.diag(self.w_a ** 2)),
+              Term("q", "q", np.diag(2 * self.drivers.zeta * self.w_s), power=1),
+              Term("a", "a", np.diag(self.eta_air * self.w_a), power=1),
+              Term("q", "q", np.eye(ns) + self.rho * self.R, power=2),
+              Term("a", "q", -self.rho * self.c ** 2 * self.S.T, power=2), Term("a", "a", np.eye(na), power=2))
+        K, C, M = (A.toarray() for A in b.polynomial())
         n = ns + na
         Z, I = np.zeros((n, n)), np.eye(n)
         s, X = sla.eig(np.block([[Z, I], [-K, -C]]), np.block([[I, Z], [Z, M]]))

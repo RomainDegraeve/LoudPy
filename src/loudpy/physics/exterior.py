@@ -37,7 +37,6 @@ import time
 import warnings
 
 import numpy as np
-import scipy.linalg as sla
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 from scipy.special import spherical_jn, spherical_yn, sph_harm_y
@@ -214,6 +213,43 @@ class ExteriorFE:
 # ════════════════════════════════════════════════════════════════════════════
 #  Coupled sweep: driver + enclosure (modal) + exterior (FE + DtN)
 # ════════════════════════════════════════════════════════════════════════════
+def scene_builder(ext, F, w_s, zeta, S, R, kappa2, eta_air=0.0, rho=RHO_AIR, c=C_AIR, H_extra=None):
+    """
+    The 3D scene system on a SystemBuilder (time convention e^{st}, s = jω, k = ω/c):
+
+      q row (driver modes + extra coordinates):
+          [diag(ω_s²) + s diag(2ζω_s) + s² I] q  + H_extra(ω) x  + ρ s² (S D(s) Sᵀ + R) q  + Bfᵀ p[Γ_f] = F
+          D(s) = 1/(κ² − k² + iη κ k): the cavity eliminated through its modes (S = 0: no cavity)
+      p row (exterior FE):
+          (K + s² M/c²) p − G γ(k) Gᵀ p (on Γ, the half-space DtN: a LowRank term)  − ρ s² Bf q = 0
+
+    ext: an ExteriorFE with couple_driver done (pnodes, Bf).
+    """
+    from loudpy.physics.builder import Field, Load, LowRank, SystemBuilder, Term
+    from loudpy.physics.modal import add_driver_modes
+    n_x = 0 if H_extra is None else H_extra(1.0).shape[0]
+    n_y, n = len(w_s) + n_x, len(ext.nodes)
+    b = SystemBuilder()
+    b.add_field(Field("q", n_y))
+    b.add_field(Field("p", n))
+    add_driver_modes(b, w_s, zeta, S, R, kappa2, rho, c, eta_air, H_extra)
+    # exterior air and its DtN on Γ
+    b.add(Term("p", "p", ext.K), Term("p", "p", ext.M / (c * c), power=2))
+
+    def dtn(z):
+        k = z.imag / c
+        n_max = ext.dtn.n_max(k)
+        nh = ext.dtn.n_harm(n_max)
+        return LowRank((n, n), ext.gnodes, ext.G[:, :nh], -ext.dtn.gamma(k, n_max))
+    b.add(Term("p", "p", dtn))
+    # wet surface: structure ↔ exterior air
+    pn, Bf = ext.pnodes, ext.Bf
+    Bq = sp.csr_matrix((Bf.ravel(), (np.repeat(pn, n_y), np.tile(np.arange(n_y), len(pn)))), shape=(n, n_y))
+    b.add(Term("q", "p", Bq.T.tocsr()), Term("p", "q", -rho * Bq, power=2))
+    b.add_load(Load("q", np.asarray(F, complex)))
+    return b
+
+
 def coupled_sweep(bands, freqs, F, w_s, zeta, S, R, kappa2, eta_air=0.0, rho=RHO_AIR, c=C_AIR,
                   chunk_hz=50.0, rtol=1e-7, on_frequency=None, log=None, H_extra=None):
     """
@@ -223,7 +259,12 @@ def coupled_sweep(bands, freqs, F, w_s, zeta, S, R, kappa2, eta_air=0.0, rho=RHO
     H_extra(ω): dynamic matrix of extra generalised coordinates appended after the driver modes
     (e.g. the two mouths of a port); S, R, Bf and F then have n_y = n_modes + n_extra columns.
     Without a cavity, pass S of shape (n_y, 0), R = 0 and an empty kappa2.
+
+    The system is the scene builder (scene_builder) solved by the generic BlockSolver: the modal field q
+    eliminated exactly at each frequency, GMRES on the exterior field p with an LU preconditioner of
+    K − k_c²M + (ik_c + 1/R) M_Γ refreshed every chunk_hz.
     """
+    from loudpy.physics.builder import BlockSolver
     if log is None:                                   # progress messages: logger "loudpy"
         from loudpy._log import info as log
     n_x = 0 if H_extra is None else H_extra(1.0).shape[0]
@@ -235,7 +276,8 @@ def coupled_sweep(bands, freqs, F, w_s, zeta, S, R, kappa2, eta_air=0.0, rho=RHO
             continue
         log(f"  band {f_lo:.0f}–{f_hi:.0f} Hz: {len(ext.nodes)} nodes, {len(ext.gnodes)} on Γ, "
             f"{len(ext.pnodes)} on the driver, n ≤ {ext.n_max_band}")
-        pn, Bf = ext.pnodes, ext.Bf
+        solver = BlockSolver(scene_builder(ext, F, w_s, zeta, S, R, kappa2, eta_air, rho, c, H_extra),
+                             small="q", big="p", rtol=rtol, restart=150, maxiter=20)
         p_prev, f_c, Mpre = None, None, None
         for i in idx:
             f = freqs[i]
@@ -246,26 +288,12 @@ def coupled_sweep(bands, freqs, F, w_s, zeta, S, R, kappa2, eta_air=0.0, rho=RHO
                 Mpre = None                                   # free the previous LU first
                 Mpre = ext.preconditioner(2 * np.pi * f_c / c)
                 log(f"    LU at {f_c:.0f} Hz ({time.time() - t0:.0f} s)", flush=True)
-            D = 1.0 / (kappa2 - k * k + 1j * eta_air * np.sqrt(kappa2) * k)
-            H = np.zeros((len(w_s) + n_x,) * 2, complex)
-            H[:len(w_s), :len(w_s)] = np.diag(w_s ** 2 + 2j * zeta * w_s * w - w ** 2)
-            if n_x:
-                H[len(w_s):, len(w_s):] = H_extra(w)
-            H -= rho * w ** 2 * ((S * D) @ S.T + R)
-            Hlu = sla.lu_factor(H)
-            n = len(ext.nodes)
-
-            def extra(v):
-                out = np.zeros(n, complex)
-                out[pn] = -rho * w ** 2 * (Bf @ sla.lu_solve(Hlu, Bf.T @ v[pn]))
-                return out
-            rhs = np.zeros(n, complex)
-            rhs[pn] = -rho * w ** 2 * (Bf @ sla.lu_solve(Hlu, F))
-            p, it, info = ext.solve(k, rhs, Mpre, p_prev, rtol, extra)
+            x, it, info = solver.solve(1j * w, x0=p_prev, preconditioner=Mpre)
+            p = x["p"]
             if info != 0:
                 warnings.warn(f"GMRES did not reach rtol = {rtol:g} at {f:.0f} Hz (info {info}); the result is kept",
                               ConvergenceWarning, stacklevel=2)
-            q_all[i] = sla.lu_solve(Hlu, F - Bf.T @ p[pn])
+            q_all[i] = x["q"]
             coefs[i], iters[i], p_prev = ext.coefficients(p, k), it, p
             if on_frequency is not None:
                 on_frequency(i, b, p, coefs[i], q_all[i])

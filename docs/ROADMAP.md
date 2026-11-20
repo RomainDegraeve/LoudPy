@@ -450,3 +450,17 @@ judged negligible (estimated effect ≲ 0.1 % on spider-dominated modes, ≲ 0.0
   288 tests pass with `--slow`. Not done (a new feature, not in the gate): the exact DtN radiation in
   `FrequencyResponse` (today a frequency study ignores lp.Radiation, as before E): the frequency form of
   the radiation contribution raises an error, so the gap is explicit; candidate for phase F.
+- **E3 (done)**: the 3D scenes on the same builder (the generic design chosen by the user). The builder
+  gained frequency-dependent terms (a block given as a function of s), `LowRank` operator blocks (dense on a
+  boundary, never assembled) and a `BlockSolver`: eliminated fields factorised exactly, GMRES on the Schur
+  complement of the big field with a caller-supplied preconditioner (or a direct solve when there is no
+  big field). `physics.modal.add_driver_modes` declares the driver modes, extra coordinates (ports) and the
+  cavity eliminated through its modes (ρ s² (S D(s) Sᵀ + R)); `physics.exterior.scene_builder` adds the
+  exterior FE (K + s² M/c²), the half-space DtN as a LowRank term −G γ(k) Gᵀ and the wet-surface couplings
+  Bfᵀ / −ρ s² Bf. `coupled_sweep` (configurations cavity+exterior and merged), `solve_forced` (cavity) and
+  `DriverCavityCoupling.coupled_modes` (polynomial form, fields q and a) all go through it. Against the
+  code before E3 (worktree, same machine): open scenes q ≤ 6.7e-16, far field ≤ 6.3e-15, exterior p
+  ≤ 2e-12 (stored complex64); cavity q 2.3e-18, cavity pressures 1.1e-20, two drivers 2.4e-16, coupled
+  modes bit-identical. Same speed (scene script 31.5 → 30.3 s). 3D references unchanged. 3 new builder
+  tests (BlockSolver = dense direct solve with a LowRank block, 1e-9; small-only multi-RHS). 290 tests
+  pass with `--slow`.

@@ -31,7 +31,7 @@ import scipy.sparse as sp
 
 from loudpy.errors import ModelError
 
-__all__ = ["Field", "Term", "Load", "SystemBuilder", "CONTRIBUTIONS", "FORMS", "contribute", "coupled_builder",
+__all__ = ["Field", "Term", "LowRank", "Load", "SystemBuilder", "BlockSolver", "CONTRIBUTIONS", "FORMS", "contribute", "coupled_builder",
            "symmetric_builder"]
 
 
@@ -46,7 +46,11 @@ class Field:
 
 @dataclass
 class Term:
-    """A block f(s)·matrix in row field `row`, column field `col`; f(s) = s**power, or `func(s)`."""
+    """
+    A block f(s)·B in row field `row`, column field `col`; f(s) = s**power, or `func(s)`. B is a matrix
+    (sparse or dense), or a function of s returning one (a frequency-dependent block, e.g. a cavity
+    eliminated through its modes) or a `LowRank` operator (e.g. the 3D DtN, dense on the boundary).
+    """
     row: str
     col: str
     matrix: object
@@ -58,7 +62,42 @@ class Term:
 
     @property
     def polynomial(self) -> bool:
-        return self.func is None and self.power in (0, 1, 2)
+        return self.func is None and self.power in (0, 1, 2) and not callable(self.matrix)
+
+    def value(self, s):
+        """f(s)·B(s): a sparse or dense matrix, or a LowRank operator."""
+        m = self.matrix(s) if callable(self.matrix) else self.matrix
+        f = self.factor(s)
+        if isinstance(m, LowRank):
+            return m.scaled(f)
+        return m * f
+
+
+class LowRank:
+    """
+    A low-rank operator block  out[rows] = c · U (core ⊙ (Vᵀ x[cols]))  of shape (n_rows, n_cols):
+    U (len(rows), r), core (r,) a vector (diagonal) or (r, r), V (len(cols), r) (default U), c a scale.
+    Used for blocks that are dense on a boundary only, never assembled.
+    """
+
+    def __init__(self, shape, rows, U, core, cols=None, V=None, scale=1.0):
+        self.shape = tuple(shape)
+        self.rows = np.asarray(rows)
+        self.cols = self.rows if cols is None else np.asarray(cols)
+        self.U = U
+        self.V = U if V is None else V
+        self.core = np.asarray(core)
+        self.scale = scale
+
+    def scaled(self, f):
+        return LowRank(self.shape, self.rows, self.U, self.core, self.cols, self.V, self.scale * f)
+
+    def __matmul__(self, x):
+        y = self.V.T @ x[self.cols]
+        y = self.core * y if self.core.ndim == 1 else self.core @ y
+        out = np.zeros(self.shape[0], dtype=np.result_type(x, y, complex))
+        out[self.rows] = self.scale * (self.U @ y)
+        return out
 
 
 @dataclass
@@ -92,7 +131,7 @@ class SystemBuilder:
                 if name not in self.fields:
                     raise ModelError(f"term on unknown field {name!r}; fields: {list(self.fields)}")
             shape = (self.fields[t.row].size, self.fields[t.col].size)
-            if t.matrix.shape != shape:
+            if not callable(t.matrix) and t.matrix.shape != shape:
                 raise ModelError(f"term ({t.row}, {t.col}) has shape {t.matrix.shape}, expected {shape}")
             self.terms.append(t)
 
@@ -121,6 +160,19 @@ class SystemBuilder:
         return {n: x[..., off[n]:off[n] + f.size] for n, f in self.fields.items()}
 
     # ── assembly ────────────────────────────────────────────────────────────
+    def block(self, row, col, s):
+        """Block (row, col) at s: (matrix sum or None, [LowRank operators])."""
+        mat, ops = None, []
+        for t in self.terms:
+            if t.row != row or t.col != col:
+                continue
+            v = t.value(s)
+            if isinstance(v, LowRank):
+                ops.append(v)
+            else:
+                mat = v if mat is None else mat + v
+        return mat, ops
+
     def _blocks(self, select):
         names = list(self.fields)
         grid = {(r, c): None for r in names for c in names}
@@ -139,10 +191,13 @@ class SystemBuilder:
         return rows
 
     def at(self, s) -> sp.csc_matrix:
-        """A(s) = Σ f_k(s) B_k, as one sparse matrix (fields in declaration order)."""
+        """A(s) = Σ f_k(s) B_k, as one sparse matrix (fields in declaration order; no LowRank terms:
+        use BlockSolver)."""
         def value(t):
-            m = t.matrix
-            return sp.csr_matrix(m) * t.factor(s) if not sp.issparse(m) else m * t.factor(s)
+            v = t.value(s)
+            if isinstance(v, LowRank):
+                raise ModelError("a LowRank term cannot be assembled: solve with BlockSolver")
+            return v if sp.issparse(v) else sp.csr_matrix(v)
         rows = self._blocks(value)
         if len(rows) == 1:
             return sp.csc_matrix(rows[0][0])
@@ -167,6 +222,101 @@ class SystemBuilder:
             rows = self._blocks(lambda t: sp.csr_matrix(t.matrix) if t.power == p else None)
             out.append(sp.bmat(rows, format="csc") if len(rows) > 1 else sp.csc_matrix(rows[0][0]))
         return tuple(out)
+
+
+class BlockSolver:
+    """
+    Solves A(s) x = b(s) by eliminating `small` fields (dense, factorised exactly) and, if `big` is given,
+    iterating on the big field with GMRES on its Schur complement
+
+        (A_bb − A_bs A_ss⁻¹ A_sb) x_b = b_b − A_bs A_ss⁻¹ b_s,   x_s = A_ss⁻¹ (b_s − A_sb x_b)
+
+    A_bb may contain LowRank operators (never assembled). `preconditioner(s)` returns a LinearOperator
+    approximating A_bb⁻¹ (e.g. an LU at a nearby frequency); the caller decides when to refresh it.
+    Without `big`, the small system is solved directly (several right-hand sides allowed).
+    """
+
+    def __init__(self, builder: SystemBuilder, small, big: str | None = None, rtol=1e-8, restart=150,
+                 maxiter=20):
+        self.b = builder
+        self.small = [small] if isinstance(small, str) else list(small)
+        self.big = big
+        self.rtol, self.restart, self.maxiter = rtol, restart, maxiter
+
+    def _small_matrix(self, s, rows, cols):
+        """Dense block over several fields."""
+        sizes_r = [self.b.fields[r].size for r in rows]
+        sizes_c = [self.b.fields[c].size for c in cols]
+        out = np.zeros((sum(sizes_r), sum(sizes_c)), complex)
+        r0 = 0
+        for r, nr in zip(rows, sizes_r):
+            c0 = 0
+            for c, nc in zip(cols, sizes_c):
+                m, ops = self.b.block(r, c, s)
+                if ops:
+                    raise ModelError(f"LowRank term in the eliminated block ({r}, {c})")
+                if m is not None:
+                    out[r0:r0 + nr, c0:c0 + nc] += m.toarray() if sp.issparse(m) else np.asarray(m)
+                c0 += nc
+            r0 += nr
+        return out
+
+    def _coupling(self, s, rows, cols):
+        """Sparse (or None) block between the big field and the small fields."""
+        parts = []
+        for r in rows:
+            row = []
+            for c in cols:
+                m, ops = self.b.block(r, c, s)
+                if ops:
+                    raise ModelError(f"LowRank term in the coupling block ({r}, {c})")
+                shape = (self.b.fields[r].size, self.b.fields[c].size)
+                row.append(sp.csr_matrix(m) if m is not None else sp.csr_matrix(shape))
+            parts.append(row)
+        return sp.bmat(parts, format="csr")
+
+    def solve(self, s, rhs=None, x0=None, preconditioner=None):
+        """Fields at s: (dict of field values, GMRES iterations, GMRES info)."""
+        import scipy.linalg as sla
+        import scipy.sparse.linalg as spla
+        b = self.b.rhs(s) if rhs is None else rhs
+        off = self.b.offsets
+        idx_s = np.concatenate([np.arange(off[n], off[n] + self.b.fields[n].size) for n in self.small])
+        A_ss = self._small_matrix(s, self.small, self.small)
+        lu = sla.lu_factor(A_ss)
+        b_s = np.asarray(b)[idx_s]
+        if self.big is None:
+            x_s = sla.lu_solve(lu, b_s)
+            return self._split_small(x_s), 0, 0
+        nb = self.b.fields[self.big].size
+        b_b = np.asarray(b)[off[self.big]:off[self.big] + nb]
+        A_bb, ops = self.b.block(self.big, self.big, s)
+        A_bb = sp.csr_matrix(A_bb)
+        A_sb = self._coupling(s, self.small, [self.big])
+        A_bs = self._coupling(s, [self.big], self.small)
+
+        def mv(v):
+            out = A_bb @ v
+            for op in ops:
+                out = out + op @ v
+            return out - A_bs @ sla.lu_solve(lu, A_sb @ v)
+        S = spla.LinearOperator((nb, nb), matvec=mv, dtype=complex)
+        it = [0]
+        x_b, info = spla.gmres(S, b_b - A_bs @ sla.lu_solve(lu, b_s), x0=x0, M=preconditioner, rtol=self.rtol,
+                               restart=self.restart, maxiter=self.maxiter,
+                               callback=lambda r: it.__setitem__(0, it[0] + 1), callback_type="pr_norm")
+        x_s = sla.lu_solve(lu, b_s - A_sb @ x_b)
+        out = self._split_small(x_s)
+        out[self.big] = x_b
+        return out, it[0], info
+
+    def _split_small(self, x_s):
+        out, k = {}, 0
+        for n in self.small:
+            m = self.b.fields[n].size
+            out[n] = x_s[k:k + m]
+            k += m
+        return out
 
 
 # ════════════════════════════════════════════════════════════════════════════
