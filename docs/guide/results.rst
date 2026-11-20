@@ -76,6 +76,26 @@ analytical fields: uniform and quadratic displacements (exact strain and stress)
 quadratic pressure (exact velocity), a plane wave (intensity ``|p|²/(2ρc)`` within 0.2 % with P2, kh = 0.08).
 Inside a PML the air quantities are not physical.
 
+Derived values
+--------------
+
+.. code-block:: python
+
+   res.volume_velocity(on="front")                      # Q = ∫ jω u·n dA [m³/s], n out of the structure
+   res.radiated_power(on="front")                       # ½ Re ∫ p* jω u·n dA [W] through a boundary
+   res.radiated_power(radius=0.15, center=(0, z_b), baffle=z_b)   # flux of ½ Re(p v*) through a sphere
+   ts = res.thiele_small(on="front")                    # voltage drive: fs, Mms, Cms, Rms, Qms, Qes, Qts, Sd, Vas
+
+Boundary integrals use the curved edges with ``dA = 2πr ds``. The Thiele–Small parameters fit the
+motional impedance ``Z − (Re + (jω)ⁿ Le)`` as one moving mass (Mms, Cms by least squares of its inverse
+around the peak, Rms at fs); ``Sd = |Q| / |v_coil|`` at fs, ``Vas = ρc² Sd² Cms``. Checked: a rigid
+translation sweeps exactly π r_max²; the power through the front interface equals the coupling
+operator's (10⁻¹¹) and the flux through a sphere in the air (10⁻⁴); a lumped driver's parameters are
+recovered to round-off.
+
+ParaView: ``res.export("series.pvd")`` writes one ``.vtu`` per entry and per mesh, with the frequency,
+time or mode as the time step.
+
 Far field
 ---------
 

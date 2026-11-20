@@ -303,7 +303,8 @@ class Results:
     def export(self, path, fields=None):
         """
         Every block (meshes, fields, per-entry quantities) to a file read outside loudpy:
-        .mat (MATLAB / Octave: one struct per block) or .npz (NumPy: keys block<i>_<name>).
+        .mat (MATLAB / Octave: one struct per block), .npz (NumPy: keys block<i>_<name>) or .pvd (ParaView
+        series: one .vtu per entry and mesh, the frequency / time / mode as the time step).
         fields: the fields to write (default: all).
         """
         from loudpy.results.export import export_results
@@ -351,6 +352,24 @@ class FrequencyResults(Results):
         return Data(v, coords, quantity("p"), meta=self._meta(
             at=sel.describe(), far_field=f"Kirchhoff–Helmholtz over a sphere of radius {radius:g} m"
             + (f", baffle z = {baffle:g} m" if baffle is not None else "")))
+
+    def volume_velocity(self, on: str) -> Data:
+        """Volume velocity Q = ∫ jω u·n dA [m³/s] over the boundary `on` (n out of the structure)."""
+        from loudpy.results.values import volume_velocity
+        return volume_velocity(self, on)
+
+    def radiated_power(self, on: str | None = None, radius: float | None = None, center=(0.0, 0.0),
+                       baffle: float | None = None) -> Data:
+        """Acoustic power [W] through the boundary `on` (from u and p) or through a sphere in the air (radius,
+        centre on the axis, optional baffle; from p and ∇p) — loudpy.results.values."""
+        from loudpy.results.values import radiated_power
+        return radiated_power(self, on, radius, center, baffle)
+
+    def thiele_small(self, on: str | None = None, coil: str | None = None) -> dict:
+        """Thiele–Small parameters of a voltage-driven result (loudpy.results.values.thiele_small); `on`: the
+        radiating boundary (for Sd and Vas)."""
+        from loudpy.results.values import thiele_small
+        return thiele_small(self, on, coil)
 
     def _sound_speed(self) -> float:
         groups = self.model.groups if self.model is not None else {}

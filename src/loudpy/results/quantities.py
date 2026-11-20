@@ -104,6 +104,8 @@ QUANTITIES.update({
     "strain": _q("strain", "Strain", r"\varepsilon", "1", "plain", True),
     "stress": _q("stress", "Stress", r"\sigma", "Pa", "plain", True),
     "von_mises": _q("von_mises", "von Mises stress", r"\sigma_\mathrm{vM}", "Pa"),
+    "Q": _q("Q", "Volume velocity", "Q", "m³/s", "plain", True),
+    "power": _q("power", "Acoustic power", "P", "W"),
     "particle_velocity": _q("particle_velocity", "Particle velocity", "v", "m/s", "plain", True),
     "intensity": _q("intensity", "Active acoustic intensity", "I", "W/m²"),
 })

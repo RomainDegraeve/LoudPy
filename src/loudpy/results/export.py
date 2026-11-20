@@ -8,8 +8,11 @@ Whole results to files read outside loudpy (res.export(path)).
              <quantity>   (n,) per-entry quantities (zeta, I_coil, …)
            plus info (study, kind, source)
     .npz   NumPy: the same arrays under keys "block<i>/<name>" (np.load(path)["block0/p"])
+    .pvd   ParaView series: one .vtu per entry and per mesh (solid, air) in <stem>_files/, listed in the
+           .pvd with the entry's frequency / time / mode as its time step (part 0, 1 … per mesh); complex
+           amplitudes as <name>_re, _im (vector components _r, _z …)
 
-The HDF5 result file itself (format 2, res.save) is also readable outside Python (h5py, MATLAB
+The HDF5 result file itself (format 3, res.save) is also readable outside Python (h5py, MATLAB
 h5read, HDFView): see the file-format page of the documentation.
 """
 from __future__ import annotations
@@ -37,9 +40,45 @@ def _block_arrays(res, b, fields):
     return out
 
 
+def export_series(res, path, fields=None):
+    """ParaView series (.pvd + one .vtu per entry and mesh): see the module docstring."""
+    from xml.sax.saxutils import quoteattr
+    path = Path(path)
+    folder = path.with_name(path.stem + "_files")
+    folder.mkdir(parents=True, exist_ok=True)
+    entries = []
+    k = 0
+    for b in res.blocks:
+        by_mesh = {}
+        for name in b.fields:
+            if fields is None or name in fields:
+                by_mesh.setdefault(id(b.mesh_of(name)), (b.mesh_of(name), []))[1].append(name)
+        for i in range(len(b)):
+            for part, (mesh, names) in enumerate(by_mesh.values()):
+                grid = None
+                for name in names:
+                    f = res.field(name, index=k + i)
+                    g = f.to_pyvista()
+                    if grid is None:
+                        grid = g
+                    else:
+                        for a, v in g.point_data.items():
+                            grid.point_data[a] = v
+                fn = folder / f"{path.stem}_{k + i:05d}_{part}.vtu"
+                grid.cast_to_unstructured_grid().save(fn)
+                entries.append((float(b.values[i]), part, fn.relative_to(path.parent).as_posix()))
+        k += len(b)
+    lines = ['<?xml version="1.0"?>', '<VTKFile type="Collection" version="0.1">', "  <Collection>"]
+    lines += [f'    <DataSet timestep="{t:.10g}" part="{p}" file={quoteattr(f)}/>' for t, p, f in entries]
+    lines += ["  </Collection>", "</VTKFile>", ""]
+    return _write_atomic(path, lambda tmp: Path(tmp).write_text("\n".join(lines)))
+
+
 def export_results(res, path, fields=None):
     path = Path(path)
     suffix = path.suffix.lower()
+    if suffix == ".pvd":
+        return export_series(res, path, fields)
     info = {"kind": res.kind, "study": str(res.meta.get("study", "")), "source": str(res.source or ""),
             "blocks": ",".join(b.label or str(i) for i, b in enumerate(res.blocks))}
     blocks = [_block_arrays(res, b, fields) for b in res.blocks]
@@ -58,4 +97,4 @@ def export_results(res, path, fields=None):
                 else:
                     flat[f"block{i}/{k}"] = v
         return _write_atomic(path, lambda tmp: np.savez_compressed(tmp, **flat))
-    raise ValueError(f"unknown export format {suffix!r}: use .mat or .npz (single quantities: Data.export)")
+    raise ValueError(f"unknown export format {suffix!r}: use .mat, .npz or .pvd (single quantities: Data.export)")

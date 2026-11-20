@@ -30,7 +30,7 @@ Cost unit: one *session* ≈ one long working block (3–5 h). Status: ✅ done 
 | D | Own generic FE core: Lagrange P1–P3 on lines / triangles / quads / tetrahedra, quadrature, spaces, generic kernels and assembly, curved (isoparametric) elements; old kernels removed | 5 | ✅ |
 | E | Physics interfaces and couplings: one contribution protocol, generic system builder, electrical circuit as physics, 3D on the same protocol (the sign convention was fixed in C) | 4 | ✅ |
 | F | One model for 2D and 3D: `lp.Model(dim=…)`, COMSOL-like tree (print, `check()`, mesh controls by selection, study steps), parameters and parametric sweeps, selectors and geometry sources in 3D scenes, typed mesh and solver settings, one remeshing rule, immutable model during solves, deterministic meshing by default, examples rewritten | 4 | ✅ |
-| G | Results format 3: one results family, self-contained files (with the model description and parameters), public arrays, derived fields (stress, strain, velocity, intensity) and values (power, volume velocity, impedance, SPL, Thiele–Small parameters), interpolation in tetrahedra, ParaView series | 3 | ◐ |
+| G | Results format 3: one results family, self-contained files (with the model description and parameters), public arrays, derived fields (stress, strain, velocity, intensity) and values (power, volume velocity, impedance, SPL, Thiele–Small parameters), interpolation in tetrahedra, ParaView series | 3 | ✅ |
 | H | Error estimation and adaptivity: recovery and residual indicators, `lp.Adaptive`, `lp.convergence` | 3 | ○ |
 | I | Shells: MITC3/MITC4 Reissner–Mindlin, direct coupling to the 3D air, wall-mode study, elastic-wall enclosure example | 4 | ○ |
 | J | Plotting: scoped style everywhere, selections in 3D views, interactive HTML viewer, image-comparison tests | 1.5 | ○ |
@@ -551,7 +551,7 @@ Content of F not done, proposed for later (not in the gate): typed mesh / solver
 as steps (a study list on the model), `lp.plot.selection` (phase J, plotting), the exact DtN radiation in
 a 2D FrequencyResponse (explicit error today).
 
-## Phase G — in progress
+## Phase G — done (gate report at the end of this section)
 
 - **G1 (done)**: result format 3 (`loudpy_format = "3.0"`). `/model`: the model description
   (`results/description.py`: loudpy version, geometry name and file digests, parameters, regions with
@@ -596,3 +596,27 @@ a 2D FrequencyResponse (explicit error today).
   → exact particle velocity, plane wave intensity within 0.2 % (P2, kh = 0.08); from a reloaded speaker
   file the stress equals the live one bit for bit, and a file without the description is refused with a
   clear error. 6 tests (`tests/test_derived_fields.py`).
+- **G4 (done)**: derived values (`results/values.py`): `volume_velocity(on)`, `radiated_power(on=… | radius=…)`
+  and `thiele_small(on=…)` on `FrequencyResults`. Boundary integrals over the curved edges (their Lagrange
+  basis, 4-point Gauss, dA = 2πr ds), the normal out of the solid cell next to each edge. Thiele–Small: Mms,
+  Cms from the least squares of Im(Bl² / Z_mot) over fs/1.5 … 1.5 fs, Rms = Re(Bl² / Z_mot) at fs (a FE
+  model's mechanical resistance varies with frequency: the band mean gave Rms 3× too high, i.e. a predicted
+  peak of 28 Ω for a measured 64 Ω; at fs the prediction is 72.2 Ω for 70.4 Ω on a 2.5 Hz grid), Sd = |Q| /
+  |v_coil| at fs, Vas = ρc² Sd² Cms. Speaker (Bl = 7 T·m, Re = 6 Ω): fs 112.2 Hz, Mms 17.7 g, Cms 0.113 mm/N,
+  Qms 16.9, Qes 1.53, Qts 1.40, Sd 78.2 cm², Vas 0.98 L. ParaView series: `res.export("x.pvd")` (one .vtu
+  per entry and mesh, the coordinate as the time step). 5 tests (`tests/test_derived_values.py`).
+
+**Gate G report.**
+
+| Gate item | Result |
+|---|---|
+| format-3 round trip | modes, frequency (voltage drive, coupled), transient (with its drive signal), a 2-value sweep in one file and the streamed 3D scene: saved and read back with fields, meshes, per-entry values, metadata and boundaries bit-identical, model description and study settings equal; the embedded geometry files give the original digests |
+| far field from the file alone | 3D scene: computed by a separate process that only has the file, equal bit for bit to the live result; 2D: Kirchhoff–Helmholtz from a saved file vs analytical monopoles at 3 m: free field 7.2e-6 / 3.3e-4 (200 Hz / 1 kHz), baffled 4.5e-5 / 5.5e-4 (P2, h = 1 cm); speaker: FE pressure inside the mesh reproduced to ≤ 1.8e-3 at 500 Hz and 1.5 kHz |
+| derived fields vs analytical cases | strain / stress of uniform (P1–P3) and quadratic (P2–P3) displacements exact (≤ 6e-14 / 4e-11), rigid motion zero, von Mises cycle maximum (1e-7), quadratic pressure → exact particle velocity, plane-wave intensity within 0.2 % (kh = 0.08) |
+| derived values | rigid translation: swept volume ±π r_max² (1e-12); power through the front interface = the coupling operator's power of the C1 energy check (1.3e-12 / 1.4e-11) = the flux through a sphere in the air (1.4e-4 / 7.4e-5); a lumped driver's Thiele–Small parameters recovered to 7e-16 |
+| interpolation in tetrahedra | exact for the element spaces (P1–P3 tetrahedra, values and gradients; also P1–P3 triangles, Q1–Q2, curved cells) |
+
+Not done in G, proposed for later: probes of the derived names over all entries (`res.probe("stress", …)`;
+`res.field(…).at(…)` works per entry), stress for the azimuthal orders m ≥ 1, the far field of 3D results
+other than the scenes. Found on the way (recorded in G2): the coarse test model's PML (0.1 m, tuned to
+1 kHz) leaves a reflected part of ~26 % at 100 Hz — relevant for low-frequency SPL in phase M.
