@@ -3,7 +3,8 @@ loudpy — fluid–structure finite elements for loudspeakers.
 
     import loudpy as lp
     model = lp.Model("speaker.geo")
-    model.add(lp.Solid("membranne", "Paper"), lp.Clamped("interface_constrained_rz"), lp.Clamped("interface_constrained_r", dofs="r"), lp.Coil("interface_forced"))
+    model.add(lp.Solid("membranne", "Paper"), lp.Clamped("interface_constrained_rz"),
+              lp.Clamped("interface_constrained_r", dofs="r"), lp.Coil("interface_forced"))
     model.mesh("mesh.msh")
 
     modes = lp.Modes(model).solve(f_max=5000)
@@ -22,7 +23,7 @@ from .model import (
     Rayleigh, Hysteretic, Undamped, Force, Voltage,
     Material, MaterialLibrary, air, load_materials, materials,
 )
-from .geometry import Frame, Mesh
+from .geometry import Frame, Mesh, Group, Box, Near, Interface, BoundaryOf
 from .results import (load, spl, Results, FrequencyResults, ModeResults, TimeResults, Data, Field,
                       Point, Points, Polar, Arc, Line)
 from .study import Modes, FrequencyResponse, PerWavelength, Transient
@@ -47,8 +48,8 @@ __all__ = [
     "Model", "Solid", "Air", "PML", "Clamped", "Coil", "FluidStructure", "Radiation",
     "Rayleigh", "Hysteretic", "Undamped", "Force", "Voltage",
     "Material", "MaterialLibrary", "air", "load_materials", "materials",
-    # geometry
-    "Frame", "Mesh",
+    # geometry and selections
+    "Frame", "Mesh", "Group", "Box", "Near", "Interface", "BoundaryOf",
     # studies
     "Modes", "FrequencyResponse", "PerWavelength", "Transient",
     # 3D scenes

@@ -146,10 +146,35 @@ Gates (each phase is committed and pushed only when its gate passes):
   `.msh` files are unchanged), other saved meshes are rebuilt once. A test run that rewrites a
   committed mesh now fails.
 
+### C2: selection objects (done)
+
+- `lp.Group(*labels)`, `lp.Box(r=…, z=…)` (a number is a line: `lp.Box(r=0)` is the axis), `lp.Near(point)`,
+  `lp.Interface(a, b)`, `lp.BoundaryOf(a)`, combined with `|`, `&`, `-`; a string stands for `lp.Group`, a
+  model item for what it covers. Every region and boundary takes `on=` (default: its name as a label); the
+  name is the label in the results. (`lp.Groups` of the first sketch is `lp.Group` with several labels or
+  a glob.)
+- Regions select whole domain groups **before meshing**, on the curve loops of the `.geo` (outlines
+  sampled with gmsh; `lp.Near` = the closed loop containing the point). Boundaries select **edges of the
+  mesh after meshing** (`geometry.selectors.Edges`: edges between two different domain groups, on the
+  outside of the meshed domains, and of the kept named curves), so interfaces need no curve in the `.geo`
+  and loaded meshes are selected like fresh ones. A boundary made of labels only keeps one part per named
+  group (identical parts, identical numbers); any other selector gives one part named after the item.
+- `Model.select(selector, kind=)` evaluates a selector on the meshed model; `Field.restrict` accepts
+  selectors. `Model.add` refuses duplicate names. A saved mesh keeping more boundary groups than the model
+  needs is reused (the kept curve groups do not change the triangulation).
+- Checks (`tests/test_selections.py`, 9 tests): on the committed FSI mesh, `Interface(solids, front air)`
+  gives exactly the 82 edges of `interface_acou_meca_front`; the rear one gives the 357 named edges plus
+  the 3 of the clamped spider rim, which the `.geo` removed by hand; coil = `Interface("coil", "former")`,
+  axis = `BoundaryOf("dustcap") & Box(r=0)`, both rims by `Near` / `Box`; plate rim, axis and faces. A
+  speaker model whose six boundaries are all selectors (no named curve used) gives the coupled response
+  of the named model on the same mesh to ≤ 7e-14 (u, p, 50 Hz – 5 kHz). No reference changed (123 tests
+  pass with `--slow`).
+- Limits: before meshing a PML layer is only its base curve (select PMLs by label until C3); `lp.Near`
+  on a boundary takes the chain of edges between corners (> 30°), junctions and changes of the adjacent
+  domains; selectors are 2D (3D scenes come with phase F).
+
 ### Still to do in C
 
-- Selection objects (`Group`, `Groups`, `Box`, `Near`, `Interface`, `BoundaryOf`, `|`, `&`, `-`),
-  evaluated on the mesh.
 - `lp.PML(on=selection, …)`: layer extruded along the outward normal of the air, its geometry stored
   as metadata (not in names).
 - Geometry sources: `.geo` Physical Surfaces, STEP, OCC builders.

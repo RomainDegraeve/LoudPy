@@ -81,10 +81,9 @@ class MeshManager:
     E.g. a structural study on a .geo that also draws the air meshes and stores only the
     structure.
 
-    ``match(spec_name, group_name)`` decides which spec a physical group belongs to. The
-    default is the historical substring test (``spec_name in group_name``). ``loudpy.Model``
-    passes the token rule of ``loudpy.geometry.naming`` instead ("coil" no longer matches
-    "coil_former").
+    ``match(spec_name, group_name)`` decides which domain spec a physical curve group belongs to
+    (default: the historical substring test ``spec_name in group_name``); ``loudpy.Model`` passes
+    the groups its regions selected. ``interfaces`` are the names of the curve groups to keep.
 
     ``deterministic=True`` meshes on one thread: gmsh with several threads does not give the
     same triangulation twice for the same .geo.
@@ -158,7 +157,9 @@ class MeshManager:
     # thickness), every kept boundary group, the mesh order, the grading and the deterministic flag.
     # It records the groups, not the names that selected them: renaming a region or splitting a
     # boundary into two selections that cover the same groups keeps the mesh. A saved mesh is reused
-    # only if its signature equals the one of the current model (version-1 signatures never do).
+    # only if its signature equals the one of the current model (version-1 signatures never do), except
+    # that the saved mesh may keep more boundary groups than the model needs: the kept curve groups do not
+    # change the triangulation (every curve bounding a meshed surface is meshed), only what is stored.
 
     @staticmethod
     def signature_path(msh_path: str) -> str:
@@ -199,7 +200,8 @@ class MeshManager:
         with open(sig) as fh:
             stored = json.load(fh)
         current = json.loads(json.dumps(self.mesh_signature(geo_path)))   # same JSON types
-        changed = [k for k in current if stored.get(k) != current[k]]
+        changed = [k for k in current if stored.get(k) != current[k]
+                   and not (k == "boundaries" and set(current[k]) <= set(stored.get(k) or []))]
         return (not changed), ("" if not changed else "changed: " + ", ".join(changed))
 
     def load_mesh(self, msh_path: str) -> Tuple[List[MeshPart], List[MeshPart], NodeSet]:
@@ -642,7 +644,7 @@ class MeshManager:
         for _, pg in gmsh.model.getPhysicalGroups(1):
             name = gmsh.model.getPhysicalName(1, pg)
             curves = [c for c in gmsh.model.getEntitiesForPhysicalGroup(1, pg) if c in kept_curves]
-            matched = any(self._match(i, name) for i in self.interfaces)
+            matched = name.strip() in {i.strip() for i in self.interfaces}
             gmsh.model.removePhysicalGroups([(1, pg)])
             if matched and curves:
                 gmsh.model.addPhysicalGroup(1, curves, pg, name)

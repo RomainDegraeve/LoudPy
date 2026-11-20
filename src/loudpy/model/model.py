@@ -11,8 +11,12 @@ boundaries, its materials.
     )
     mesh = model.mesh("Results/mesh.msh")          # reused when nothing changed
 
-Every name must select at least one physical group of the geometry, and no group may be claimed
-by two regions; otherwise model.mesh() raises with the list of groups. model.groups() lists them.
+Each item covers what its selector `on` selects (default: its name as a label; loudpy.geometry.selectors):
+a region covers whole domain groups of the geometry, selected before meshing; a boundary covers edges of
+the mesh, selected after meshing (lp.Interface, lp.BoundaryOf, lp.Box, lp.Near need no curve drawn in the
+geometry). Every selector must select something, every label a group, and no domain group may be claimed by
+two regions; otherwise model.mesh() raises with the list of groups. model.groups() lists the groups,
+model.selection() what each label selects, model.select(…) evaluates a selector on the meshed model.
 """
 from __future__ import annotations
 
@@ -23,6 +27,7 @@ import numpy as np
 
 from loudpy.geometry import naming
 from loudpy.geometry.gmsh_session import physical_groups
+from loudpy.geometry.selectors import Domains, Edges, as_selector
 from loudpy.geometry.mesh import Mesh
 from loudpy.geometry.meshing2d import DEFAULT_MESH_GRADING, DomainSizing
 from loudpy.model.boundaries import Boundary
@@ -66,6 +71,10 @@ class Model:
         self.meshed: Mesh | None = None
         self.parts: list = []                  # physics parts of the meshed model (loudpy.physics.parts)
         self._mesh_path: Path | None = None
+        self._selection: dict = {}             # of the last meshing: {item: groups of the geometry}
+        self._region_groups: dict = {}         # {region: mesh groups}
+        self._item_parts: dict = {}            # {boundary: its parts}
+        self._edges: Edges | None = None       # the boundary edges of the mesh (selector evaluation)
 
     # ── description ────────────────────────────────────────────────────────
     def add(self, *items) -> "Model":
@@ -73,12 +82,13 @@ class Model:
         for it in items:
             if isinstance(it, (list, tuple)):
                 self.add(*it)
-            elif isinstance(it, Region):
-                self.regions.append(it)
-            elif isinstance(it, Boundary):
-                self.boundaries.append(it)
-            else:
+                continue
+            if not isinstance(it, (Region, Boundary)):
                 raise ModelError(f"cannot add {it!r} to a Model (expected a region or a boundary)")
+            if any(o.name == it.name for o in self.regions + self.boundaries):
+                raise ModelError(f"the model already has an item named {it.name!r} (names are the labels of the "
+                                 f"results: give each item its own)")
+            (self.regions if isinstance(it, Region) else self.boundaries).append(it)
         self.meshed = None
         return self
 
@@ -100,26 +110,56 @@ class Model:
         return names
 
     def selection(self) -> dict[str, list[str]]:
-        """{item name: physical groups it selects}, checked (see the module docstring)."""
+        """
+        {item name: groups of the geometry}, checked (module docstring): for a region the domain groups it
+        covers; for a boundary the named curve groups its labels select (kept in the mesh). The edges of a
+        boundary are found on the mesh: model.select(boundary).
+        """
         domains, bounds = self.groups("domain"), self.groups("boundary")
+        ctx = Domains.from_geometry(self.geometry, domains)
         out, owner = {}, {}
         for r in self.regions:
-            sel = [g for g in domains if naming.matches(r.name, g)]
+            sel = self._evaluate(r, lambda: r.selector.domains(ctx))
             if not sel:
                 raise SelectionError(f"{type(r).__name__}({r.name!r}) selects no domain group of "
-                                 f"{self.geometry.name}; domain groups: {domains}")
+                                     f"{self.geometry.name}; domain groups: {domains}")
             for g in sel:
                 if g in owner:
                     raise SelectionError(f"group {g!r} is selected by both {owner[g]!r} and {r.name!r}")
                 owner[g] = r.name
-            out[r.name] = sel
+            out[r.name] = [g for g in domains if g in sel]
         for b in self.boundaries:
-            sel = [g for g in bounds if naming.matches(b.name, g)]
-            if not sel:
-                raise SelectionError(f"{type(b).__name__}({b.name!r}) selects no boundary group of "
-                                 f"{self.geometry.name}; boundary groups: {bounds}")
-            out[b.name] = sel
+            sel = set()
+            for label in b.selector.labels():
+                found = [g for g in bounds if naming.matches(label, g)]
+                if not found:
+                    raise SelectionError(f"{type(b).__name__}({b.name!r}): {label!r} selects no boundary group of "
+                                         f"{self.geometry.name}; boundary groups: {bounds}")
+                sel |= set(found)
+            out[b.name] = [g for g in bounds if g in sel]
         return out
+
+    @staticmethod
+    def _evaluate(item, fn):
+        try:
+            return fn()
+        except SelectionError as e:
+            raise SelectionError(f"{type(item).__name__}({item.name!r}): {e}") from None
+
+    def select(self, selector, kind: str = "boundary"):
+        """
+        Evaluate a selector (lp.Group, lp.Box, lp.Interface…, a label or an item) on the meshed model:
+        kind "boundary" → (n, 3) edges [corner, corner, mid] (node tags), "domain" → mesh group names.
+        """
+        if self.meshed is None:
+            raise StateError("call model.mesh() first")
+        sel = as_selector(selector)
+        if kind == "boundary":
+            return self._edges.rows_of(sel.edges(self._edges))
+        if kind == "domain":
+            names = sel.domains(self._edges.domains)
+            return [n for n in self.meshed.names(2) if n in names]
+        raise ValueError(f"kind must be 'boundary' or 'domain', got {kind!r}")
 
     # ── meshing ────────────────────────────────────────────────────────────
     def mesh(self, path=None, *, reuse: bool = True, deterministic: bool = False,
@@ -135,8 +175,10 @@ class Model:
         from loudpy.geometry.meshing2d import MeshManager
         selection = self.selection()                            # checks the names first
         path = Path(path) if path is not None else self.geometry.with_suffix(".msh")
+        members = {r.name: set(selection[r.name]) for r in self.regions}
+        kept = sorted({g for b in self.boundaries for g in selection[b.name]})
         mm = MeshManager(self._sizing(), SUBDOMAINS_KEY, mesh_order=self.mesh_order, grading=self.grading,
-                         interfaces=[b.name for b in self.boundaries], match=naming.matches,
+                         interfaces=kept, match=lambda spec, group: group.strip() in members.get(spec, ()),
                          deterministic=deterministic, groups=self._meshed_groups(selection))
         ok, why = mm.can_reuse(str(self.geometry), str(path)) if reuse else (False, "")
         if ok:
@@ -147,9 +189,13 @@ class Model:
                 log.info("meshing %s (%s)", path, why)
             domains, boundaries, nodes = mm.generate_mesh(str(self.geometry), str(path), True,
                                                           show_gui=show, extract_mesh_data=True)
-        self.parts = self._parts(domains, boundaries)
         self._mesh_path = path
+        self._selection = selection
         self.meshed = Mesh.from_axisymmetric(domains, boundaries, nodes, str(path))
+        self._region_groups = {r.name: [g.name for g in domains if naming.source_group(g.name) in selection[r.name]]
+                               for r in self.regions}
+        self._edges = Edges(self.meshed, regions=self._region_groups)
+        self.parts = self._parts(domains, boundaries)
         return self.meshed
 
     def _meshed_groups(self, selection) -> dict:
@@ -175,17 +221,41 @@ class Model:
         return out
 
     def _parts(self, domains, boundaries):
-        """The physics parts: one per (item, selected mesh group), regions first."""
+        """
+        The physics parts: one per (region, mesh group) in the order of the mesh; then for each boundary one
+        part per named curve group when its selector is made of labels only (lp.Group), else one part named
+        after the boundary with the selected edges.
+        """
+        from loudpy.geometry.meshing2d import MeshPart
         from loudpy.physics.parts import boundary_part, orient_couplings, region_part
         out = []
         for g in domains:
             for r in self.regions:
-                if naming.matches(r.name, g.name):
+                if g.name in self._region_groups[r.name]:
                     out.append(region_part(r, g, self.materials))
+        self._item_parts = {b.name: [] for b in self.boundaries}
+        edges = {}
+        for b in self.boundaries:
+            codes = self._evaluate(b, lambda: b.selector.edges(self._edges))
+            if not codes:
+                raise SelectionError(f"{type(b).__name__}({b.name!r}) selects no edge of the mesh "
+                                     f"(selector {b.selector!r})")
+            edges[b.name] = codes
         for g in boundaries:
             for b in self.boundaries:
-                if naming.matches(b.name, g.name):
-                    out.append(boundary_part(b, g))
+                if b.selector.by_groups and g.name.strip() in self._selection[b.name]:
+                    p = boundary_part(b, g)
+                    out.append(p)
+                    self._item_parts[b.name].append(p)
+        for b in self.boundaries:
+            if b.selector.by_groups:
+                continue
+            rows = self._edges.rows_of(edges[b.name])
+            tags = np.unique(rows)
+            group = MeshPart(tags, self.meshed.coords_of(tags), rows, b.name, 1)
+            p = boundary_part(b, group)
+            out.append(p)
+            self._item_parts[b.name].append(p)
         orient_couplings(out)                    # coupling normals from the mesh (outward of the air)
         return out
 
@@ -195,7 +265,7 @@ class Model:
             raise StateError("call model.mesh() first")
         out = {}
         for b in self.boundaries:
-            groups = [p.group for p in self.parts if hasattr(p, "edges") and naming.matches(b.name, p.name)]
+            groups = self._item_parts.get(b.name, [])
             tags = np.unique(np.concatenate([np.asarray(g.node_tags) for g in groups])) if groups \
                 else np.zeros(0, np.int64)
             edges = np.vstack([np.asarray(g.edges) for g in groups]).astype(np.int64) if groups \

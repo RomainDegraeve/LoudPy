@@ -5,16 +5,20 @@ Regions: the domains of a model (one or several physical groups of the geometry 
     lp.Solid("plate", lp.Material("Steel", rho=7850, E=2.1e11, nu=0.3), damping=lp.Undamped())
     lp.Air("subacou", mesh_size=5e-3)
     lp.PML("PML", thickness=0.1, tuned_to=1000.0)
+    lp.Solid("cone", "Paper", on=lp.Group("membranne", "dustcap"))      # name = label, on = selection
 
-`name` selects the physical groups (rules in loudpy.geometry.naming: "glue" selects
-submeca_glue_1 and submeca_glue_2, "coil" does not select coil_former; "glue_*" is a glob).
-Material properties given here override those of the material.
+`on` selects the domain groups (loudpy.geometry.selectors: lp.Group, lp.Box, lp.Near and their
+combinations); by default the name is the label that selects them (rules in loudpy.geometry.naming:
+"glue" selects submeca_glue_1 and submeca_glue_2, "coil" does not select coil_former; "glue_*" is a
+glob). The name is the label of the region in the results. Material properties given here override
+those of the material.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
 from loudpy.checks import check
+from loudpy.geometry.selectors import Selector, as_selector
 from loudpy.model.damping import Damping, Rayleigh
 from loudpy.model.materials import Material
 
@@ -22,6 +26,12 @@ from loudpy.model.materials import Material
 @dataclass
 class Region:
     name: str
+    on: Selector | str | None = field(default=None, kw_only=True)      # default: Group(name)
+
+    @property
+    def selector(self) -> Selector:
+        """What the region covers: `on`, or its name as a label."""
+        return as_selector(self.name if self.on is None else self.on)
 
 
 @dataclass

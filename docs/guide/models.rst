@@ -30,10 +30,11 @@ Regions
 :class:`lp.PML <loudpy.PML>`              perfectly matched layer, built by the mesher outward from the ``PML`` curves
 ========================================= ==================================================
 
-The first argument selects physical groups by name (see :doc:`conventions`): ``"glue"``
-selects ``submeca_glue_1`` and ``submeca_glue_2``, ``"coil"`` selects ``submeca_coil`` but not
-``submeca_coil_former``, and a glob (``"glue_*"``) is allowed. Material properties can be
-overridden on the region (``lp.Solid("cone", "Paper", E=3e9)``).
+The first argument is the region's **name**, its label in the results. By default it also selects
+the physical groups (see :doc:`conventions`): ``"glue"`` selects ``submeca_glue_1`` and
+``submeca_glue_2``, ``"coil"`` selects ``submeca_coil`` but not ``submeca_coil_former``, and a glob
+(``"glue_*"``) is allowed. ``on=`` selects them otherwise (see `Selections`_ below). Material
+properties can be overridden on the region (``lp.Solid("cone", "Paper", E=3e9)``).
 
 Boundaries
 ----------
@@ -44,6 +45,53 @@ Boundaries
 :class:`lp.FluidStructure <loudpy.FluidStructure>`         structure ↔ air interface (normal from the mesh)
 :class:`lp.Radiation <loudpy.Radiation>`                   exact DtN radiation condition on a spherical boundary
 ========================================================= =========================================
+
+As for the regions, the name is the label and selects named curve groups by default; ``on=``
+selects edges of the mesh otherwise (an interface then needs no curve drawn in the geometry).
+
+Selections
+----------
+
+Every region and boundary takes a selector as ``on=``:
+
+========================================================= =================================================
+:class:`lp.Group("membranne", "dustcap") <loudpy.Group>`   named groups, by label (naming rules, globs)
+:class:`lp.Box(r=(0, 0.01), z=0.032) <loudpy.Box>`         what lies entirely inside a box; a number is a
+                                                           line (``lp.Box(r=0)``: on the axis)
+:class:`lp.Near((r, z)) <loudpy.Near>`                     the domain containing the point, or the
+                                                           boundary curve nearest to it
+:class:`lp.Interface(a, b) <loudpy.Interface>`             the edges shared by the domains of ``a`` and ``b``
+:class:`lp.BoundaryOf(a) <loudpy.BoundaryOf>`              the edges around the domains of ``a``
+``a | b``, ``a & b``, ``a - b``                            union, intersection, difference
+========================================================= =================================================
+
+A string stands for ``lp.Group(string)``; a region or boundary of the model stands for what it
+covers. Python's precedence applies (``-`` before ``&`` before ``|``): use parentheses when mixing.
+
+.. code-block:: python
+
+   solids = lp.Group("membranne", "dustcap", "surround", "spider", "former", "coil", "glue")
+   model.add(
+       lp.Solid("cone", "Paper", on=lp.Group("membranne") | "dustcap"),
+       lp.Clamped("spider_rim", on=lp.Near((0.0447, -0.00075))),
+       lp.Clamped("surround_rim", on=lp.Box(z=0.032) & lp.BoundaryOf("surround")),
+       lp.Clamped("axis", on=lp.BoundaryOf("dustcap") & lp.Box(r=0), dofs="r"),
+       lp.Coil("drive", on=lp.Interface("coil", "former")),
+       lp.FluidStructure("front", on=lp.Interface(solids, "subacou_front")),
+       lp.FluidStructure("rear", on=lp.Interface(solids, "subacou_rear")),
+   )
+
+**Where they are evaluated.** A region covers whole domain groups: its selector is evaluated
+before meshing, on the curve loops of the geometry (a PML layer only exists after meshing: select
+it by label). A boundary covers edges of the mesh: its selector is evaluated after meshing, on the
+edges between two different domain groups, on the outside of the meshed domains and on the named
+curve groups kept in the mesh. A boundary made of labels only (``lp.Group``) keeps one part per
+named curve group, as before; any other selector gives one part named after the boundary.
+``model.select(selector)`` returns the selected edges ``[corner, corner, mid]`` of the meshed model
+(``kind="domain"``: the mesh groups), and ``field.restrict(selector)`` restricts a result field.
+
+A "boundary curve" of :class:`lp.Near <loudpy.Near>` is a chain of edges that stops at corners
+(a turn of more than 30°), at junctions and where the adjacent domains change.
 
 Materials and damping
 ---------------------
@@ -116,4 +164,6 @@ Meshing
 when the geometry, the regions' mesh sizes and the settings are unchanged (a signature is
 stored next to the mesh). ``deterministic=True`` meshes on one thread (bit-reproducible meshes).
 The meshed model is an :class:`lp.Mesh <loudpy.Mesh>` with named groups
-(``model.groups()``, ``model.selection()`` show what each name selected).
+(``model.groups()``, ``model.selection()`` show what each item selected in the geometry). A saved
+mesh that keeps more named curve groups than the model needs is reused (they do not change the
+triangulation).

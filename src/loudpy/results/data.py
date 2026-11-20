@@ -469,11 +469,18 @@ class Field:
         return self._scalar(np.real(self.values * np.exp(1j * phi)), self.quantity.part("real"), phase=phi)
 
     # ── where ──────────────────────────────────────────────────────────────
-    def restrict(self, region: str) -> "Field":
-        """The field on the mesh groups selected by `region` (e.g. "surround"; naming rules)."""
+    def restrict(self, region) -> "Field":
+        """The field on the mesh groups selected by `region`: a label ("surround"; naming rules) or a selector
+        of domains (lp.Group, lp.Box, lp.Near and their combinations, evaluated on this field's mesh)."""
         from loudpy.geometry.mesh import Mesh
         from loudpy.geometry.naming import matches
-        names = [n for n in self.mesh.groups if matches(region, n)]
+        if isinstance(region, str):
+            names = [n for n in self.mesh.groups if matches(region, n)]
+        else:
+            from loudpy.geometry.selectors import Domains, as_selector
+            sel = as_selector(region).domains(Domains.from_mesh(self.mesh))
+            names = [n for n in self.mesh.groups if n in sel]
+            region = repr(as_selector(region))
         if not names:
             raise SelectionError(f"no mesh group selected by {region!r} (groups: {list(self.mesh.groups)})")
         tags = np.unique(np.concatenate([self.mesh.groups[n].cells.ravel() for n in names]))

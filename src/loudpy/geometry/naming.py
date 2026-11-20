@@ -47,6 +47,13 @@ def base_name(group: str) -> str:
     return group.strip().split("__")[0]
 
 
+def source_group(mesh_group: str) -> str:
+    """The geometry group a mesh group was built from: itself, or for the PML layers and corners made by
+    the mesher ("PML_r+_1_front__r0=…", "PML_r+_1_front_Corner__…") the PML curve group."""
+    base = base_name(mesh_group)
+    return base[:-len("_Corner")] if base.endswith("_Corner") else base
+
+
 def tokens(name: str) -> list[str]:
     return [t for t in base_name(name).split("_") if t]
 

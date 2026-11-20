@@ -29,8 +29,8 @@ Model
    MaterialLibrary
    load_materials
 
-Geometry
---------
+Geometry and selections
+-----------------------
 
 .. autosummary::
    :toctree: generated
@@ -38,6 +38,11 @@ Geometry
 
    Mesh
    Frame
+   Group
+   Box
+   Near
+   Interface
+   BoundaryOf
 
 Studies
 -------

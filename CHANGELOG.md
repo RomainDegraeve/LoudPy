@@ -33,6 +33,10 @@ The roadmap of this work is in `docs/ROADMAP.md`.
   `MaterialLibrary.save`. Format-1 libraries are still read.
 - `lp.Scene(…, air=…)`: the air of a scene, a library name or an `lp.Material`.
 - `lp.Rayleigh.from_loss_factor(eta, band=(f1, f2))` and `Rayleigh.loss_factor(f)`.
+- Selections: `lp.Group`, `lp.Box`, `lp.Near`, `lp.Interface`, `lp.BoundaryOf`, combined with `|`, `&`,
+  `-`, given to any region or boundary as `on=` (the name stays its label). Boundaries are selected on
+  the mesh: interfaces, clamps and the coil no longer need curves drawn in the `.geo`.
+  `Model.select(selector)` shows what a selector selects; `Field.restrict` accepts selectors.
 
 ### Changed
 - One air everywhere: the library's `Air` is computed by `lp.air()` at 20 °C, 101.325 kPa, dry
@@ -49,7 +53,9 @@ The roadmap of this work is in `docs/ROADMAP.md`.
   `_rz_` in the group names: write `lp.Clamped("interface_constrained_r", dofs="r")` for a radial
   condition), `lp.Coil(…, direction="z")`; `lp.FluidStructure` / `lp.Radiation` lose `side=`.
 - Mesh signature version 2 (`<mesh>.msh.json`): records the meshed groups, not the selector names.
-  Meshes saved before are rebuilt once.
+  Meshes saved before are rebuilt once. A saved mesh that keeps more boundary groups than the model
+  needs is reused.
+- `Model.add` refuses two items with the same name (the name is the label of the results).
 - `import loudpy` has no side effects: no environment variable, logging silent by default
   (`lp.set_verbosity("info")` to see progress), the plot style no longer changes matplotlib's
   global settings (`lp.plot.style.use()` to opt in).

@@ -51,6 +51,30 @@ def speaker_model(size=1e-3, acoustic=False, rear=False):
     return model
 
 
+def speaker_model_by_selectors(size=1e-3):
+    """The FSI speaker of speaker_model(acoustic=True) with every boundary given by a selector instead of
+    a named curve group of the .geo (interfaces from the mesh, clamps by position)."""
+    solids = lp.Group(*[n for n, _ in SPEAKER_PARTS])
+    model = lp.Model(SPEAKER_GEO, MATERIALS)
+    model.add([lp.Solid(n, m, mesh_size=size) for n, m in SPEAKER_PARTS],
+              lp.Air("subacou", mesh_size=0.01),
+              lp.PML("PML", thickness=0.1, mesh_size=0.025, tuned_to=1000.0, order=2, strength=1.5),
+              lp.Clamped("spider_rim", on=lp.Near((0.04471635, -0.00075))),
+              lp.Clamped("surround_rim", on=lp.Box(z=0.032) & lp.BoundaryOf("surround")),
+              lp.Clamped("axis", on=lp.BoundaryOf("dustcap") & lp.Box(r=0), dofs="r"),
+              lp.Coil("drive", on=lp.Interface("coil", "former")),
+              lp.FluidStructure("front", on=lp.Interface(solids, "subacou_front")),
+              lp.FluidStructure("rear", on=lp.Interface(solids, "subacou_rear")))
+    return model
+
+
+def speaker_fsi_response(model, mesh_path, freqs):
+    """u and p (by node coordinates) of a meshed FSI speaker model, 1 N on the coil."""
+    model.mesh(mesh_path)
+    b = lp.FrequencyResponse(model, drive=lp.Force(1.0)).solve(list(freqs)).blocks[0]
+    return dict(coords_u=b.mesh_of("u").coords, u=b.fields["u"], coords_p=b.mesh_of("p").coords, p=b.fields["p"])
+
+
 def _speaker_tag(size, acoustic, rear):
     return f"speaker_{size:g}_{'fsi' if acoustic else 'meca'}{'_rear' if rear else ''}"
 

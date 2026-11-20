@@ -66,8 +66,9 @@ A group name of the ``.geo`` file is a sequence of tokens separated by ``_``:
 * modifiers: an index (digits), a direction (``r``, ``z``, ``rz``, ``r+``, ``z-`` …), a side
   (``front``, ``rear``), ``Corner`` (PML corners built by the mesher)
 
-A name given to a region or boundary **selects** a group when its tokens appear whole, at the
-start of the group or right after the prefix, and every following token is a modifier:
+A label (the name of a region or boundary, or an ``lp.Group`` label) **selects** a group when its
+tokens appear whole, at the start of the group or right after the prefix, and every following token
+is a modifier (other selectors, by position or topology: :doc:`models`):
 
 =========================== =======================================================
 ``"membranne"``             ``submeca_membranne``
@@ -88,8 +89,8 @@ sign).
 Saved meshes are reused while their signature (``<mesh>.msh.json``, version 2) matches: the
 geometry files, the meshed domain groups with their kind, size and PML thickness, the kept boundary
 groups, the mesh order, the grading and the deterministic flag. The signature records groups, not
-the names that selected them. Meshes saved by earlier versions (signature version 1) are rebuilt
-once.
+the names that selected them; a saved mesh with more boundary groups than needed is reused. Meshes
+saved by earlier versions (signature version 1) are rebuilt once.
 
 File layout of an example
 -------------------------

@@ -7,14 +7,18 @@ physical is a parameter or comes from the mesh.
     lp.Coil("interface_forced")                        where the drive acts (axial by default)
     lp.FluidStructure("interface_acou_meca_front")     structure ↔ air coupling (normal from the mesh)
     lp.Radiation("dtn_boundary")                       exact non-reflecting (DtN) arc
+    lp.FluidStructure("cone_front", on=lp.Interface("membranne", "subacou_front"))
 
-`name` selects the groups as for the regions (loudpy.geometry.naming).
+`on` selects the edges (loudpy.geometry.selectors), evaluated on the mesh: lp.Interface, lp.BoundaryOf,
+lp.Box, lp.Near, lp.Group and their combinations. By default the name is the label that selects named
+curve groups (rules of loudpy.geometry.naming). The name is the label of the boundary in the results.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from loudpy.errors import ModelError
+from loudpy.geometry.selectors import Selector, as_selector
 
 COMPONENTS = {"r": (0,), "z": (1,), "rz": (0, 1)}       # displacement components (0 = r, 1 = z)
 
@@ -27,6 +31,12 @@ def _check_components(owner, value):
 @dataclass
 class Boundary:
     name: str
+    on: Selector | str | None = field(default=None, kw_only=True)      # default: Group(name)
+
+    @property
+    def selector(self) -> Selector:
+        """What the boundary covers: `on`, or its name as a label."""
+        return as_selector(self.name if self.on is None else self.on)
 
 
 @dataclass
