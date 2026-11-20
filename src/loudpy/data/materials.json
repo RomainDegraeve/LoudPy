@@ -41,6 +41,28 @@
       "temperature": 293.15,
       "source": "typical value for a cured epoxy adhesive below its glass transition, unverified; rayleigh: fit of the loss factor at 100 Hz and 1 kHz"
     },
+    "MDF": {
+      "kind": "solid", "rho": 750, "E": 4.0e9, "nu": 0.25,
+      "damping": {"rayleigh": [17.136, 4.3406e-06], "loss_factor": 0.03},
+      "temperature": 293.15,
+      "source": "typical medium-density fibreboard (E 3-4.5 GPa, loss factor 0.02-0.05 in the literature), isotropic in its plane; unverified; rayleigh: fit of the loss factor at 100 Hz and 1 kHz"
+    },
+    "Plywood": {
+      "kind": "solid", "rho": 680, "E": 7.0e9, "nu": 0.30,
+      "damping": {"rayleigh": [11.424, 2.8937e-06], "loss_factor": 0.02},
+      "temperature": 293.15,
+      "source": "typical birch plywood, isotropic mean of its two in-plane directions (in reality orthotropic); unverified; rayleigh: fit of the loss factor at 100 Hz and 1 kHz"
+    },
+    "Aluminium": {
+      "kind": "solid", "rho": 2700, "E": 7.0e10, "nu": 0.33,
+      "damping": {"rayleigh": [0.571199, 1.4469e-07], "loss_factor": 0.001},
+      "temperature": 293.15, "source": "typical aluminium alloy, unverified; rayleigh: fit of the loss factor at 100 Hz and 1 kHz"
+    },
+    "Steel": {
+      "kind": "solid", "rho": 7850, "E": 2.1e11, "nu": 0.30,
+      "damping": {"rayleigh": [0.285599, 7.2343e-08], "loss_factor": 0.0005},
+      "temperature": 293.15, "source": "typical structural steel, unverified; rayleigh: fit of the loss factor at 100 Hz and 1 kHz"
+    },
     "Air": {
       "kind": "fluid", "model": "air", "temperature": 293.15, "pressure": 101325.0, "humidity": 0.0
     }

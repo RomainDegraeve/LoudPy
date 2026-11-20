@@ -114,3 +114,88 @@ def ball(h: float, order: int = 2):
     rows = {int(t): i for i, t in enumerate(m["node_tags"])}
     to_rows = np.vectorize(rows.get)
     return m["coords"], to_rows(m["cells"]), to_rows(m["boundary_cells"])
+
+
+def shell_surface(kind: str, h: float, quads: bool = False, **size):
+    """
+    Linear surface meshes in 3D for the shell tests: kind "rectangle" (a × b in the xy plane, structured
+    when n is given), "disk" (radius R), "box" (closed surface of an a × b × c box) or "cylinder" (radius R,
+    length L, open). Returns (nodes (n, 3), {"tri3": …, "quad4": …} as node rows).
+    """
+    import gmsh
+    _start(gmsh)
+    try:
+        occ = gmsh.model.occ
+        if kind == "rectangle":
+            s = occ.addRectangle(0, 0, 0, size.get("a", 1.0), size.get("b", 1.0))
+        elif kind == "disk":
+            s = occ.addDisk(0, 0, 0, size.get("R", 1.0), size.get("R", 1.0))
+        elif kind == "box":
+            occ.addBox(0, 0, 0, size.get("a", 1.0), size.get("b", 1.0), size.get("c", 1.0))
+        elif kind == "cylinder":
+            v = occ.addCylinder(0, 0, 0, 0, 0, size.get("L", 1.0), size.get("R", 0.5))
+            occ.synchronize()
+            caps = [t for d, t in gmsh.model.getBoundary([(3, v)], oriented=False)
+                    if gmsh.model.getType(2, t) == "Plane"]
+            occ.remove([(3, v)])
+            occ.remove([(2, t) for t in caps])
+        else:
+            raise ValueError(kind)
+        occ.synchronize()
+        if kind == "rectangle" and "n" in size:
+            for _, c in gmsh.model.getEntities(1):
+                gmsh.model.mesh.setTransfiniteCurve(c, size["n"] + 1)
+            gmsh.model.mesh.setTransfiniteSurface(s)
+        gmsh.option.setNumber("Mesh.MeshSizeMax", h)
+        gmsh.option.setNumber("Mesh.MeshSizeMin", h)
+        if quads:
+            gmsh.option.setNumber("Mesh.RecombineAll", 1)
+            gmsh.option.setNumber("Mesh.Algorithm", 8)
+        gmsh.model.mesh.generate(2)
+        tags, xyz, _ = gmsh.model.mesh.getNodes()
+        order = np.argsort(tags)
+        tags, xyz = tags[order], np.reshape(xyz, (-1, 3))[order]
+        cells = {}
+        for t, nn in zip(*gmsh.model.mesh.getElements(2)[::2]):
+            k = {2: 3, 3: 4}[int(t)]
+            cells[{3: "tri3", 4: "quad4"}[k]] = np.searchsorted(tags, nn.astype(np.int64)).reshape(-1, k)
+        used = np.unique(np.concatenate([c.ravel() for c in cells.values()]))
+        remap = -np.ones(len(tags), np.int64)
+        remap[used] = np.arange(len(used))
+        return np.ascontiguousarray(xyz[used]), {k: remap[c] for k, c in cells.items()}
+    finally:
+        gmsh.finalize()
+
+
+def box_cavity(a: float, b: float, c: float, h: float):
+    """P2 tetrahedra in the box [0, a] × [0, b] × [0, c] (straight edges): nodes (n, 3), tets (rows) and the TRI6
+    faces of each side, {"x0", "x1", "y0", "y1", "z0", "z1"} (rows)."""
+    import gmsh
+    _start(gmsh)
+    try:
+        gmsh.model.occ.addBox(0, 0, 0, a, b, c)
+        gmsh.model.occ.synchronize()
+        gmsh.option.setNumber("Mesh.MeshSizeMax", h)
+        gmsh.option.setNumber("Mesh.MeshSizeMin", h)
+        gmsh.option.setNumber("Mesh.ElementOrder", 2)
+        gmsh.option.setNumber("Mesh.SecondOrderLinear", 1)
+        gmsh.model.mesh.generate(3)
+        tags, xyz, _ = gmsh.model.mesh.getNodes()
+        order = np.argsort(tags)
+        tags, xyz = tags[order], np.reshape(xyz, (-1, 3))[order]
+        _, en = gmsh.model.mesh.getElementsByType(11)
+        tets = np.searchsorted(tags, en.astype(np.int64)).reshape(-1, 10)
+        faces = {}
+        for _, s in gmsh.model.getEntities(2):
+            _, fn = gmsh.model.mesh.getElementsByType(9, s)
+            tri = np.searchsorted(tags, fn.astype(np.int64)).reshape(-1, 6)
+            for ax, L in enumerate((a, b, c)):
+                for side, v in (("0", 0.0), ("1", L)):
+                    if np.allclose(xyz[tri[:, :3], ax], v):
+                        faces["xyz"[ax] + side] = tri
+        used = np.unique(tets)
+        remap = -np.ones(len(tags), np.int64)
+        remap[used] = np.arange(len(used))
+        return np.ascontiguousarray(xyz[used]), remap[tets], {k: remap[v] for k, v in faces.items()}
+    finally:
+        gmsh.finalize()

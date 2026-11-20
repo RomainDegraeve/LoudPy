@@ -32,7 +32,7 @@ Cost unit: one *session* ≈ one long working block (3–5 h). Status: ✅ done 
 | F | One model for 2D and 3D: `lp.Model(dim=…)`, COMSOL-like tree (print, `check()`, mesh controls by selection, study steps), parameters and parametric sweeps, selectors and geometry sources in 3D scenes, typed mesh and solver settings, one remeshing rule, immutable model during solves, deterministic meshing by default, examples rewritten | 4 | ✅ |
 | G | Results format 3: one results family, self-contained files (with the model description and parameters), public arrays, derived fields (stress, strain, velocity, intensity) and values (power, volume velocity, impedance, SPL, Thiele–Small parameters), interpolation in tetrahedra, ParaView series | 3 | ✅ |
 | H | Error estimation and adaptivity: recovery and residual indicators, `lp.Adaptive`, `lp.convergence` | 3 | ✅ |
-| I | Shells: MITC3/MITC4 Reissner–Mindlin, direct coupling to the 3D air, wall-mode study, elastic-wall enclosure example | 4 | ○ |
+| I | Shells: MITC3/MITC4 Reissner–Mindlin, direct coupling to the 3D air, wall-mode study, elastic-wall enclosure example | 4 | ◐ |
 | J | Plotting: scoped style everywhere, selections in 3D views, interactive HTML viewer, image-comparison tests | 1.5 | ○ |
 | K | Verification and validation pipeline: manufactured solutions, analytical benchmarks, COMSOL harness, generated verification report | 3 (spread) | ◐ |
 | L | Code quality and documentation: no private cross-imports, 100 % public docstrings, mypy, theory and verification manuals | 2 | ○ |
@@ -682,3 +682,34 @@ e.g. the SPL at a point, by an adjoint solve), the residual indicator's constant
 measure; curved P3 cells need curved-cell Hessians). The speaker's solid error sits at three corners
 (surround–cone junction, surround rim, former foot: half of it in 8 cells on the first mesh), worth knowing for
 phase M's mesh choices.
+
+## Phase I — in progress
+
+- **I1 (done)**: shells (`fem/shell.py`). Flat Reissner–Mindlin cells in 3D, six DOFs per node: MITC4
+  (Bathe–Dvorkin covariant shear tied at the edge mid-points, 2 × 2 Gauss) and MITC3 (Lee–Bathe, tying points
+  (½, 0), (0, ½), (½, ½)); membrane Q1 / CST; drilling rotation tied to the in-plane rotation by a Hughes–Brezzi
+  penalty α G h ∫(θ₃ − ω)², α = 1e-3, **fully integrated** (one point per cell left 9 hourglass mechanisms on a
+  4 × 4 plate) and with an inertia α ρh³/12 (with ρh³/12 the drilling modes fell at √(12αG/ρ)/h, 550 Hz for a
+  10 cm aluminium plate, inside the band); warped quadrilaterals linked rigidly to their mean plane (without it
+  a rigid rotation of a quad-meshed cylinder cost energy). Checks (`tests/test_shell.py`, 10 tests): six rigid
+  motions with zero energy and exactly six zero eigenvalues (box, cylinder tri / quad, disk); membrane and
+  bending patch tests on distorted cells (1e-10); hard simply supported square plate vs the exact Mindlin
+  frequencies (3 × 3 eigenproblem per (m, n)), first four modes, MITC4 n = 8 / 16 / 32: 7.2 / 1.74 / 0.43 %
+  (h/a = 0.01; the same at 1e-3: no shear locking; 0.10 % for the (1,1) mode at h/a = 0.1), order 2.0;
+  MITC3 unstructured h = a/32: 0.18 / 0.45 / 0.46 / 0.73 % (h/a = 0.01), but 0.76–3.1 % at h/a = 1e-3 (MITC3
+  keeps some locking as h/L → 0, known; cabinet walls have h/L ≈ 0.02–0.05); clamped disk (h/R = 0.005) vs
+  Kirchhoff λ² = 10.2158 / 39.771 at R/50: MITC4 0.02 / 0.14 %, MITC3 0.03 / 0.13 %. **Found**: SuperLU's
+  default partial pivoting on shell matrices runs for minutes on 20k DOFs (row swaps on the small drilling and
+  rotary terms); `fem.shell.symmetric_lu` (symmetric mode, minimum degree on A + Aᵀ) takes 0.2 s. Library:
+  MDF, Plywood, Aluminium, Steel.
+- **I2 (done)**: direct shell–air coupling (`physics/shell.py`). `wall_shells` lays one MITC3 cell on each TRI6
+  face of a P2 air mesh (normal into the air, from the owning tetrahedron), so the coupling A = ∫ N_a n N_j dS
+  (P1 shell × P2 pressure) is exact face by face; the unsymmetric u–p system (K + sC + s²M) d + A p = F,
+  (H + s²Q) p − ρ s² Aᵀ d = 0 on the builder (`direct_builder`), coupled modes by shift-invert on the standard
+  form (ARPACK's generalized mode needs a symmetric M; the static ω = 0 solution of the u–p form is dropped),
+  responses by sparse LU. Checks (`tests/test_shell_air.py`): ∫ x·n = −3V and rigid translations 0 (1e-12);
+  a 2 mm steel panel (0.3 × 0.3 m, simply supported) on a 0.1 m rigid box: first coupled mode 117.51 Hz vs
+  √(f_vacuo² + f_air²) = 117.69 Hz (f_air = 38.78 Hz from the uniform-pressure air spring; −0.16 %: the air's
+  added mass); **rigid-wall limit**: all six walls MDF 18 mm (first panel mode 1.08 kHz), the four lowest
+  non-uniform cavity modes (572–894 Hz) move by ≤ 3.3e-3 and with E × 10 / × 100 / × 1000 by 1.4e-4 / 1.3e-5 /
+  1.3e-6 (as 1/E).

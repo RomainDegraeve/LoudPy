@@ -8,6 +8,13 @@ versions follow [Semantic Versioning](https://semver.org/) (0.x: the API may sti
 The roadmap of this work is in `docs/ROADMAP.md`.
 
 ### Added
+- Shells (`loudpy.fem.shell`): flat Reissner–Mindlin MITC3 triangles and MITC4 quadrilaterals in 3D, six DOFs per
+  node (drilling rotation tied to the in-plane rotation), warped quadrilaterals linked to their mean plane;
+  `shell_matrices`, `modes` (symmetric-mode sparse LU), `fixed_dofs`, `feature_nodes`.
+  `loudpy.physics.shell`: `ShellStructure` (material, thickness, damping, supports, in-vacuo modes),
+  `wall_shells` (MITC3 cells on the TRI6 faces of a P2 air mesh, normals into the air), the conforming
+  shell–air coupling and the direct coupled system (`direct_builder`, `direct_modes`, `direct_response`).
+- Material library: MDF, Plywood, Aluminium, Steel (typical values, unverified).
 - `lp.Adaptive(study, target=…, max_iterations=…)`: a study on meshes adapted to its own error estimate (solids:
   energy norm of the strain recovery; air: pressure-gradient recovery; relative, largest over frequencies /
   modes); `lp.convergence(study, factors=…, quantity=…)`: a study on uniformly refined meshes with observed
