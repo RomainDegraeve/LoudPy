@@ -238,3 +238,7 @@ LoudPy_exemples/Eigen_study/Fourier/Results/
 !tests/data/**/*.msh.json
 !tests/data/**/*.h5
 !tests/reference/*.npz
+
+# generated: Sphinx API stubs, example data files (results, meshes, exports)
+docs/api/generated/
+LoudPy_exemples/**/Results/Files/

@@ -3,6 +3,7 @@
 
     driver_surface(modes, q, frame)    deformed driver: its meridian boundary revolved, displaced by
                                        the modal amplitudes q (all azimuthal orders summed)
+    revolve(field, order)              one axisymmetric displacement field (azimuthal order m) revolved
     cavity_grid(cavity)                linear-tetrahedron grid of a cavity mesh (P2 corner nodes)
 """
 from __future__ import annotations
@@ -68,3 +69,59 @@ def cavity_grid(cav):
     grid = pv.UnstructuredGrid({pv.CellType.TETRA: cav.tets[:, :4]}, cav.nodes)
     grid["node"] = np.arange(len(cav.nodes))
     return grid
+
+
+def _boundary_edges(tris):
+    """Edges of a triangle mesh used by one triangle only (both faces of thin parts)."""
+    e = np.sort(np.vstack([tris[:, [0, 1]], tris[:, [1, 2]], tris[:, [2, 0]]]), axis=1)
+    uniq, cnt = np.unique(e, axis=0, return_counts=True)
+    return uniq[cnt == 1]
+
+
+def revolve(field, order: int = 0, sweep: float = 2 * np.pi, n_theta: int = 73, deformation: float = 0.10,
+            phase: float | None = None, frame=None):
+    """
+    3D surface of an axisymmetric displacement field (a "revolution" dataset): the boundary of the
+    meridian mesh revolved over `sweep` [rad] and deformed by the field of azimuthal order m,
+        u_r = U_r cos mθ,  u_z = U_z cos mθ,  u_θ = U_θ sin mθ  (m = 0: u_θ uniform),
+    real part at `phase` (default: the phase of the peak); the largest displacement is
+    `deformation` × the largest dimension (outer diameter). frame: an lp.Frame to place it.
+    Returns pv.PolyData with point data "|u|" (normalised to 1) and "|u| [m]".
+    """
+    import pyvista as pv
+    mesh = field.mesh
+    xy = np.asarray(mesh.coords, float)
+    edges = _boundary_edges(mesh.triangles(refine=True))
+    nodes = np.unique(edges)
+    loc = np.full(len(xy), -1)
+    loc[nodes] = np.arange(len(nodes))
+    U = np.asarray(field.values)
+    if np.iscomplexobj(U):
+        j = np.argmax(np.abs(U))
+        U = np.real(U * np.exp(1j * (-np.angle(U.ravel()[j]) if phase is None else phase)))
+    if U.shape[1] == 2:
+        U = np.column_stack([U, np.zeros(len(U))])
+    th = np.linspace(0.0, sweep, n_theta)
+    m = int(order)
+    c = np.cos(m * th)[None, :]
+    s = np.sin(m * th)[None, :] if m > 0 else np.ones((1, n_theta))
+    ur, uz, ut = U[nodes, 0][:, None] * c, U[nodes, 1][:, None] * c, U[nodes, 2][:, None] * s
+    mag = np.sqrt(ur ** 2 + uz ** 2 + ut ** 2)
+    ref = max(float(mag.max()), 1e-300)
+    size = max(2 * xy[:, 0].max(), float(np.ptp(xy[:, 1])))
+    sc = deformation * size / ref
+    r, z = xy[nodes, 0][:, None], xy[nodes, 1][:, None]
+    rr = r + sc * ur
+    pts = np.column_stack([(rr * np.cos(th) - sc * ut * np.sin(th)).ravel(),
+                           (rr * np.sin(th) + sc * ut * np.cos(th)).ravel(),
+                           (z + sc * uz).ravel()])
+    if frame is not None:
+        pts = frame.to_global(pts)
+    ia, ib = loc[edges[:, 0]], loc[edges[:, 1]]
+    k = np.arange(n_theta - 1)
+    quads = np.stack([np.full((len(edges), n_theta - 1), 4), ia[:, None] * n_theta + k, ib[:, None] * n_theta + k,
+                      ib[:, None] * n_theta + k + 1, ia[:, None] * n_theta + k + 1], axis=2)
+    surf = pv.PolyData(pts, quads.reshape(-1))
+    surf["|u|"] = (mag / ref).ravel()
+    surf["|u| [m]"] = mag.ravel()
+    return surf

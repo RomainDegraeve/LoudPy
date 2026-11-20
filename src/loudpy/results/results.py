@@ -173,7 +173,8 @@ class Results:
         values = np.asarray(b.fields[name][i])
         return Field(name, b.mesh_of(name), np.real(values) if self.real else values, float(b.values[i]),
                      "t" if self.dim == "t" else "f", {k: v[i] for k, v in b.extra.items() if np.ndim(v) == 1},
-                     meta=self._meta(index=g, block=b.label))
+                     meta=self._meta(index=g, block=b.label, **({"order": int(b.meta["order"])}
+                                                                 if "order" in b.meta else {})))
 
     # ── values over all entries ────────────────────────────────────────────
     def probe(self, name: str, at, component: str | None = None) -> Data:

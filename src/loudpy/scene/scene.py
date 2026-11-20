@@ -34,10 +34,14 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import logging
+
 import numpy as np
 
 from loudpy.geometry.gmsh_session import gmsh_module
 from loudpy.model.materials import C_AIR, RHO_AIR
+
+log = logging.getLogger("loudpy")
 
 AXES = {"x": 0, "y": 1, "z": 2}
 
@@ -168,7 +172,7 @@ class Scene:
                 built = self._build(f"{o.kind}_{f_hi:.0f}", path, reuse,
                                     lambda p, h=h: self._mesh_open(p, h), extra={"h": h})
                 self.band_meshes.append(dict(f_lo=f_lo, f_hi=f_hi, path=built, h=h))
-        print(f"Scene ({config}): {len(self.drivers)} driver(s)"
+        log.info(f"Scene ({config}): {len(self.drivers)} driver(s)"
               + (f", cavity mesh {self.cavity_mesh.name}" if self.cavity_mesh else "")
               + (f", {len(self.band_meshes)} band mesh(es), hemisphere radius {self.hemisphere['radius']:.3f} m"
                  if self.band_meshes else ""))
@@ -199,7 +203,7 @@ class Scene:
         sig = self._signature(what, extra)
         if path.exists() and (reuse == "always" or
                               (reuse and sig_path.exists() and json.loads(sig_path.read_text()) == sig)):
-            print(f"  mesh reused: {path}")
+            log.info(f"  mesh reused: {path}")
             return path
         builder(path)
         sig_path.write_text(json.dumps(sig, indent=1))

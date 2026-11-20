@@ -9,7 +9,7 @@ Installation
    pip install loudpy                 # release
    pip install -e .                   # from a clone of the repository (development)
 
-loudpy needs Python ≥ 3.10, NumPy, SciPy, Numba, h5py, gmsh (meshing) and matplotlib; the 3D
+loudpy needs Python ≥ 3.13, NumPy, SciPy, Numba, h5py, gmsh (meshing) and matplotlib; the 3D
 views of the examples use PyVista.
 
 .. tip::
@@ -49,8 +49,9 @@ pick groups by name:
    study.save("Results/Files/modes.h5")
 
    modes = lp.load("Results/Files/modes.h5")      # later, in another script
-   print(modes.frequencies[:5], modes.zeta[:5])
-   lp.plot.mode(modes, 0)
+   print(modes.table().head())                    # f, ζ of the first modes (pandas)
+   modes.mode(0).plot(deformed=True)              # the first mode shape
+   lp.plot.modes(modes, n=12)                     # a grid of the first twelve
 
 The same pattern holds for every study: build the model, ``solve``, ``save``; then ``lp.load``
 and plot in a separate script. The examples follow it with a ``Running_*.py`` (computation, writes
@@ -61,5 +62,7 @@ Where to go next
 
 * :doc:`guide/models` — regions, boundaries, materials, damping, drives, meshing
 * :doc:`guide/studies` — modes, frequency responses (with remeshing per wavelength), transients
-* :doc:`guide/results` — reading fields, probes, SPL, saving and loading
+* :doc:`guide/results` — fields, evaluations at points / arcs / lines, SPL, saving and loading
+* :doc:`guide/postprocessing` — NumPy, pandas, CSV / MATLAB / ParaView exports
+* :doc:`guide/plotting` — figures from the results, the loudpy style, 3D views
 * :doc:`guide/scenes` — 3D enclosures with one or several drivers

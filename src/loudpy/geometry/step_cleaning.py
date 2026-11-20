@@ -1,5 +1,8 @@
+import logging
 import gmsh
 import os 
+
+log = logging.getLogger("loudpy")
 
 
 def prepare_geometry( step_path: str, brep_path: str, unit : str = "mm") -> None:
@@ -34,5 +37,5 @@ def prepare_geometry( step_path: str, brep_path: str, unit : str = "mm") -> None
         gmsh.fltk.run()
         gmsh.finalize()
 
-        print(f"Geometry cleaned and saved: {brep_path}")
+        log.info(f"Geometry cleaned and saved: {brep_path}")
 

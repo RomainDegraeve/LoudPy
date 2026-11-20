@@ -38,15 +38,16 @@ def _frames(source, name, start, duration, fps, n_periods):
     return [source.field(name, index=i) for i in range(i0, len(t), stride)]
 
 
-def animate(source, path, *, name: str = "u", deformed: bool = True, scale: float = 0.05, start: float | None = None,
-            duration: float = 8.0, fps: int = 30, n_periods: int = 1, **kwargs):
+def animate(source, path, *, name: str = "u", deformed: bool = True, scale: float = 0.05, factor: float | None = None,
+            start: float | None = None, duration: float = 8.0, fps: int = 30, n_periods: int = 1, **kwargs):
     """
     Animate a field and write it to `path` (.mp4 or .gif); returns the path.
 
     source    : TimeResults (field `name`, one frame per sub-sampled step from `start` [s]) or a harmonic
                 Field (its real part over n_periods periods)
     deformed  : vector fields drawn on the deformed structure, one deformation scale for all frames
-                (peak = `scale` × mesh size); colour = |field| on a fixed range
+                (peak = `scale` × mesh size, or `factor` × the displacement; factor=1: true proportions);
+                colour = |field| on a fixed range
     duration, fps : length [s] and frame rate of the animation
     kwargs    : passed to lp.plot.field (xlim, ylim, mirror, cmap …)
     """
@@ -58,7 +59,8 @@ def animate(source, path, *, name: str = "u", deformed: bool = True, scale: floa
     vec = frames[0].is_vector
     peak = max(float(np.max(np.linalg.norm(np.real(fr.values), axis=1) if vec else np.abs(np.real(fr.values))))
                for fr in frames) or 1.0
-    factor = scale * float(np.ptp(frames[0].mesh.coords, axis=0).max()) / peak
+    if factor is None:
+        factor = scale * float(np.ptp(frames[0].mesh.coords, axis=0).max()) / peak
     fig, ax = style.figure("field")
     writer = _writer(path, fps)
     Path(path).parent.mkdir(parents=True, exist_ok=True)

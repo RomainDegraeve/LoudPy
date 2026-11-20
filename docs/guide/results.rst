@@ -1,42 +1,78 @@
 Results
 =======
 
-Every study returns a :class:`Results <loudpy.Results>` object; ``lp.load`` reads the same
-object back from a file (or a folder, a glob or a list of files of one sweep).
+Every study returns a :class:`Results <loudpy.Results>` object; ``lp.load`` reads the same object
+back from a file (or a folder, a glob or a list of files of one sweep).
 
 .. code-block:: python
 
    res = lp.load("Results/Files/sweep.h5")
    res                                  # summary: kind, entries, fields, blocks
-   res.frequencies                      # (FrequencyResults) or res.times, modes.frequencies
+   res.frequencies                      # NumPy array (res.times for transients)
    res.names                            # fields: "u" (displacement), "p" (pressure), "v", "a"
 
-Fields
-------
+Evaluating results returns **labelled data**: the values with their coordinates, their
+quantity and their unit. They plot themselves in the loudpy style and convert to NumPy, pandas
+and files (:doc:`postprocessing`).
+
+Where: points, arcs, lines
+--------------------------
+
+Every ``at=`` argument takes a point or a *selection* (like COMSOL's cut points and cut lines):
+
+.. list-table::
+   :header-rows: 1
+   :widths: 45 55
+
+   * - ``at=``
+     - evaluates at
+   * - ``(0.0, 0.3)``
+     - one point, (r, z) in 2D or (x, y, z) in 3D
+   * - ``lp.Points([(0, .3), (.1, .3)], labels=[...])``
+     - several points: a ``point`` dimension
+   * - ``lp.Polar(0.3, 30)``
+     - 0.3 m from the origin, 30° from the axis
+   * - ``lp.Arc(0.3, range(0, 91, 2))``
+     - the same for several angles: an ``angle`` dimension [°]
+   * - ``lp.Line((0, .05), (0, .5), n=100)``
+     - along a segment: an ``s`` dimension (distance [m])
+
+In 3D, ``lp.Arc(R, angles, center=..., axis="z", toward="x")`` sets the plane of the angles (0° along
+``axis``, 90° along ``toward``). On 2D meshes values are interpolated linearly (the P2 triangles
+split through their mid-side nodes); on 3D meshes the nearest node is used.
+
+Evaluations
+-----------
 
 .. code-block:: python
 
-   view = res.field("p", f=1000)        # nearest frequency; or index=…
-   view.values, view.mesh, view.coordinate
-   view.restrict("front")               # the nodes of a group
-   coords, u = view.at_nodes(res.boundary("interface_acou_meca_front"))
-
-Probes and levels
------------------
-
-.. code-block:: python
-
-   p = res.probe((0.0, 0.5), "p")       # complex pressure at the nearest node, over frequency
-   L = res.spl(at=(0.0, 0.5))           # SPL [dB re 20 µPa RMS]
-   L = lp.spl(p)                        # the same conversion on any complex amplitudes
+   res.spl(at=(0.0, 0.3))                       # Data: SPL [dB re 20 µPa] over f (RMS)
+   res.spl(at=lp.Arc(0.3, range(0, 91, 2)))     # Data over (f, angle): directivity
+   res.pressure(at=lp.Line((0, .05), (0, .5)))  # complex pressure over (f, s)
+   res.displacement(at=(0, 0), component="z")   # u_z over f (complex amplitude)
+   res.velocity(at=..., component="z")            # jω u (harmonic) or the stored v (transient)
+   res.acceleration(at=..., component="z")        # −ω² u, or the stored a
+   res.probe("u", at=...)                         # any field; vector fields: a "component" dimension
+   res.impedance()                              # U / I_coil over f (voltage drive) [Ω]
+   res.scalar("I_coil")                         # any per-entry quantity as Data
 
 SPL is **RMS** everywhere in loudpy (``|p| / √2``; ``rms=False`` for peak amplitudes).
+``lp.spl(p)`` converts any complex amplitudes.
 
-Per-entry quantities
---------------------
+Fields on the mesh
+------------------
 
-``res.extra("zeta")`` (damping ratio of modes), ``res.extra("I_coil")`` (coil current with a
-voltage drive), and for 3D scenes the driver modal amplitudes (see :doc:`scenes`).
+.. code-block:: python
+
+   p = res.field("p", f=1000)           # Field: values on the mesh at the nearest frequency
+   p.values, p.mesh, p.coordinate       # NumPy arrays, geometry.Mesh, 991.9 (Hz)
+   p.spl(), p.magnitude(), p.real, p.phase()
+   u = res.field("u", f=1000)
+   u.component("z")                     # one component (r, z, theta)
+   u.at_phase(0.3)                      # instantaneous real field Re(u e^{iφ})
+   u.restrict("surround")               # the field on some regions
+   u.at((0.0, 0.03)), u.at(lp.Line(...))  # values at a point / along a selection
+   coords, values = u.at_nodes(res.boundary("interface_acou_meca_front"))
 
 Modes
 -----
@@ -44,10 +80,12 @@ Modes
 .. code-block:: python
 
    modes = lp.load("modes.h5")
-   modes.zeta, modes.frequencies
-   modes.mode(3)                        # FieldView of mode 3
+   modes.frequencies, modes.zeta        # NumPy arrays
+   modes.table()                        # pandas DataFrame: set, order m, f, ζ
+   modes.mode(3)                        # Field: the shape of mode 3
    modes.order(1)                       # the modes of azimuthal order 1 (Fourier modes)
    modes.set("fsi")                     # one mode set of a file holding several
+   modes.mode(3).revolve()              # 3D surface (pyvista) of the mode, its order m applied
 
 Saving
 ------

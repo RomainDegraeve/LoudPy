@@ -44,7 +44,7 @@ import scipy.sparse.linalg as spla
 from scipy.spatial import cKDTree
 
 from loudpy.fem.tet10 import assemble_p2, surface_quadrature
-from loudpy.geometry.frame import Frame, as_frame, _is_single
+from loudpy.geometry.frame import as_frame
 from loudpy.geometry.meshing3d import read_p2_mesh
 from loudpy.model.materials import C_AIR, RHO_AIR
 from loudpy.solvers.eigen import start_vector

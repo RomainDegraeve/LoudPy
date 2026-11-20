@@ -49,6 +49,24 @@ def test_cavity_one_driver(driver, mesh_dir):
     assert res.driver("main").excursion().shape == (len(FREQS),)
     assert res.cavity_pressure((0.03, 0.03, api.Z_B - 0.12)).shape == (len(FREQS),)
 
+    # evaluated data: quantities, coordinates, in vacuo, energy by order, cavity fields
+    hp = res.driver("main")
+    x = hp.excursion()
+    assert isinstance(x, lp.Data) and x.dims == ("f",) and x.quantity.name == "u_z"
+    np.testing.assert_allclose(x.velocity().values, 2j * np.pi * FREQS * x.values)
+    vac = hp.in_vacuo()
+    assert vac.label.endswith("(in vacuo)") and vac.q.shape == hp.q.shape
+    E = hp.kinetic_energy(by_order=True)
+    assert E.dims == ("f", "order")
+    np.testing.assert_allclose(E.values.sum(axis=1), hp.kinetic_energy().values, rtol=1e-12)
+    probes = lp.Points([(0.03, 0.03, api.Z_B - 0.12), (0.05, 0.05, api.Z_B - 0.10)])
+    assert res.spl(at=probes).dims == ("f", "point")
+    p = res.cavity_field(FREQS[1])
+    assert p.mesh.dim == 3 and p.values.shape == (p.mesh.n_nodes,)
+    k = p.mesh.nearest((0.03, 0.03, api.Z_B - 0.12))
+    np.testing.assert_allclose(p.values[k], res.cavity_pressure((0.03, 0.03, api.Z_B - 0.12)).values[1], rtol=1e-6)
+    assert res.cavity_mode(1).coordinate == pytest.approx(res.cavity_frequencies[1])
+
 
 def test_cavity_two_drivers_transfer(driver, mesh_dir):
     """Coil displacement of each driver for a unit force on each: the reference transfer matrix."""
@@ -127,3 +145,6 @@ def test_open_scene_matches_toolkit(driver, mesh_dir, tmp_path, kind, reference)
                                    rtol=1e-10)
     reference.check(q=res.q, rtol=1e-7)
     assert res.spl(at=(W / 2, H / 2, 2.0)).shape == (2,)
+    arc = res.spl(at=lp.Arc(2.0, [0, 45, 90], center=(W / 2, H / 2, 0.0), axis="z", toward="x"))
+    assert arc.dims == ("f", "angle") and arc.shape == (2, 3)
+    assert set(res.driver_surfaces(400.0)) == set(res.drivers)

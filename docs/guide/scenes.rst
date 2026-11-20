@@ -80,16 +80,22 @@ Scene results
 
    res = lp.load("Results/Files/box.h5")
    res.drivers                               # ["main"]
-   d = res.driver("main")
-   d.excursion()                             # axial displacement of the dust-cap centre
+   d = res.driver("main")                    # DriverResponse
+   d.excursion()                             # Data: axial displacement of the dust-cap centre over f
    d.coil_excursion(), d.displacement(at=(0.04, 0.026), theta=np.pi / 2)
-   d.kinetic_energy(by_order=True)           # {m: E_m(f)}: non-axisymmetric motion
-   d.in_vacuo()                              # same drive, no air
-   d.surface(f=500)                          # deformed 3D surface (PyVista)
-   res.far_field(points)                     # pressure outside the hemisphere (exact DtN expansion)
-   res.spl(at=(0.1, 0.2, 1.0))               # far field outside, FE field inside, cavity otherwise
-   res.field("p", index=i)                   # FE pressure on the band mesh (read lazily)
-   res.cavity_pressure(point), res.cavity_frequencies     # cavity configurations
+   d.kinetic_energy(by_order=True)           # Data over (f, order): non-axisymmetric motion
+   d.in_vacuo()                              # the same driver and drive without air (DriverResponse)
+   d.surface(f=500)                          # deformed 3D surface (pyvista), placed in the scene
+   res.driver_surfaces(f=500)                # every driver at one instant and one scale
+   res.spl(at=(0.1, 0.2, 1.0))               # far field outside the hemisphere (exact DtN expansion),
+                                             # FE field inside, cavity modes otherwise
+   res.spl(at=lp.Arc(1.0, range(-180, 181, 5), center=c, axis="z", toward="x"))   # horizontal directivity
+   res.far_field(at)                         # outside the hemisphere only
+   res.field("p", f=500)                     # Field: FE pressure on the band mesh (read lazily)
+   res.cavity_field(f=500), res.cavity_mode(3), res.cavity_frequencies   # cavity configurations
+
+Plots: ``lp.plot.directivity(res, f, radius, center=…)`` and ``lp.plot.scene_view`` (cut-away views
+of the SPL and the drivers, :doc:`plotting`).
 
 Coupled modes of a cavity scene: ``lp.Modes(scene).solve(f_max=4500)`` (complex ``s``, driver and
 cavity components in ``extra("q")``, ``extra("P")``).
@@ -97,8 +103,8 @@ cavity components in ``extra("q")``, ``extra("P")``).
 Low-level toolkit
 -----------------
 
-The scene layer is built on ``loudpy.Studies.Cavity_coupling`` (``DriverModes``, ``MultiDriver``,
-``CavityModes``, ``DriverCavityCoupling``) and ``loudpy.Studies.Exterior_dtn`` (``HalfSpaceDtN``,
-``ExteriorFE``, ``coupled_sweep``, ``port_block``). Models outside the three configurations — e.g.
-the hybrid vented box of ``Driver_in_cavity`` (modal inside + 1D port + exterior FE) — use them
-directly.
+The scene layer is built on :mod:`loudpy.physics.modal` (``DriverModes``, ``MultiDriver``,
+``CavityModes``, ``DriverCavityCoupling``) and :mod:`loudpy.physics.exterior` (``HalfSpaceDtN``,
+``ExteriorFE``, ``coupled_sweep``, ``port_block``), with the meshing helpers of
+:mod:`loudpy.geometry.meshing3d`. Models outside the three configurations — e.g. the hybrid vented
+box of ``Driver_in_cavity`` (modal inside + 1D port + exterior FE) — use them directly.

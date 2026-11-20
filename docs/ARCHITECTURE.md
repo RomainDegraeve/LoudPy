@@ -222,7 +222,8 @@ The refactor proceeds by strangling the old code: build the new layers next to t
 | 4 ✅ | `results/` (schema, save, load, old-file readers) + `plot/` on `Results` | `lp.load` reads every former file to the same numbers as the former readers |
 | 5 ✅ | `study/` (Modes, FrequencyResponse with remesh bands, Transient) returning `Results` | 2D examples (Running and Loading scripts) migrated |
 | 6 ✅ | 3D: `Scene`, `Driver`, `physics.modal`, `physics.radiation` | Coupling_3D examples migrated, results unchanged |
-| 7 ◐ | Delete the old packages, docs, ruff + CI | only the new API remains |
+| 7 ✅ | Delete the old packages, docs, ruff + CI | only the new API remains |
+| 8 ✅ | Evaluated data (Data, Field, selections, quantities), plot package, exports | every figure and export goes through the result objects |
 
 ### Phase 0 — done
 
@@ -383,4 +384,50 @@ All three `Coupling_3D` examples run on `lp.Scene`; the `Build_*.py` scripts are
 - **Plotting:** `loudpy.plot.style` is the one place for the figure style (serif STIX fonts, Okabe–Ito colours, a colormap per quantity, labels with units, standard sizes, log frequency axes, safe saving). `lp.plot` and the former `loudpy.Plotter` apply it (the conflicting rcParams blocks were removed); every example calls `lp.plot.style.use()`. SPL is RMS everywhere (`lp.spl`). New `lp.plot.directivity`.
 - **Documentation:** Sphinx in `docs/` (Furo theme): getting started, user guide (models, studies, results, plotting, 3D scenes, examples), reference (API via autodoc, file format, architecture, conventions). Build: `python3 -m sphinx -b html docs docs/_build/html`.
 - **Consistency:** `Running_scrip.py` → `Running_script.py` (Frequency_study); docstrings on every public class.
-- **Left for later:** deleting the old packages needs the internal engines (`Studies/*_study.py`, `SubDomains`, `Interfaces`, `Meshing`) to be ported onto `physics/` + `solvers/` first; ruff and CI are not set up yet.
+- **Old packages deleted (phase 7b).** The engines were ported into the layers, then `Studies`,
+  `Files_Loader`, `Files_Saver`, `SubDomains`, `Interfaces`, `Meshing`, `assembly`,
+  `Finite_Elements_formulations`, `Plotter`, `SimObjects`, `PhysicalEntitiesManager` and
+  `ObjectsGeo` were removed:
+  - `geometry.meshing2d` takes `DomainSizing` records; the mesh signatures are unchanged, so every
+    saved mesh stays reusable;
+  - `Model.mesh()` builds the physics parts itself (`model.parts`, `model.boundary_nodes()`);
+  - `physics.systems`: the assembled structural, coupled, Fourier, acoustic and DtN systems (the
+    part of the former studies that built K, M, C, H, Q, Cam and the symmetric DtN form);
+  - `study.frequency / modes / transient` solve on `physics.systems` and build `Results` directly;
+  - 3D: `physics.modal` (cavity modes, driver modes, coupling), `physics.exterior` (half-space
+    DtN, exterior FE, coupled sweep), `fem.tet10` (P2 tetrahedra), `results.surfaces` (pyvista
+    datasets); `Materials_Bank` became `loudpy/data`.
+  All regression references are unchanged (2D at 1e-12 / 1e-7, 3D at 1e-9).
+- **Messages:** `logging` (logger `loudpy`), `lp.set_verbosity("info" | "debug" | "warning")`;
+  progress at INFO, solver details and mode tables at DEBUG.
+- **Tooling:** ruff configuration in `pyproject.toml`; `.github/workflows/tests.yml` (ruff
+  errors, pytest, docs with warnings as errors).
+
+### Phase 8 — evaluated data, plotting, exports
+
+The plotting was rebuilt around what is plotted, in the spirit of COMSOL's results tree (where →
+what → how) with the brevity of xarray / pandas.
+
+- **Quantities** (`results.quantities`): one name, label, symbol, unit and colormap family per
+  quantity (`p`, `spl`, `u_z`, `v_r`, `Z`, `zeta`, coordinates `f`, `t`, `angle`, `s` …). Every axis
+  label, colour bar and export header comes from there.
+- **Selections** (`lp.Point`, `lp.Points`, `lp.Polar`, `lp.Arc`, `lp.Line`): where to evaluate; 2D
+  meshes are interpolated linearly on the P2 triangles split through their mid-side nodes
+  (`Mesh.interpolation`), 3D meshes use the nearest node.
+- **`lp.Data`**: values over named coordinates with a quantity — `sel` / `isel` (values, lists,
+  ranges), `abs`, `phase`, `db`, `spl`, `normalize`, `velocity`, `acceleration`, `spectrum`,
+  `impulse_response`, arithmetic; `to_pandas`, `to_xarray`, `export(.csv | .mat | .npz)`, `plot()`.
+- **`lp.Field`**: values on a mesh at one entry — `component`, `magnitude`, `spl`, `at_phase`,
+  `restrict`, `at(selection)`, `revolve` (3D surface of an azimuthal order); `to_pandas`,
+  `to_pyvista`, `export(.vtu | .csv | .mat | .npz)`, `plot()`.
+- **Results** return them: `spl`, `pressure`, `displacement`, `velocity`, `acceleration`,
+  `probe(name, at)`, `scalar`, `impedance`, `field`; `ModeResults.table()`; `res.export(.mat | .npz)`.
+  Scene results: `driver(name)` returns Data (`excursion`, `kinetic_energy(by_order=True)`,
+  `displacement`), `in_vacuo()` a DriverResponse, `driver_surfaces`, `cavity_field`, `cavity_mode`.
+- **`loudpy.plot`**: `curves` (line, map, polar), `fields` (2D sections with outlines, deformed
+  shapes, mirror, mode grids, mode chart, coupled modes, boundary profiles), `view3d` (pyvista
+  scenes in matplotlib axes with matplotlib colour bars), `scene3d` (`scene_view`: cut-away SPL
+  views of scene results), `animate`; `style` (one style; labels from the quantities).
+- **Examples**: every Loading / Plot script uses only this API (no raw matplotlib for standard
+  plots); the four 3D scene scripts share `scene_view`; each writes CSV / VTU exports next to its
+  figures' data. The `Plotter` package is gone.

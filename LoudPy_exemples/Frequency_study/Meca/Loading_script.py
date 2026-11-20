@@ -1,68 +1,49 @@
 """
 Loading_script.py — the structural frequency sweep (Running_script.py first).
 
-What this produces (in Results/Figures/)
------------------------------------------
-  - impulse_response(_db).pdf : impulse response of the axial displacement at a probe
-  - meca_sweep.pdf            : |u|, |v|, |a| vs frequency at the probe
-  - deformed_<f>Hz.pdf        : displacement magnitude on the deformed mesh
-  - membrane_<f>Hz.pdf        : the same on the membrane only
-  - surround_<f>Hz.pdf        : the same on the surround only
-  - interface_<f>Hz.pdf       : deformed profile of the fluid-structure interface
+What this produces
+------------------
+Results/Figures/
+  - uva.pdf                    : |u_z|, |v_z|, |a_z| at the cone tip over frequency
+  - impulse_response.pdf       : impulse response of u_z (inverse FFT of the sweep), waveform and decay
+  - deformed_<f>Hz.pdf         : |u| on the deformed structure at 1 kHz
+  - membrane / surround_<f>Hz  : the same on one part
+  - interface_<f>Hz.pdf        : deformed profile of the fluid-structure interface
+Results/Files/
+  - tip_displacement.csv       : u_z at the cone tip (re, im) over frequency
 """
 from pathlib import Path
 
-import matplotlib.pyplot as plt
-import numpy as np
-
 import loudpy as lp
-from loudpy.Plotter import plot_field, plot_meca_sweep, plot_impulse_response, STYLE
 
-lp.plot.style.use()                       # loudpy figure style (fonts, colours, SPL in dB RMS)
-
-# ── Paths ──────────────────────────────────────────────────────────────────────
-in_path = "LoudPy_exemples/Frequency_study/Meca/Results/Files/sweep.h5"
-out_dir = Path("LoudPy_exemples/Frequency_study/Meca/Results/Figures")
-out_dir.mkdir(parents=True, exist_ok=True)
-
-res = lp.load(in_path)
+here = Path("LoudPy_exemples/Frequency_study/Meca/Results")
+res = lp.load(here / "Files/sweep.h5")
 print(res)
 
-# ── Axial displacement at a probe: u, v = jωu, a = −ω²u ────────────────────────
-probe = (0.0, 0.0)                              # (r, z) [m]
-f = res.frequencies
-u = res.probe(probe, "u")[:, 1]                 # u_z
-w = 2 * np.pi * f
-v, a = 1j * w * u, -w ** 2 * u
+# ── cone tip: u, v = jωu, a = −ω²u ─────────────────────────────────────────────
+u = res.displacement(at=(0.0, 0.0), component="z")
+u.export(here / "Files/tip_displacement.csv")
+fig, ax = lp.plot.figure("tall", 3, 1, sharex=True)
+u.plot(ax=ax[0])
+u.velocity().plot(ax=ax[1])
+u.acceleration().plot(ax=ax[2])
+for a in ax[:2]:
+    a.set_xlabel("")
+lp.plot.save(fig, here / "Figures/uva.pdf")
 
-fig, _, _ = plot_impulse_response(f, u, t_max=6000e-3, title="Cone tip impulse response")
-lp.plot.style.tidy(fig).savefig(out_dir / "impulse_response.pdf", bbox_inches="tight")
-fig, _, _ = plot_impulse_response(f, u, t_max=600e-3, db=True, title="Cone tip impulse response — decay")
-lp.plot.style.tidy(fig).savefig(out_dir / "impulse_response_db.pdf", bbox_inches="tight")
+h = u.impulse_response(df=1.0)
+fig, ax = lp.plot.figure("wide", 1, 2)
+h.sel(t=slice(0, 0.05)).plot(ax=ax[0])                        # waveform, first 50 ms
+h.sel(t=slice(0, 0.6)).db(ref=abs(h.values).max()).plot(ax=ax[1])     # decay [dB re peak]
+ax[1].set_ylim(-120, 5)
+lp.plot.save(fig, here / "Figures/impulse_response.pdf")
 
-fig = plot_meca_sweep(f, u, v, a, title="Cone tip mechanical sweep")
-lp.plot.style.tidy(fig).savefig(out_dir / "meca_sweep.pdf", bbox_inches="tight")
-
-# ── Fields at one frequency ────────────────────────────────────────────────────
-view = res.field("u", f=1000.0)                 # the entry nearest 1 kHz
+# ── fields at 1 kHz ────────────────────────────────────────────────────────────
+view = res.field("u", f=1000.0)
 fk = view.coordinate
-mesh = view.mesh
-
-# deformed mesh: displaced by scale × Re(u), undeformed mesh in grey
-scale = 1e4
-deformed = mesh.coords + scale * view.values.real
-ax = plot_field(deformed, mesh.triangles(), view.magnitude(),
-                title=f"Deformed |u| @ {fk:.0f} Hz  (scale ×{scale:g})", **STYLE["meca"])
-ax.triplot(mesh.coords[:, 0], mesh.coords[:, 1], mesh.triangles(), color="k", lw=0.2, alpha=0.3)
-lp.plot.style.tidy(ax.figure).savefig(out_dir / f"deformed_{fk:.0f}Hz.pdf", bbox_inches="tight")
-
-for region in ("membranne", "surround"):
-    ax = lp.plot.field(view.restrict(region), title=f"{region} |u| @ {fk:.0f} Hz")
-    lp.plot.style.tidy(ax.figure).savefig(out_dir / f"{region.replace('membranne', 'membrane')}_{fk:.0f}Hz.pdf", bbox_inches="tight")
-
-# rest shape (dots) and scaled deformed shape (red) of the cone / air boundary
-ax = lp.plot.deformed_boundary(view, res.boundary("interface_acou_meca_front"), scale=scale,
-                               title=f"Interface deformation @ {fk:.0f} Hz")
-lp.plot.style.tidy(ax.figure).savefig(out_dir / f"interface_{fk:.0f}Hz.pdf", bbox_inches="tight")
-
-plt.show()
+lp.plot.save(view.plot(deformed=True).figure, here / f"Figures/deformed_{fk:.0f}Hz.pdf")
+for region, name in (("membranne", "membrane"), ("surround", "surround")):
+    lp.plot.save(view.restrict(region).plot(deformed=True).figure, here / f"Figures/{name}_{fk:.0f}Hz.pdf")
+lp.plot.save(lp.plot.boundary(view, res.boundary("interface_acou_meca_front")).figure,
+             here / f"Figures/interface_{fk:.0f}Hz.pdf")
+print(f"✓ figures → {here / 'Figures'}")

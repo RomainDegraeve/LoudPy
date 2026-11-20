@@ -33,7 +33,10 @@ from .results import (load, spl, Results, FrequencyResults, ModeResults, TimeRes
 from .study import Modes, FrequencyResponse, PerWavelength, Transient
 from .scene import Driver, Profile, Scene, Cabinet
 
+from ._log import set_verbosity
+
 __version__ = "0.1.0"
+set_verbosity("info")
 
 
 def __getattr__(name):
@@ -58,6 +61,6 @@ __all__ = [
     # results and evaluation
     "load", "spl", "Results", "FrequencyResults", "ModeResults", "TimeResults", "Data", "Field",
     "Point", "Points", "Polar", "Arc", "Line",
-    # lazily imported
-    "plot",
+    # messages, lazily imported plotting
+    "set_verbosity", "plot",
 ]

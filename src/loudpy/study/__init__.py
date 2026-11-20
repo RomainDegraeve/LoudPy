@@ -5,9 +5,10 @@ loudpy.study — the questions asked of a model, each returning Results.
   FrequencyResponse   harmonic response to lp.Force / lp.Voltage, with PerWavelength remeshing
   Transient           nonlinear time response to an lp.Force signal
 
-They run on a meshed lp.Model. The former Problem-based classes (loudpy.Studies) do the assembly
-and the solving underneath until they are folded in. (The package is named `study`, singular:
-on a case-insensitive file system "studies" would be the former "Studies" folder.)
+They run on a meshed lp.Model (or an lp.Scene): the systems come from loudpy.physics.systems,
+the algorithms from loudpy.solvers, and the results are built in memory (save them with
+study.save(path)). The package is named `study`, singular (on a case-insensitive file system
+"studies" was the former "Studies" folder).
 """
 from loudpy.study.frequency import FrequencyResponse, PerWavelength
 from loudpy.study.modes import Modes

@@ -18,11 +18,16 @@ and 3D enclosures with one or several drivers.
    model.mesh("mesh.msh")
 
    res = lp.FrequencyResponse(model, drive=lp.Force(1.0)).solve(np.geomspace(20, 20000, 200))
-   lp.plot.spl(res, at=(0.0, 0.5))
+   spl = res.spl(at=lp.Arc(0.5, range(0, 91, 5)))   # SPL over frequency × angle, with its units
+   spl.plot()                                       # scientific figure, labels from the quantity
+   spl.export("spl.csv")                            # for Excel, MATLAB, Origin … (or .mat, .npz)
+   res.field("p", f=1000).plot()                    # the pressure on the r–z section
 
 One vocabulary everywhere: a **model** (or a 3D **scene**) goes into a **study**
 (``Modes``, ``FrequencyResponse``, ``Transient``); the study returns **results**, which are
-saved, loaded back with :func:`lp.load <loudpy.load>` and plotted with :mod:`lp.plot <loudpy.plot>`.
+saved and loaded back with :func:`lp.load <loudpy.load>`. Evaluating results gives labelled data
+(:class:`Data <loudpy.Data>`, :class:`Field <loudpy.Field>`) that plot themselves and convert to
+NumPy, pandas and files.
 
 .. toctree::
    :maxdepth: 2
@@ -32,6 +37,7 @@ saved, loaded back with :func:`lp.load <loudpy.load>` and plotted with :mod:`lp.
    guide/models
    guide/studies
    guide/results
+   guide/postprocessing
    guide/plotting
    guide/scenes
    guide/examples

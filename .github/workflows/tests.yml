@@ -1,0 +1,42 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install ruff
+      - run: ruff check src tests --select F --output-format=github   # errors only (unused / undefined names)
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: system libraries for gmsh and pyvista (off-screen)
+        run: sudo apt-get update && sudo apt-get install -y libglu1-mesa libxcursor1 libxinerama1 libxft2 libosmesa6
+      - run: pip install -e . pytest
+      - run: python -m pytest -q
+        env:
+          MPLBACKEND: Agg
+          NUMBA_CACHE_DIR: /tmp/numba
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: sudo apt-get update && sudo apt-get install -y libglu1-mesa libxcursor1 libxinerama1 libxft2
+      - run: pip install -e . -r docs/requirements.txt
+      - run: python -m sphinx -b html -W docs docs/_build/html

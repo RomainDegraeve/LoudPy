@@ -63,9 +63,9 @@ class MeshManager:
     """
     Builds the surfaces from the physical curve groups and meshes them.
 
-    Mesh sizes: each domain spec has its own size (``spec.size``, restricted to its surfaces).
+    Mesh sizes: each domain (DomainSizing) has its own size (``size``, restricted to its surfaces).
     With ``grading`` (default ``DEFAULT_MESH_GRADING``), the element size also grows linearly
-    with the distance d to every structural domain (``DomainSpecMeca*``),
+    with the distance d to every structural domain (kind "solid" / "solid_hysteretic"),
 
         h = min( size of the region,  size of the structural domain + grading · d ),
 

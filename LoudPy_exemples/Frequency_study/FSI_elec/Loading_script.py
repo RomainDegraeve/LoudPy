@@ -1,85 +1,78 @@
 """
-Loading_script.py — the voltage-driven coupled FSI sweep (Running_script.py first).
+Loading_script.py — the coupled structure + air sweep, 2.83 V on the coil (Running_script.py first).
 
-The sweep has one block per mesh; lp.load returns them as one result and the probes find the
-nearest node on each block's mesh.
+The sweep has one result block per mesh (the air mesh follows the wavelength); lp.load returns
+them as one result and every evaluation runs over all of them.
 
-What this produces (in Results/Figures/)
------------------------------------------
-  - spl_sweep_angles.pdf            : SPL and phase at R = 0.3 m, a few angles, with the
-                                      electrical impedance |Z| = |U / I_coil|
-  - spl_angle_map(_norm).pdf        : directivity map (frequency × angle), absolute / normalised
-  - meca_sweep.pdf                  : |u|, |v|, |a| vs frequency at the cone tip
-  - fields_<f>Hz.pdf                : SPL and |u| maps at a few frequencies
-  - surround_<f>Hz.pdf, interface_<f>Hz.pdf : surround field and interface profile (last of them)
+What this produces
+------------------
+Results/Figures/
+  - spl_angles.pdf            : SPL and phase at R = 0.3 m for a few angles from the axis
+  - directivity_map(_norm).pdf: SPL over frequency × angle at R = 0.3 m, absolute / re on axis
+  - directivity_polar.pdf     : polar SPL (re on axis) at a few frequencies
+  - cone_tip.pdf              : |u_z|, |v_z|, |a_z| at the cone tip
+  - impedance.pdf             : electrical input impedance |Z| = |U / I_coil| and its phase
+  - fields_<f>Hz.pdf          : SPL in the air and |u| on the deformed structure at a few frequencies
+  - surround / interface_<f>Hz.pdf : the surround and the interface profile (last of them)
+Results/Files/
+  - directivity_0.3m.csv      : the directivity map as a table (frequency × angle)
 """
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
 
 import loudpy as lp
-from loudpy.Plotter import (plot_fields_grid, plot_meca_sweep, plot_spl_angle_map, plot_spl_sweep_multi,
-                            STYLE)
 
-lp.plot.style.use()                       # loudpy figure style (fonts, colours, SPL in dB RMS)
-
-in_path = "LoudPy_exemples/Frequency_study/FSI_elec/Results/Files/sweep.h5"
-out_dir = Path("LoudPy_exemples/Frequency_study/FSI_elec/Results/Figures")
-out_dir.mkdir(parents=True, exist_ok=True)
-
-res = lp.load(in_path)
+here = Path("LoudPy_exemples/Frequency_study/FSI_elec/Results")
+res = lp.load(here / "Files/sweep.h5")
 print(res)
-f = res.frequencies
+R = 0.3                                                   # [m] from the origin
 
-# ── SPL at R = 0.3 m (angles from the axis) ────────────────────────────────────
-R = 0.3
+# ── SPL and phase at R for a few angles ────────────────────────────────────────
+few = lp.Arc(R, [0, 10, 30, 45, 60])
+fig, ax = lp.plot.figure("tall", 2, 1, sharex=True)
+res.spl(at=few).plot(ax=ax[0])
+res.pressure(at=few).phase(deg=True).plot(ax=ax[1], legend=False)
+ax[0].set_xlabel("")
+lp.plot.save(fig, here / "Figures/spl_angles.pdf")
 
-
-def point(theta_deg):
-    """(r, z) at distance R from the origin, theta from the z axis."""
-    th = np.radians(theta_deg)
-    return R * np.sin(th), R * np.cos(th)
-
-
-curves = {rf"$\theta$ = {a}$^\circ$": res.probe(point(a), "p") for a in (0, 10, 30, 45, 60)}
-Z = res.extra("U") / res.extra("I_coil")                 # drive voltage / coil current, per frequency
-fig = plot_spl_sweep_multi(f, curves, title=rf"SPL and phase at $R$ = {R} m", Z_elec=Z)
-lp.plot.style.tidy(fig).savefig(out_dir / "spl_sweep_angles.pdf", bbox_inches="tight")
-
-# ── directivity map: frequency × angle → SPL ──────────────────────────────────
-angles = np.linspace(0, 80, 50)
-p_map = np.array([res.probe(point(a), "p") for a in angles])           # (n_angle, n_freq)
-fig = plot_spl_angle_map(f, angles, p_map, title=rf"Directivity at $R$ = {R} m")
-lp.plot.style.tidy(fig).savefig(out_dir / "spl_angle_map.pdf", bbox_inches="tight")
-fig = plot_spl_angle_map(f, angles, p_map, normalize=True, dynamic_range=30,
-                         levels=[-24, -18, -12, -9, -6, -3, -1],
-                         title=rf"Directivity at $R$ = {R} m (normalised to on-axis)")
-lp.plot.style.tidy(fig).savefig(out_dir / "spl_angle_map_norm.pdf", bbox_inches="tight")
+# ── directivity: frequency × angle ─────────────────────────────────────────────
+directivity = res.spl(at=lp.Arc(R, np.linspace(0, 80, 41)))
+directivity.export(here / "Files/directivity_0.3m.csv")
+lp.plot.save(directivity.plot(kind="map").figure, here / "Figures/directivity_map.pdf")
+lp.plot.save(directivity.normalize(angle=0).plot(kind="map", contours=[-12, -6, -3]).figure,
+             here / "Figures/directivity_map_norm.pdf")
+lp.plot.save(lp.plot.directivity(res, f=[1000, 3000, 6000, 12000], radius=R, angles=np.arange(0, 91, 2)).figure,
+             here / "Figures/directivity_polar.pdf")
 
 # ── cone tip: u, v = jωu, a = −ω²u ─────────────────────────────────────────────
-u = res.probe((0.0, 0.0), "u")[:, 1]
-w = 2 * np.pi * f
-fig = plot_meca_sweep(f, u, 1j * w * u, -w ** 2 * u, title="Cone tip - mechanical sweep")
-lp.plot.style.tidy(fig).savefig(out_dir / "meca_sweep.pdf", bbox_inches="tight")
+u = res.displacement(at=(0.0, 0.0), component="z")
+fig, ax = lp.plot.figure("tall", 3, 1, sharex=True)
+for a, d in zip(ax, (u, u.velocity(), u.acceleration())):
+    d.plot(ax=a)
+    a.set_xlabel("")
+ax[-1].set_xlabel(lp.plot.style.LABELS["f"])
+lp.plot.save(fig, here / "Figures/cone_tip.pdf")
 
-# ── field maps at a few frequencies (SPL, RMS as everywhere) ──
-for f_target in (20, 1000, 5000, 15000):
-    p, u = res.field("p", f=f_target), res.field("u", f=f_target)
-    fk = p.coordinate
-    fig = plot_fields_grid([
-        dict(coords=p.mesh.coords, tris=p.triangles(), values=p.spl(),
-             title=f"SPL @ {fk:.0f} Hz", **STYLE["acou"], vmin=20, xlim=(0, 0.30), ylim=(-0.1, 0.5)),
-        dict(coords=u.mesh.coords, tris=u.triangles(), values=u.magnitude(),
-             title=f"|u| @ {fk:.0f} Hz", **STYLE["meca"]),
-    ], ncols=2)
-    lp.plot.style.tidy(fig).savefig(out_dir / f"fields_{fk:.0f}Hz.pdf", bbox_inches="tight")
+# ── electrical input impedance ─────────────────────────────────────────────────
+Z = res.impedance()
+Z.export(here / "Files/impedance.csv")
+fig, ax = lp.plot.figure("tall", 2, 1, sharex=True)
+Z.plot(ax=ax[0])
+Z.phase(deg=True, unwrap=False).plot(ax=ax[1])
+ax[0].set_xlabel("")
+lp.plot.save(fig, here / "Figures/impedance.pdf")
+
+# ── fields at a few frequencies ────────────────────────────────────────────────
+for f in (20, 1000, 5000, 15000):
+    p, u = res.field("p", f=f), res.field("u", f=f)
+    fig, ax = lp.plot.figure("wide", 1, 2)
+    p.plot(ax=ax[0], xlim=(0, 0.3), ylim=(-0.1, 0.5))
+    u.plot(ax=ax[1], deformed=True)
+    lp.plot.save(fig, here / f"Figures/fields_{p.coordinate:.0f}Hz.pdf")
 
 # ── surround and interface at the last of them ────────────────────────────────
-ax = lp.plot.field(u.restrict("surround"), title=f"Surround |u| @ {fk:.0f} Hz")
-lp.plot.style.tidy(ax.figure).savefig(out_dir / f"surround_{fk:.0f}Hz.pdf", bbox_inches="tight")
-ax = lp.plot.deformed_boundary(u, res.boundary("interface_acou_meca_front"), scale=1e4,
-                               title=f"Interface deformation @ {fk:.0f} Hz")
-lp.plot.style.tidy(ax.figure).savefig(out_dir / f"interface_{fk:.0f}Hz.pdf", bbox_inches="tight")
-
-plt.show()
+lp.plot.save(u.restrict("surround").plot(deformed=True).figure, here / f"Figures/surround_{u.coordinate:.0f}Hz.pdf")
+lp.plot.save(lp.plot.boundary(u, res.boundary("interface_acou_meca_front")).figure,
+             here / f"Figures/interface_{u.coordinate:.0f}Hz.pdf")
+print(f"✓ figures → {here / 'Figures'}")

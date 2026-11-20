@@ -61,7 +61,7 @@ def free_dof_reducer(template, free):
 
 def generalized_alpha_newton(tangent, M_red, reduce, free, n_dof, F_base, signal, dt, n_steps,
                              rho_inf=0.8, nr_max_iter=10, nr_tol=1e-5, reuse_tangent=True,
-                             reuse_max_iter=3, log=print):
+                             reuse_max_iter=3, log=None):
     """
     Integrate from rest over n_steps of dt, with F_ext(t_k) = F_base · Re(signal[k]).
 
@@ -73,6 +73,8 @@ def generalized_alpha_newton(tangent, M_red, reduce, free, n_dof, F_base, signal
 
     Returns time (n_steps+1,), U, V, A (n_steps+1, n_dof) and the number of factorisations.
     """
+    if log is None:                                   # progress messages: logger "loudpy"
+        from loudpy._log import info as log
     ga = GeneralizedAlpha(rho_inf)
     alpha_m, alpha_f, gam, beta = ga.alpha_m, ga.alpha_f, ga.gamma, ga.beta
     c1 = 1.0 / (beta * dt ** 2)

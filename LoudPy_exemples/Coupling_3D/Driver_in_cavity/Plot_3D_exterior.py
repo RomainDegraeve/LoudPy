@@ -1,142 +1,81 @@
 """
-Plot_3D_exterior.py — 3D views of the full coupled problem every 10 Hz (Running_exterior.py first):
-exterior air (half-space above the rigid ground), enclosure air and driver, 1 N on the coil.
+Plot_3D_exterior.py — pressure inside and outside the enclosure and the deformed driver, every
+computed frequency (Running_exterior.py first). 1 N on the coil.
 
-One row per frequency:
-  - left  : vertical cut through the driver axis — exterior pressure (cut + ground), enclosure
-            pressure, deformed driver in place;
-  - middle: horizontal cut at the driver height, seen from above — the wavefronts around the box;
-  - right : the deformed driver, front view.
-Same instant everywhere (phase of the largest driver displacement). Each pressure is shown
-red/blue = ± its own maximum, given in the titles (the enclosure pressure is much larger than
-the radiated one at low frequency); outside, the maximum is taken beyond NEAR_FIELD from the
-driver and the near field saturates. Deformation max = 10 % of the driver diameter.
+One row per frequency, at one instant (the phase of the largest displacement):
+  - a vertical cut through the driver axis and a horizontal cut at the driver height (from above):
+    the pressure outside (± its maximum beyond NEAR_FIELD from the driver: the near field
+    saturates) and inside the enclosure (± its own maximum), with the half of the deformed driver
+    on the side of the cut;
+  - the deformed driver from the front (largest displacement DEFORMATION × diameter).
 
 What this produces (in Results/Figures/exterior_3d/)
 -----------------------------------------------------
   - exterior_3d_<f0>-<f1>Hz.pdf : one file per BAND Hz, ROWS frequencies per page
 """
-import os
 from pathlib import Path
 
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
-import pyvista as pv
 
 import loudpy as lp
 from loudpy.physics.modal import CavityModes
-from loudpy.results.surfaces import driver_surface, cavity_grid
+from loudpy.plot import view3d
 from enclosure import X0, Y0, Z_F
 
-lp.plot.style.use()                       # loudpy figure style (fonts, colours, SPL in dB RMS)
+here = Path("LoudPy_exemples/Coupling_3D/Driver_in_cavity/Results")
+BAND, ROWS = 500.0, 2
+DEFORMATION, NEAR_FIELD = 0.10, 0.08
+CUTS = {"vertical": ((-1, 0, 0), (X0, 0, 0), dict(position=(-1.25, 0.45, 0.25), focus=(0.125, 0.22, -0.03),
+                                                  up=(0, 1, 0), zoom=1.15), (-np.pi / 2, np.pi / 2)),
+        "horizontal": ((0, 1, 0), (0, Y0, 0), dict(position=(0.125, 2.2, -0.03), focus=(0.125, 0.0, -0.03),
+                                                   up=(0, 0, 1), zoom=1.15), (np.pi, 2 * np.pi))}
+BARS = [(lp.plot.style.DIVERGING, (-1, 1), r"Pressure $p/|p|_{max}$ (outside, inside)"),
+        (lp.plot.style.CMAPS["displacement"], (0, 1), r"Driver $|u|/|u|_{max}$")]
 
-files = Path("LoudPy_exemples/Coupling_3D/Driver_in_cavity/Results/Files")
-out_dir = Path("LoudPy_exemples/Coupling_3D/Driver_in_cavity/Results/Figures/exterior_3d")
-out_dir.mkdir(parents=True, exist_ok=True)
-
-BAND = 500.0                  # frequencies per PDF file [Hz]
-ROWS = 2                      # frequencies per page
-DEFORMATION = 0.10
-NEAR_FIELD = 0.08             # outside colour scale: max |p| beyond this distance from the driver [m]
-IMG = (640, 560)
-CAM_V = [(-1.25, 0.45, 0.25), (0.125, 0.22, -0.03), (0.0, 1.0, 0.0)]     # vertical cut, from −x
-CAM_H = [(0.125, 2.2, -0.03), (0.125, 0.0, -0.03), (0.0, 0.0, 1.0)]       # from above, front up
-
-res = lp.load(files / "exterior.h5")
-freqs = res.frequencies
+res = lp.load(here / "Files/exterior.h5")
 hp = res.driver("main")
-drv, q, P_cav = hp.modes, hp.q, res.extra("P_cavity")
-cav = CavityModes.load(files / "cavity_modes.h5")
-m_of, orders = drv.m, [int(m) for m in np.unique(drv.m)]
-
-cgrid = cavity_grid(cav)
-c_corner = np.unique(cav.tets[:, :4])
-egrids = {}
-
-
-def ext_grid(mesh):
-    if id(mesh) not in egrids:
-        nodes, tets = mesh.coords, mesh.groups["air"].cells
-        grid = pv.UnstructuredGrid({pv.CellType.TETRA: tets[:, :4]}, nodes)
-        corner = np.unique(tets[:, :4])
-        far = corner[np.linalg.norm(nodes[corner] - np.array([X0, Y0, Z_F]), axis=1) > NEAR_FIELD]
-        egrids[id(mesh)] = (grid, far)
-    return egrids[id(mesh)]
-
-
-def clip(grid, values, normal, origin):
-    grid["p"] = values
-    return grid.clip(normal=normal, origin=origin).extract_surface()
-
-
-def render(meshes, cam, size=IMG):
-    p = pv.Plotter(off_screen=True, window_size=size)
-    p.set_background("white")
-    for mesh, kw in meshes:
-        p.add_mesh(mesh, show_scalar_bar=False, **kw)
-    p.camera_position = cam
-    p.reset_camera()
-    p.camera.zoom(1.15)
-    img = p.screenshot(return_img=True)
-    p.close()
-    return img
-
-
-RB = dict(scalars="p", cmap="RdBu_r", clim=(-1, 1))
-UU = dict(scalars="|u|", cmap="viridis", clim=(0, 1), smooth_shading=True)
+cav = CavityModes.load(here / "Files/cavity_modes.h5")
+E = hp.kinetic_energy(by_order=True)
 
 
 def row(axs, i):
-    view = res.field("p", index=i)
-    f = view.coordinate
-    grid, e_corner = ext_grid(view.mesh)
-    p_ext = np.asarray(view.values, complex)
-    p_cav = cav.psi @ P_cav[i]
-    drv_v, ph = driver_surface(drv, q[i], (X0, Y0, 0.0), (-np.pi / 2, np.pi / 2), 37, DEFORMATION)
-    drv_h, _ = driver_surface(drv, q[i], (X0, Y0, 0.0), (np.pi, 2 * np.pi), 37, DEFORMATION, ph)
-    drv_f, _ = driver_surface(drv, q[i], (0.0, 0.0, 0.0), (0.0, 2 * np.pi), 73, DEFORMATION, ph)
-    e_max = max(np.abs(p_ext[e_corner]).max(), 1e-30)
-    c_max = max(np.abs(p_cav[c_corner]).max(), 1e-30)
-    pe = np.clip(np.real(p_ext * np.exp(1j * ph)) / e_max, -1, 1)          # near field saturated
-    pc = np.real(p_cav * np.exp(1j * ph)) / c_max
-    o_v, o_h = (X0, 0.0, 0.0), (0.0, Y0, 0.0)
-    axs[0].imshow(render([(clip(grid, pe, "-x", o_v), RB), (clip(cgrid, pc, "-x", o_v), RB),
-                          (drv_v, UU)], CAM_V))
-    axs[1].imshow(render([(clip(grid, pe, "y", o_h), RB), (clip(cgrid, pc, "y", o_h), RB),
-                          (drv_h, UU)], CAM_H))
-    axs[2].imshow(render([(drv_f, UU)], [(0, 0, 1), (0, 0, 0), (0, 1, 0)], (480, 480)))
-    E = np.array([np.sum(np.abs(q[i, m_of == m]) ** 2) for m in orders])
-    share = "  ".join(f"m{m} {100 * e / E.sum():.0f}%" for m, e in zip(orders, E))
-    axs[0].set_title(f"{f:.0f} Hz — vertical cut: outside (beyond {100 * NEAR_FIELD:.0f} cm) max |p| = {e_max:.3g} Pa/N "
-                     f"({lp.spl(e_max):.0f} dB RMS), inside {c_max:.3g} Pa/N "
-                     f"({lp.spl(c_max):.0f} dB RMS)", fontsize=8)
-    axs[1].set_title(f"horizontal cut at the driver height ({Y0:.2f} m), from above", fontsize=8)
-    axs[2].set_title(f"driver, front view\nkinetic energy  {share}", fontsize=8)
+    p_out = res.field("p", index=i)
+    f = p_out.coordinate
+    p_in = res.cavity_field(f, cavity=cav)
+    _, phase = hp.surface(f, n_theta=13, deformation=DEFORMATION)
+    far = np.linalg.norm(p_out.mesh.coords - [X0, Y0, Z_F], axis=1) > NEAR_FIELD
+    out_max, in_max = float(np.abs(p_out.values[far]).max()), float(np.abs(p_in.values).max())
+    g_out = view3d.tet_grid(p_out.mesh, np.clip(p_out.at_phase(phase).values / out_max, -1, 1), "p")
+    g_in = view3d.tet_grid(p_in.mesh, p_in.at_phase(phase).values / in_max, "p")
+    for ax, (normal, origin, camera, theta) in zip(axs[:2], CUTS.values()):
+        half, _ = hp.surface(f, theta=theta, n_theta=37, deformation=DEFORMATION, phase=phase)
+        v = lp.plot.View3D((640, 560))
+        for g in (g_out, g_in):
+            v.add(view3d.clip(g, normal, origin), scalars="p", cmap=BARS[0][0], clim=(-1, 1), colorbar=False)
+        v.add(half, scalars="|u|", clim=(0, 1), smooth_shading=True, colorbar=False).camera(**camera).show(ax)
+    full, _ = hp.surface(f, local=True, deformation=DEFORMATION, phase=phase)
+    (lp.plot.View3D((480, 480)).add(full, scalars="|u|", clim=(0, 1), smooth_shading=True, colorbar=False)
+     .camera((0, 0, 1), (0, 0, 0), (0, 1, 0), zoom=1.2).show(axs[2]))
+    share = ", ".join(f"$m$ = {m}: {100 * e / E.values[i].sum():.0f} %" for m, e in zip(E.coords["order"], E.values[i]))
+    axs[0].set_title(f"{f:.0f} Hz, vertical cut: outside max {lp.spl(out_max):.0f} dB (beyond "
+                     f"{100 * NEAR_FIELD:.0f} cm), inside max {lp.spl(in_max):.0f} dB", fontsize=7)
+    axs[1].set_title(f"horizontal cut at the driver height ({Y0:.2f} m), from above", fontsize=7)
+    axs[2].set_title(f"driver, front view\n{share}", fontsize=7)
 
 
-lo = freqs[0] - freqs[0] % BAND
-for b0 in np.arange(lo, freqs[-1], BAND):
+freqs = res.frequencies
+for b0 in np.arange(freqs[0] - freqs[0] % BAND, freqs[-1], BAND):
     sel = [i for i, f in enumerate(freqs) if b0 <= f < b0 + BAND or (f == freqs[-1] and b0 + BAND >= f)]
     if not sel:
         continue
-    name = f"exterior_3d_{freqs[sel[0]]:.0f}-{freqs[sel[-1]]:.0f}Hz.pdf"
-    tmp = out_dir / (name + ".tmp")
-    with PdfPages(tmp) as pdf:
+    with lp.plot.pdf_pages(here / f"Figures/exterior_3d/exterior_3d_{freqs[sel[0]]:.0f}-{freqs[sel[-1]]:.0f}Hz.pdf") as pdf:
         for s0 in range(0, len(sel), ROWS):
-            fig, axs = plt.subplots(ROWS, 3, figsize=(18, 5.8 * ROWS),
-                                    gridspec_kw=dict(width_ratios=[1.15, 1.15, 0.8]))
+            fig, axs = lp.plot.figure((7.2, 2.9 * ROWS), ROWS, 3, squeeze=False,
+                                      gridspec_kw=dict(width_ratios=[1.15, 1.15, 0.8]))
             for a in axs.ravel():
-                a.axis("off")
-            for k_, i in enumerate(sel[s0:s0 + ROWS]):
-                row(axs[k_], i)
-            fig.suptitle("HPNEW in the enclosure on a rigid ground, 1 N on the coil — pressure outside and "
-                         "inside (red/blue = ± each one's max), deformation (|u|, max 10 % of the diameter), "
-                         "same instant", fontsize=10)
-            fig.tight_layout()
-            pdf.savefig(lp.plot.style.tidy(fig), dpi=100)
-            plt.close(fig)
-    os.replace(tmp, out_dir / name)
-    print(f"  ✓ {out_dir / name}  ({len(sel)} frequencies)")
+                a.set_axis_off()
+            for k, i in enumerate(sel[s0:s0 + ROWS]):
+                row(axs[k], i)
+            view3d.colorbars_for(fig, axs, BARS, shrink=0.45)
+            pdf.savefig(fig)
+    print(f"  ✓ {freqs[sel[0]]:.0f}–{freqs[sel[-1]]:.0f} Hz ({len(sel)} frequencies)")

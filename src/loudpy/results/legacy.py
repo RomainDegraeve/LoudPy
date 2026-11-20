@@ -1,5 +1,5 @@
 """
-Reader of the loudpy result format 1 (files written by Problem-based studies through
+Reader of the loudpy result format 1 (files written by the former Problem-based studies through
 ResultStore / StudySaver, loudpy_format = "1.0") into Results.
 
 Format 1 names the physics by the Python class of the physics objects ("subdomainmeca_rayleigh",

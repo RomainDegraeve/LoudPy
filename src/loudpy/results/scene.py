@@ -40,7 +40,8 @@ class DriverResponse:
         return f"DriverResponse({self.label!r}, {len(self.modes)} modes, {len(self.frequencies)} frequencies)"
 
     def _data(self, values, coords, q, **meta):
-        return Data(values, {"f": self.frequencies, **coords}, q, self.label, {"driver": self.name, **meta})
+        label = self.label if self.label != self.name else ""                # in-vacuo responses say so
+        return Data(values, {"f": self.frequencies, **coords}, q, label, {"driver": self.name, **meta})
 
     def in_vacuo(self) -> "DriverResponse":
         """The same driver under the same drive, without air (in vacuo modal response)."""
@@ -94,11 +95,15 @@ class DriverResponse:
         uz = np.mean([self._displacement(n, 0.0)[:, 1] for n in self.coil_nodes], axis=0)
         return self._data(uz, {}, "u_z", at="coil (mean)")
 
-    def surface(self, f: float, **kwargs):
-        """Deformed 3D surface (pyvista) at the frequency nearest f (results.surfaces.driver_surface keywords)."""
+    def surface(self, f: float, local: bool = False, **kwargs):
+        """
+        Deformed 3D surface (pyvista) at the frequency nearest f, placed in the scene (or in the driver's
+        own frame with local=True: axis along z). Keywords of results.surfaces.driver_surface
+        (theta, n_theta, deformation, phase, u_max). Returns (surface, phase).
+        """
         from loudpy.results.surfaces import driver_surface
         i = int(np.argmin(np.abs(self.frequencies - f)))
-        return driver_surface(self.modes, self.q[i], self.frame, **kwargs)
+        return driver_surface(self.modes, self.q[i], (0.0, 0.0, 0.0) if local else self.frame, **kwargs)
 
 
 class SceneResults(FrequencyResults):
@@ -153,6 +158,19 @@ class SceneResults(FrequencyResults):
             out[i] = dtn.pressure(pts, C[i, :n_h[i]], 2 * np.pi * f / c)
         return out
 
+    def driver_surfaces(self, f: float, deformation: float = 0.10, n_theta: int = 97) -> dict:
+        """
+        Deformed 3D surfaces (pyvista) of every driver at the frequency nearest f, at one instant and
+        one scale: the phase and the displacement of the driver that moves most set them (its largest
+        displacement = deformation × its diameter). {name: surface with "|u|" (re that maximum)}.
+        """
+        drv = [self.driver(n) for n in self.drivers]
+        first = [d.surface(f, n_theta=n_theta, deformation=deformation) for d in drv]
+        big = int(np.argmax([s["|u| [m]"].max() for s, _ in first]))
+        ph = first[big][1]
+        u_max = max(d.surface(f, n_theta=13, phase=ph)[0]["|u| [m]"].max() for d in drv)
+        return {d.name: d.surface(f, n_theta=n_theta, deformation=deformation, phase=ph, u_max=u_max)[0] for d in drv}
+
     # ── pressure ───────────────────────────────────────────────────────────
     def _dtn(self):
         from loudpy.physics.exterior import HalfSpaceDtN
@@ -199,6 +217,39 @@ class SceneResults(FrequencyResults):
         uniq, inv = np.unique(rows, return_inverse=True)                  # increasing rows (lazy datasets)
         psi = np.asarray(cav["psi"][uniq])
         return self._stacked("P_cavity") @ psi[inv].T
+
+    def cavity_mesh(self, cavity=None):
+        """The cavity mesh (geometry.Mesh, TET10 group "air"): from the results, or from a CavityModes
+        (physics.modal; for result files written before the cavity cells were stored)."""
+        from loudpy.geometry.mesh import Mesh, MeshGroup
+        cache = self.__dict__.setdefault("_cavity_meshes", {})
+        if id(cavity) in cache:                                  # one Mesh object: plots reuse its grid
+            return cache[id(cavity)][1]
+        cav = self.attachments.get("cavity")
+        if cavity is not None:
+            nodes, tets = cavity.nodes, cavity.tets
+        elif cav is not None and "tets" in cav:
+            nodes, tets = np.asarray(cav["nodes"]), np.asarray(cav["tets"])
+        else:
+            raise ValueError("no cavity cells in these results: pass cavity=CavityModes.load(…_modes.h5)")
+        mesh = Mesh(np.arange(len(nodes)), np.asarray(nodes, float), {"air": MeshGroup("air", 3, "tet10", tets)})
+        cache[id(cavity)] = (cavity, mesh)
+        return mesh
+
+    def cavity_field(self, f: float, cavity=None):
+        """Field: the pressure in the cavity (cavity modes) at the frequency nearest f."""
+        from loudpy.results.data import Field
+        cav = self.attachments["cavity"]
+        i = int(np.argmin(np.abs(self.frequencies - f)))
+        p = np.asarray(cav["psi"], float) @ self._stacked("P_cavity")[i]
+        return Field("p", self.cavity_mesh(cavity), p, self.frequencies[i], "f", meta=self._meta(region="cavity"))
+
+    def cavity_mode(self, n: int, cavity=None):
+        """Field: the rigid-wall cavity mode n (pressure shape, coordinate = its frequency)."""
+        from loudpy.results.data import Field, Quantity
+        psi = np.asarray(self.attachments["cavity"]["psi"][:, n] if cavity is None else cavity.psi[:, n], float)
+        return Field("p", self.cavity_mesh(cavity), psi, float(self.cavity_frequencies[n]), "f",
+                     quantity=Quantity("psi", "Cavity mode shape", r"\psi"), meta={"mode": n})
 
     def cavity_pressure(self, at) -> Data:
         """Pressure in the cavity (cavity modes, nearest node) at points / a selection [Pa]."""

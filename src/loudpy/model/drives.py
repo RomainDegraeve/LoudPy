@@ -6,7 +6,8 @@ Drives: how a study excites the model.
     lp.Voltage(2.83, Re=8, Le=4e-3, Bl=7)       voltage on the voice coil, with its circuit
     {"top": lp.Force(1), "bottom": lp.Force(-1)}   one drive per driver (3D scenes)
 
-Phase 1 of the refactor defines them; the studies use them from phase 5 on.
+The studies check the drive they get (FrequencyResponse: harmonic Force or Voltage; Transient: a
+Force signal; a Scene: Force or {driver name: Force}).
 """
 from __future__ import annotations
 

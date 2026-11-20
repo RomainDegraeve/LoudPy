@@ -251,3 +251,30 @@ def coupled_modes(modes, indices, labels=None, range_db: float = 60.0, scale: fl
     fig.supxlabel(style.LABELS["r"], fontsize=9)
     fig.supylabel(style.LABELS["z"], fontsize=9)
     return fig
+
+
+def mode_chart(modes, y: str = "zeta", ax=None, color=None, label=None, **kwargs):
+    """
+    Modes as points: frequency (log axis) against the damping ratio (y="zeta") or the azimuthal
+    order (y="order", coloured by ζ); one colour per mode set otherwise. Returns the axes.
+    """
+    from loudpy.plot.curves import _x_axis
+    if ax is None:
+        _, ax = style.figure("wide")
+    if y == "order":
+        f, m, z = modes.frequencies, np.concatenate([np.full(len(b), b.meta.get("order", -1)) for b in modes.blocks]), \
+            np.real(modes.zeta)
+        sc = ax.scatter(f, m, c=z, cmap=style.CMAPS["level"], s=kwargs.pop("s", 14), **kwargs)
+        ax.figure.colorbar(sc, ax=ax, label=quantity("zeta").axis_label(), pad=0.015)
+        ax.set_yticks(sorted(set(m.astype(int))))
+        ax.set_ylabel(quantity("order").axis_label())
+    else:
+        for k, b in enumerate(modes.blocks):
+            ax.plot(b.values, np.real(b.extra.get("zeta", np.full(len(b), np.nan))), "o",
+                    ms=kwargs.get("ms", 3.5), color=color or style.COLORS[k % len(style.COLORS)],
+                    label=label if label is not None else (b.label if len(modes.blocks) > 1 else None))
+        ax.set_ylabel(quantity("zeta").axis_label())
+        if label is not None or len(modes.blocks) > 1:
+            ax.legend()
+    _x_axis(ax, "f", modes.frequencies, None)
+    return ax

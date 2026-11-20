@@ -92,7 +92,9 @@ def _fe_mesh(ext) -> Mesh:
     return Mesh(np.arange(len(ext.nodes)), np.asarray(ext.nodes), groups)
 
 
-def solve(study, freqs, store=None, chunk_hz=50.0, rtol=1e-7, log=print):
+def solve(study, freqs, store=None, chunk_hz=50.0, rtol=1e-7, log=None):
+    if log is None:                                   # progress messages: logger "loudpy"
+        from loudpy._log import info as log
     from loudpy.results import load
     from loudpy.results.results import Block
     from loudpy.results.scene import SceneResults
@@ -120,7 +122,7 @@ def solve(study, freqs, store=None, chunk_hz=50.0, rtol=1e-7, log=print):
     attachments = _attachments(scene, drivers, att_extra)
     attachments["drive"] = dict(F=np.asarray(F, complex))                # modal force, stacked drivers
     if cav is not None:
-        attachments["cavity"] = dict(nodes=cav.nodes, psi=cav.psi.astype(np.float32), kappa2=cav.kappa2,
+        attachments["cavity"] = dict(nodes=cav.nodes, tets=cav.tets, psi=cav.psi.astype(np.float32), kappa2=cav.kappa2,
                                      meta=dict(f_max=scene._cavity.f_max, volume=float(cav.volume)))
 
     if config == "cavity":                                          # A: no FE air

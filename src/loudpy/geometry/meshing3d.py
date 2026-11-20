@@ -15,7 +15,7 @@ from pathlib import Path
 
 import numpy as np
 
-from loudpy.geometry.frame import Frame, as_frame, _is_single
+from loudpy.geometry.frame import as_frame, _is_single
 from loudpy.geometry.gmsh_session import gmsh_module as _gmsh
 
 

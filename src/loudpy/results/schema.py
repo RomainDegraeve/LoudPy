@@ -143,7 +143,7 @@ def _ordered(group):
 
 def read(path):
     from loudpy.results.lazy import LazyArray
-    from loudpy.results.results import KINDS, Block, result_class
+    from loudpy.results.results import Block, result_class
     with h5py.File(path, "r") as f:
         kind = str(f.attrs["kind"])
         blocks = []

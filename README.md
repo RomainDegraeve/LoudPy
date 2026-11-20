@@ -16,7 +16,8 @@ Starting from a CAD file of your loudspeaker, LoudPy lets you:
 - run **harmonic frequency-domain simulations** (structural, acoustic, or fully coupled FSI)
 - extract **eigenfrequencies** and mode shapes of the mechanical structure
 - simulate **nonlinear behaviour** 
-- post-process results directly as NumPy arrays and plot them
+- evaluate results at points, arcs and lines, plot them as consistent scientific figures, and
+  export them (NumPy, pandas, CSV, MATLAB, ParaView)
 
 The finite element formulations are entirely custom — this project does not depend on any 
 external FEM library. Numerical computations rely exclusively on **NumPy**, **SciPy**, and 
@@ -48,13 +49,21 @@ model.add(lp.Solid("membranne", "Paper"), lp.Solid("surround", "Rubber"), lp.Sol
 model.mesh("mesh.msh")
 
 modes = lp.Modes(model).solve(f_max=20000)            # eigenmodes
+modes.table()                                         # f, ζ (pandas)
+modes.mode(0).plot(deformed=True)                     # the first mode shape
+
 res = lp.FrequencyResponse(model, drive=lp.Force(1.0)).solve(np.geomspace(20, 20000, 200))
-lp.plot.mode(modes, 0)
+u = res.displacement(at=(0.0, 0.0), component="z")    # labelled data: u_z over f, with units
+u.plot()                                              # scientific figure, labels from the quantity
+u.export("cone_tip.csv")                              # for Excel / MATLAB / Origin (or .mat, .npz)
+np.asarray(u)                                         # plain NumPy for your own post-processing
 ```
 
 A model (or a 3D `lp.Scene`) goes into a study (`Modes`, `FrequencyResponse`, `Transient`); the
-study returns results, saved with `study.save(path)`, read back with `lp.load(path)` and plotted
-with `lp.plot`.
+study returns results, saved with `study.save(path)` and read back with `lp.load(path)`. Evaluating
+results (`res.spl(at=…)`, `res.field("p", f=…)`, at points, `lp.Arc`s or `lp.Line`s) gives labelled
+data (`lp.Data`, `lp.Field`) that plot themselves and export to NumPy, pandas, CSV, MATLAB and
+ParaView.
 
 ## Examples
 
@@ -108,25 +117,27 @@ LoudPy handles 2D axisymmetric geometries. The full pipeline is:
 3. **Meshing** — LoudPy loads both files, links named entities to materials and boundary
    conditions, and generates the mesh via the Gmsh Python API (bundled — no separate install needed)
 4. **Solve** — the chosen study assembles and solves the FEM system
-5. **Export** — results are saved to **HDF5** (`.h5`) files; fields and coordinates are stored as
-   NumPy arrays and reloaded with the built-in reader classes
+5. **Results** — saved to a self-describing **HDF5** file (`.h5`, loudpy result format 2) and read
+   back with `lp.load`; evaluated, plotted and exported from the result object
 
-### Solvers
+### Studies
 
-| Study | Class | Description |
-|---|---|---|
-| Frequency-domain FSI | `FreqStudy` | Coupled structural–acoustic harmonic solver |
-| Frequency-domain meca | `FreqStudy` | Mechanical-only harmonic solver |
-| Complex eigenvalue | `EigenStudy` | Complex eigenfrequency analysis (mechanical domain) |
-| Nonlinear time-domain | `TimeStudy` | Geometrically nonlinear transient solver |
+| Study | Description |
+|---|---|
+| `lp.Modes(model)` | Structural modes (axisymmetric, or azimuthal orders m = 0, 1, 2…), complex with damping |
+| `lp.Modes(model, physics="coupled")` | Coupled structure + air modes with an exact (DtN) radiation condition |
+| `lp.Modes(model, physics="acoustic")` | Acoustic modes of the air (rigid structure) |
+| `lp.FrequencyResponse(model, drive=…)` | Harmonic response: structure, or structure + air (force or voltage drive), air remeshed per wavelength |
+| `lp.Transient(model, drive=lp.Force(signal, fs))` | Geometrically nonlinear time response |
+| `lp.FrequencyResponse(scene)` | 3D enclosures with one or several drivers (cavity modes, exterior air on a rigid ground) |
 
 ### Physics
 
 - **Structural domain** — 2D axisymmetric linear elasticity, T6 elements
 - **Acoustic domain** — pressure-based formulation, T6 elements
-- **Fluid-structure coupling** — `InterfaceAcouMeca` coupling assembled automatically
+- **Fluid-structure coupling** — `lp.FluidStructure` boundaries, assembled automatically
 - **Damping** — Rayleigh (`α`, `β`) and hysteretic (`η`), both supporting non-proportional formulations
-- **Radiation** — Perfectly Matched Layer (PML) for free-field acoustic radiation
+- **Radiation** — Perfectly Matched Layer (`lp.PML`) or exact Dirichlet-to-Neumann condition (`lp.Radiation`)
 
 ### Material Library
 
@@ -136,10 +147,12 @@ directly in the study script.
 
 ### Post-processing
 
-- `FreqReader` / `EigenReader` / `TimeReader` — context-managed HDF5 readers
-- `extract_subdomain(snap, name, field)` — field values restricted to a named subdomain
-- `extract_interface(snap, name, field)` — field values along a coupling interface
-- Built-in plotting: SPL sweeps, field maps, deformed interface, mechanical sweeps
+- `res.spl(at=…)`, `res.pressure(at=…)`, `res.displacement(at=…, component="z")`, `res.probe(name, at=…)`
+  at points, `lp.Points`, `lp.Arc`, `lp.Line` → `lp.Data` (values with coordinates and units)
+- `res.field(name, f=…)` → `lp.Field` (values on the mesh): components, SPL, regions, interpolation
+- `.plot()` on any of them, and `lp.plot` (mode grids, directivity, 3D views, animations), one
+  scientific style for every figure
+- `.to_pandas()`, `np.asarray(…)`, `.export("x.csv" | "x.mat" | "x.npz" | "x.vtu")`, `res.export("all.mat")`
 
 ---
 

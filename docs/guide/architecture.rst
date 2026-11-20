@@ -11,15 +11,18 @@ testable on its own.
                  ├──────────────────────────────────────────────────────┤
    studies       │  loudpy.study: Modes · FrequencyResponse · Transient │  orchestration
                  ├───────────────────┬──────────────────────────────────┤
-   results/plot  │  loudpy.results   │  loudpy.plot (+ style)           │  Results, HDF5 format 2, load()
+   results/plot  │  loudpy.results   │  loudpy.plot                     │  Results → Data / Field (quantities,
+                 │  (Data, Field,    │  (curves, fields, view3d,        │  selections, exports), HDF5 format 2;
+                 │  selections)      │  scene3d, animate, style)        │  plots read Data / Field only
                  ├───────────────────┴──────────────────────────────────┤
    3D scenes     │  loudpy.scene: Driver · Profile · Scene · Cabinet    │  drivers placed in enclosures
                  ├──────────────────────────────────────────────────────┤
-   physics       │  loudpy.physics: role registry (solid, air, pml,     │  a Model → operator blocks
-                 │  clamped, coil, fluid_structure, radiation)          │  (K, C, M, coupling, F)
+   physics       │  loudpy.physics: parts + role registry, assembled    │  a Model → operator blocks
+                 │  systems (structure, air, DtN), modal (3D cavity),   │  (K, C, M, coupling, F)
+                 │  exterior (half-space DtN FE)                        │
                  ├──────────────────────────────────────────────────────┤
    fem           │  loudpy.fem: quadrature · shape functions · element  │  discretisation, no physics
-                 │  kernels · batched assembly · sparse patterns        │  names
+                 │  kernels (tri6_axi, tet10) · assembly · sparse       │  names
                  ├──────────────────────────────────────────────────────┤
    geometry      │  loudpy.geometry: Mesh · naming · meshing2d ·        │
                  │  meshing3d (cut-outs, classification) · Frame        │
@@ -44,9 +47,18 @@ Rules
 * **Reproducible**: fixed ARPACK start vectors, deterministic meshing option, mesh reuse by
   signature.
 
-The low-level 3D toolkit (``loudpy.Studies.Cavity_coupling``, ``loudpy.Studies.Exterior_dtn``)
-and the internal engines of the studies (``loudpy.Studies``) remain importable from their modules
-but are not part of the top-level namespace.
+Results and plots
+-----------------
+
+Results are evaluated into labelled data — :class:`Data <loudpy.Data>` (values over named
+coordinates) and :class:`Field <loudpy.Field>` (values on a mesh) — that carry their quantity
+(:mod:`loudpy.results.quantities`: one name, label, symbol, unit and colormap per quantity). The
+plots read only those objects, so every figure gets the same labels, units and colormaps, and every
+evaluated quantity exports the same way (NumPy, pandas, CSV, MATLAB, VTU). Where to evaluate is a
+selection (point, points, arc, line), like COMSOL's datasets.
+
+The 3D toolkit (:mod:`loudpy.physics.modal`, :mod:`loudpy.physics.exterior`) is importable from its
+modules but is not part of the top-level namespace.
 
 Tests
 -----

@@ -25,7 +25,7 @@ from pathlib import Path
 
 import numpy as np
 
-from loudpy.results.quantities import COMPONENTS, Quantity, quantity
+from loudpy.results.quantities import COMPONENTS, Quantity, quantity as as_quantity
 
 P_REF = 20e-6
 
@@ -60,10 +60,10 @@ class Data:
     """
     __array_priority__ = 1000
 
-    def __init__(self, values, coords: dict, quantity_, label: str = "", meta: dict | None = None):
+    def __init__(self, values, coords: dict, quantity, label: str = "", meta: dict | None = None):
         self.values = np.asarray(values)
         self.coords = {k: np.asarray(v) for k, v in coords.items()}
-        self.quantity: Quantity = quantity(quantity_)
+        self.quantity: Quantity = as_quantity(quantity)
         self.label = label
         self.meta = dict(meta or {})
         if self.values.ndim != len(self.coords):
@@ -105,7 +105,7 @@ class Data:
     def __repr__(self):
         def rng(k, c):
             if c.dtype.kind in "fiu" and len(c):
-                unit = quantity(k).unit
+                unit = as_quantity(k).unit
                 return f"{k}: {len(c)} ({c.min():.4g}–{c.max():.4g}{' ' + unit if unit else ''})"
             return f"{k}: {len(c)}"
         dims = " × ".join(rng(k, c) for k, c in self.coords.items()) or "scalar"
@@ -134,10 +134,18 @@ class Data:
         return Data(values, coords, self.quantity, self.label, self.meta)
 
     def sel(self, **value) -> "Data":
-        """Select by coordinate value (the nearest one): d.sel(f=1000), d.sel(angle=[0, 30, 60])."""
+        """
+        Select by coordinate value: the nearest one (d.sel(f=1000)), several (d.sel(angle=[0, 30, 60]))
+        or a range (d.sel(t=slice(0, 0.05)), d.sel(f=slice(100, None))).
+        """
         index = {}
         for dim, v in value.items():
             c = self.coords[dim] if dim in self.coords else self.coords[list(self.coords)[self._axis(dim)]]
+            if isinstance(v, slice):
+                lo = -np.inf if v.start is None else v.start
+                hi = np.inf if v.stop is None else v.stop
+                index[dim] = list(np.flatnonzero((c >= lo) & (c <= hi)))
+                continue
             if c.dtype.kind in "fiu":
                 near = [int(np.argmin(np.abs(c - x))) for x in np.atleast_1d(v)]
             else:
@@ -145,8 +153,8 @@ class Data:
             index[dim] = near[0] if np.ndim(v) == 0 else near
         return self.isel(**index)
 
-    def _new(self, values, quantity_=None, label=None, **meta):
-        return Data(values, self.coords, quantity_ or self.quantity, self.label if label is None else label,
+    def _new(self, values, quantity=None, label=None, **meta):
+        return Data(values, self.coords, quantity or self.quantity, self.label if label is None else label,
                     {**self.meta, **meta})
 
     # ── parts of complex amplitudes ────────────────────────────────────────
@@ -202,7 +210,7 @@ class Data:
     def _vector_quantity(self, letter):
         n = self.quantity.name
         if n[:1] in "uva" and (len(n) == 1 or n[1] == "_"):
-            return quantity(letter + n[1:])
+            return as_quantity(letter + n[1:])
         return self.quantity
 
     def velocity(self) -> "Data":
@@ -216,9 +224,9 @@ class Data:
     def __neg__(self):
         return self._new(-self.values)
 
-    def _binary(self, other, op, quantity_=None):
+    def _binary(self, other, op, quantity=None):
         o = other.values if isinstance(other, Data) else np.asarray(other)
-        return self._new(op(self.values, o), quantity_)
+        return self._new(op(self.values, o), quantity)
 
     def __mul__(self, o):
         return self._binary(o, np.multiply)
@@ -242,9 +250,9 @@ class Data:
     def __rsub__(self, o):
         return self._new(np.asarray(o) - self.values)
 
-    def rename(self, quantity_=None, label=None) -> "Data":
+    def rename(self, quantity=None, label=None) -> "Data":
         """The same values with another quantity (name or Quantity) and / or legend label."""
-        return Data(self.values, self.coords, self.quantity if quantity_ is None else quantity_,
+        return Data(self.values, self.coords, self.quantity if quantity is None else quantity,
                     self.label if label is None else label, self.meta)
 
     # ── signal processing ──────────────────────────────────────────────────
@@ -264,8 +272,7 @@ class Data:
         X = np.fft.rfft(x * (w[:, None] if x.ndim > 1 else w), axis=0) * 2.0 / (n * w.mean())
         f = np.fft.rfftfreq(n, d=float(t[1] - t[0]))
         coords = {"f": f, **{k: v for k, v in self.coords.items() if k != "t"}}
-        return Data(X, coords, quantity(self.quantity.name) if self.quantity.name in ("u", "v", "a") or "_" in
-                    self.quantity.name else self.quantity, self.label, {**self.meta, "window": window or "rect"})
+        return Data(X, coords, self.quantity, self.label, {**self.meta, "window": window or "rectangular"})
 
     def impulse_response(self, fs: float | None = None, df: float = 1.0, taper: bool = True) -> "Data":
         """
@@ -310,17 +317,17 @@ class Data:
             vals = np.stack([vals.real, vals.imag], axis=2).reshape(len(x), -1)
         else:
             names = heads
-        return [quantity(list(self.coords)[0]).column()] + names, x, vals
+        return [as_quantity(list(self.coords)[0]).column()] + names, x, vals
 
     def to_pandas(self):
         """pandas object: Series (1D, indexed by the coordinate) or DataFrame (2D: one column per value of the second coordinate)."""
         import pandas as pd
         dims = list(self.coords)
-        idx = pd.Index(self.coords[dims[0]], name=quantity(dims[0]).column())
+        idx = pd.Index(self.coords[dims[0]], name=as_quantity(dims[0]).column())
         if self.ndim == 1:
             return pd.Series(self.values, index=idx, name=self.quantity.column())
         if self.ndim == 2:
-            cols = pd.Index(self.coords[dims[1]], name=quantity(dims[1]).column())
+            cols = pd.Index(self.coords[dims[1]], name=as_quantity(dims[1]).column())
             return pd.DataFrame(self.values, index=idx, columns=cols)
         raise ValueError("to_pandas() takes 1D or 2D data (use .sel() first)")
 
@@ -397,19 +404,19 @@ class Field:
     """
 
     def __init__(self, name: str, mesh, values, coordinate: float, coord: str = "f", extra: dict | None = None,
-                 quantity_=None, meta: dict | None = None):
+                 quantity=None, meta: dict | None = None):
         self.name = name
         self.mesh = mesh
         self.values = np.asarray(values)
         self.coordinate = float(coordinate)
         self.coord = coord
         self.extra = dict(extra or {})
-        self.quantity: Quantity = quantity(quantity_ or name)
+        self.quantity: Quantity = as_quantity(quantity or name)
         self.meta = dict(meta or {})
 
     def __repr__(self):
         comp = f", {self.values.shape[1]} components" if self.values.ndim > 1 else ""
-        unit = quantity(self.coord).unit
+        unit = as_quantity(self.coord).unit
         return (f"Field({self.quantity.column()} at {self.coord} = {self.coordinate:.5g}{' ' + unit if unit else ''}, "
                 f"{self.mesh.n_nodes} nodes{comp})")
 
@@ -420,8 +427,8 @@ class Field:
     def is_vector(self) -> bool:
         return self.values.ndim > 1
 
-    def _scalar(self, values, quantity_, **meta) -> "Field":
-        return Field(self.name, self.mesh, values, self.coordinate, self.coord, self.extra, quantity_,
+    def _scalar(self, values, quantity, **meta) -> "Field":
+        return Field(self.name, self.mesh, values, self.coordinate, self.coord, self.extra, quantity,
                      {**self.meta, **meta})
 
     # ── scalar views ───────────────────────────────────────────────────────
@@ -488,9 +495,17 @@ class Field:
         v = W @ self.values
         if sel.dim is None:
             return v[0]
-        return Data(v if v.ndim == 1 else v, {sel.dim: sel.coord, **({"component": np.array(["r", "z", "theta"][
-            :v.shape[1]])} if v.ndim > 1 else {})}, self.quantity, meta={**self.meta, self.coord: self.coordinate,
-                                                                         "at": sel.describe()})
+        coords = {sel.dim: sel.coord}
+        if v.ndim > 1:
+            coords["component"] = np.array(["r", "z", "theta"][:v.shape[1]])
+        return Data(v, coords, self.quantity, meta={**self.meta, self.coord: self.coordinate, "at": sel.describe()})
+
+    def revolve(self, order: int | None = None, **kwargs):
+        """3D surface (pyvista) of an axisymmetric displacement: see loudpy.results.surfaces.revolve.
+        order: azimuthal order m (default: the field's own, 0 for axisymmetric results)."""
+        from loudpy.results.surfaces import revolve
+        m = self.meta.get("order", 0) if order is None else order
+        return revolve(self, m, **kwargs)
 
     # ── export ─────────────────────────────────────────────────────────────
     def _arrays(self) -> dict:

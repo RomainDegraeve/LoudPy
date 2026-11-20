@@ -63,7 +63,7 @@ class MecaAssemblerNL(_Structural):
     """
     Nonlinear (total-Lagrangian) structural assembler, axisymmetric T6.
 
-    nl = MecaAssemblerNL(fem_objects)
+    nl = MecaAssemblerNL(model.parts)
     K_T, M, C, F_int = nl.assemble_tangent(u_full)     # full (unreduced) operators
     """
 

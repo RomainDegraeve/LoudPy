@@ -211,15 +211,32 @@ def save(fig, path, close: bool = True, **kwargs) -> Path:
     return path
 
 
+class _Pages:
+    """PdfPages whose savefig tidies the figure (loudpy look) and closes it (memory) by default."""
+
+    def __init__(self, pdf):
+        self.pdf = pdf
+
+    def savefig(self, fig, close: bool = True, **kwargs):
+        import matplotlib.pyplot as plt
+        self.pdf.savefig(tidy(fig), **kwargs)
+        if close:
+            plt.close(fig)
+
+
 @contextmanager
 def pdf_pages(path):
-    """Multi-page PDF (write-then-rename): with pdf_pages(path) as pdf: pdf.savefig(fig)."""
+    """
+    Multi-page PDF, written next to the target then renamed (safe on synced folders):
+        with lp.plot.pdf_pages(path) as pdf:
+            pdf.savefig(fig)            # tidied and closed
+    """
     from matplotlib.backends.backend_pdf import PdfPages
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.stem + ".tmp.pdf")
     with PdfPages(tmp) as pdf:
-        yield pdf
+        yield _Pages(pdf)
     os.replace(tmp, path)
 
 

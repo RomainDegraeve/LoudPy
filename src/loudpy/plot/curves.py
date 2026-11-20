@@ -50,7 +50,10 @@ def _coord_label(dim, value) -> str:
     q = quantity(dim)
     if dim in ("point", "component"):
         return {"r": "$r$", "z": "$z$", "theta": r"$\theta$"}.get(str(value), str(value))
-    v = f"{value:.4g}" if np.isscalar(value) and np.asarray(value).dtype.kind in "fiu" else str(value)
+    if np.isscalar(value) and np.asarray(value).dtype.kind in "fiu":
+        v = f"{value:.0f}" if abs(value) >= 1e4 else f"{value:.4g}"
+    else:
+        v = str(value)
     unit = "" if not q.unit else (q.unit if q.unit == "°" else f" {q.unit}")
     return f"${q.symbol}$ = {v}{unit}" if q.symbol else f"{v}{unit}"
 
@@ -121,7 +124,7 @@ def map(d, ax=None, levels=None, vmin=None, vmax=None, cmap=None, logx=None, col
     dims = list(s.coords)
     x, y = s.coords[dims[0]].astype(float), s.coords[dims[1]].astype(float)
     cmap = cmap or style.CMAPS.get(s.quantity.kind, "viridis")
-    if s.quantity.kind == "level" and vmin is None and vmax is None:          # relative levels: −40 … +6 dB
+    if s.quantity.unit == "dB" and vmin is None and vmax is None:          # relative levels: −40 … +6 dB
         vmin, vmax = REL_RANGE
     Z = s.values.T
     if levels is not None:
@@ -146,11 +149,11 @@ def map(d, ax=None, levels=None, vmin=None, vmax=None, cmap=None, logx=None, col
     return ax
 
 
-def polar(d, ax=None, rlim=None, title=None, zero="N", clockwise=True, **kwargs):
+def polar(d, ax=None, rlim=None, title=None, zero="N", clockwise=True, legend: bool = True, **kwargs):
     """
     Data over "angle" [°] on a polar diagram (2D: one curve per value of the other coordinate, e.g.
-    d.sel(f=[100, 1000, 5000])). rlim: radial limits (default: −40 … +6 dB for relative levels, 40 dB
-    below the maximum for absolute levels); values below the inner limit are drawn at the centre.
+    d.sel(f=[100, 1000, 5000])); legend=False for an overlay. rlim: radial limits (default: −40 … +6 dB for relative levels, 40 dB
+    below the maximum for absolute levels); values below the inner limit are not drawn.
     """
     if ax is None:
         _, ax = style.figure("square", subplot_kw=dict(projection="polar"))
@@ -162,16 +165,17 @@ def polar(d, ax=None, rlim=None, title=None, zero="N", clockwise=True, **kwargs)
     ang = np.deg2rad(s.coords["angle"].astype(float))
     V = np.moveaxis(s.values, ia, 0)
     if rlim is None and s.quantity.unit.startswith("dB"):
-        rlim = REL_RANGE if s.quantity.kind == "level" else (np.nanmax(V) - 40, np.nanmax(V) + 3)
+        rlim = REL_RANGE if s.quantity.unit == "dB" else (np.nanmax(V) - 40, np.nanmax(V) + 3)
     if rlim is not None:
-        V = np.clip(V, rlim[0], None)                    # below the centre: drawn at the centre
+        V = np.where(V < rlim[0], np.nan, V)             # below the inner limit: not drawn
     if V.ndim == 1:
         ax.plot(ang, V, label=d.label or None, **kwargs)
     else:
         other = [k for k in dims if k != "angle"][0]
         for j, v in enumerate(s.coords[other]):
             ax.plot(ang, V[:, j], label=_coord_label(other, v), **kwargs)
-        ax.legend(loc="lower left", bbox_to_anchor=(-0.15, -0.15), fontsize=7)
+        if legend:
+            ax.legend(loc="center left", bbox_to_anchor=(1.08, 0.5), fontsize=7)
     ax.set_theta_zero_location(zero)
     ax.set_theta_direction(-1 if clockwise else 1)
     if rlim is not None:

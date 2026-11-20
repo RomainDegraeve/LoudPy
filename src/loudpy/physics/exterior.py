@@ -34,7 +34,6 @@ amplitudes (MultiDriver.coil_forces(coil_nodes, amplitudes)), or run it once per
 from __future__ import annotations
 
 import time
-from pathlib import Path
 
 import numpy as np
 import scipy.linalg as sla
@@ -45,7 +44,7 @@ from scipy.special import spherical_jn, spherical_yn, sph_harm_y
 from loudpy.fem.tet10 import assemble_p2, surface_quadrature
 from loudpy.geometry.meshing3d import read_p2_mesh
 from loudpy.model.materials import C_AIR, RHO_AIR
-from loudpy.physics.modal import add_pistons, as_drivers, couple_drivers, surface_coupling, wet_edges
+from loudpy.physics.modal import add_pistons, as_drivers, couple_drivers
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -213,7 +212,7 @@ class ExteriorFE:
 #  Coupled sweep: driver + enclosure (modal) + exterior (FE + DtN)
 # ════════════════════════════════════════════════════════════════════════════
 def coupled_sweep(bands, freqs, F, w_s, zeta, S, R, kappa2, eta_air=0.0, rho=RHO_AIR, c=C_AIR,
-                  chunk_hz=50.0, rtol=1e-7, on_frequency=None, log=print, H_extra=None):
+                  chunk_hz=50.0, rtol=1e-7, on_frequency=None, log=None, H_extra=None):
     """
     bands: list of (f_lo, f_hi, ExteriorFE with couple_driver done); each frequency is solved on
     the band containing it. Returns q (n_f, n_y) and, per frequency, the DtN coefficients c_h
@@ -222,6 +221,8 @@ def coupled_sweep(bands, freqs, F, w_s, zeta, S, R, kappa2, eta_air=0.0, rho=RHO
     (e.g. the two mouths of a port); S, R, Bf and F then have n_y = n_modes + n_extra columns.
     Without a cavity, pass S of shape (n_y, 0), R = 0 and an empty kappa2.
     """
+    if log is None:                                   # progress messages: logger "loudpy"
+        from loudpy._log import info as log
     n_x = 0 if H_extra is None else H_extra(1.0).shape[0]
     q_all = np.zeros((len(freqs), len(w_s) + n_x), complex)
     coefs, iters = [None] * len(freqs), np.zeros(len(freqs), int)

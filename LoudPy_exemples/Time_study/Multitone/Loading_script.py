@@ -1,59 +1,54 @@
 """
 Loading_script.py — the multitone time simulation (Running_script.py first).
 
-What this produces (in Results/Figures/)
------------------------------------------
-  - uva_time.pdf       : axial displacement, velocity, acceleration vs time at a probe
-  - uva_fft.pdf        : their spectra over the steady-state block (after the ramp)
-  - field_t<t>s.pdf    : |u| at the end of the ramp
-  - field_membrane.pdf : the same on the membrane only
-  - animation.mp4      : the deforming structure over the steady-state block
+What this produces
+------------------
+Results/Figures/
+  - uva_time.pdf        : axial displacement, velocity, acceleration at the cone tip over time
+  - uva_spectrum.pdf    : their spectra over the steady-state block (after the ramp), tones marked
+  - field_t<t>s.pdf     : |u| on the deformed structure (true proportions) at the end of the ramp
+  - field_membrane.pdf  : the same on the membrane
+  - animation.mp4       : the moving structure over the steady-state block
+Results/Files/
+  - tip.csv             : u_z, v_z, a_z at the cone tip over time
 """
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
 
 import loudpy as lp
-from loudpy.Plotter import plot_uva_time, plot_uva_fft, animate_field
 
-lp.plot.style.use()                       # loudpy figure style (fonts, colours, SPL in dB RMS)
-
-# ── Paths ──────────────────────────────────────────────────────────────────────
-in_path = "LoudPy_exemples/Time_study/Multitone/Results/Files/time.h5"
-out_dir = Path("LoudPy_exemples/Time_study/Multitone/Results/Figures")
-out_dir.mkdir(parents=True, exist_ok=True)
-
-res = lp.load(in_path)
+here = Path("LoudPy_exemples/Time_study/Multitone/Results")
+res = lp.load(here / "Files/time.h5")
 print(res)
-t_ramp = res.meta.get("t_ramp")                  # end of the ramp: steady state after it
-freqs_tones = np.asarray(res.meta.get("freqs_tones", []), float)
+t_ramp = res.meta.get("t_ramp")                          # steady state after the ramp
+tones = np.asarray(res.meta.get("freqs_tones", []), float)
+tip = (0.0, 0.0)
+u, v, a = res.displacement(tip, "z"), res.velocity(tip, "z"), res.acceleration(tip, "z")
+np.savetxt(here / "Files/tip.csv", np.column_stack([res.times, u, v, a]), delimiter=",",
+           header="t [s],u_z [m],v_z [m/s],a_z [m/s²]")
 
-# ── Axial response at a probe (cone tip) ───────────────────────────────────────
-probe = (0.0, 0.0)
-t = res.times
-u, v, a = (np.real(res.probe(probe, name)[:, 1]) for name in ("u", "v", "a"))
+fig, ax = lp.plot.figure("tall", 3, 1, sharex=True)
+for axi, d in zip(ax, (u, v, a)):
+    d.plot(ax=axi)
+    if t_ramp is not None:
+        axi.axvline(t_ramp, color="0.5", lw=0.6, ls="--")
+    axi.set_xlabel("")
+ax[-1].set_xlabel(lp.plot.style.LABELS["t"])
+lp.plot.save(fig, here / "Figures/uva_time.pdf")
 
-fig = plot_uva_time(t, u, v, a, title="Cone tip — time response", t_ramp=t_ramp)
-lp.plot.style.tidy(fig).savefig(out_dir / "uva_time.pdf", bbox_inches="tight")
+fig, ax = lp.plot.figure("tall", 3, 1, sharex=True)
+for axi, d in zip(ax, (u, v, a)):
+    d.spectrum(start=t_ramp, window=None if len(tones) else "hann").db().plot(ax=axi, logx=False)
+    for f in tones:
+        axi.axvline(f, color="0.6", lw=0.5, ls=":")
+    axi.set_xlim(0, 3 * tones.max() if len(tones) else None)
+    axi.set_xlabel("")
+ax[-1].set_xlabel(lp.plot.style.LABELS["f"])
+lp.plot.save(fig, here / "Figures/uva_spectrum.pdf")
 
-# FFT over the steady-state block only, the tone frequencies marked
-spectra = plot_uva_fft(t, u, v, a, t_start=t_ramp, excitation_freqs=freqs_tones, title="Cone tip — FFT")
-spectra.fig.savefig(out_dir / "uva_fft.pdf", bbox_inches="tight")
-
-# ── |u| at the end of the ramp, whole structure and membrane ──────────────────
-view = res.field("u", t=t_ramp if t_ramp is not None else t[-1])
-ax = lp.plot.field(view, title=f"|u| at t = {view.coordinate:.4f} s")
-lp.plot.style.tidy(ax.figure).savefig(out_dir / f"field_t{view.coordinate:.3f}s.pdf", bbox_inches="tight")
-ax = lp.plot.field(view.restrict("membranne"), title=f"Membrane |u| at t = {view.coordinate:.4f} s")
-lp.plot.style.tidy(ax.figure).savefig(out_dir / "field_membrane.pdf", bbox_inches="tight")
-
-# ── Animation (pyvista + imageio) ──────────────────────────────────────────────
-# scale_factor 1 = true proportions (the large-signal motion is already visible);
-# starting at t_ramp animates the steady-state response only.
-mesh = res.mesh("solid")
-animate_field(mesh.coords, mesh.triangles(), U_xy=np.real(res.blocks[0].fields["u"]), time=t,
-              scale_factor=1, start_time=t_ramp or 0.0, fps=30, target_duration=10.0,
-              save_path=out_dir / "animation.mp4")
-
-plt.show()
+view = res.field("u", t=t_ramp if t_ramp is not None else res.times[-1])
+lp.plot.save(view.plot(deformed=True, factor=1.0).figure, here / f"Figures/field_t{view.coordinate:.3f}s.pdf")
+lp.plot.save(view.restrict("membranne").plot(deformed=True, factor=1.0).figure, here / "Figures/field_membrane.pdf")
+lp.plot.animate(res, here / "Figures/animation.mp4", start=t_ramp, factor=1.0, duration=10.0)
+print(f"✓ figures → {here / 'Figures'}")

@@ -13,6 +13,7 @@ Eigenvalue solvers on assembled matrices (no physics, no files).
 """
 from __future__ import annotations
 
+import logging
 import warnings
 
 import numpy as np
@@ -20,6 +21,8 @@ import scipy.sparse as sp
 from scipy.sparse.linalg import ArpackNoConvergence, LinearOperator, eigs
 
 from loudpy.solvers.linear import QEPShiftInvert, factorize
+
+log = logging.getLogger("loudpy.solvers")
 
 
 def has_imaginary_part(A: sp.spmatrix) -> bool:
@@ -112,9 +115,9 @@ def mac_deduplicate(s_vals: np.ndarray, phi: np.ndarray,
  
     Parameters
     ----------
-    s_vals : (n,) complex
+    s_vals : complex array, shape (n_modes,)
         Complex eigenvalues s = -ζω ± jω√(1-ζ²).
-    phi : (ndof, n) complex
+    phi : complex array, shape (n_dof, n_modes)
         Associated mode shapes (as columns).
     freq_tol_rad : float
         Tolerance in rad/s for considering two modes "close".
@@ -138,7 +141,7 @@ def mac_deduplicate(s_vals: np.ndarray, phi: np.ndarray,
             keep.append(i)
  
     idx = np.array(keep, dtype=int)
-    print(f"  Dedup | {len(s_vals)} candidates → {len(idx)} after MAC dedup")
+    log.debug(f"  Dedup | {len(s_vals)} candidates → {len(idx)} after MAC dedup")
     return s_vals[idx], phi[:, idx]
 
 def solve_gep(K, M, n_modes, f_target, hysteretic):
@@ -149,7 +152,7 @@ def solve_gep(K, M, n_modes, f_target, hysteretic):
     #             axis, so the same shift finds the modes nearest to f_target.
     #             K − σM stays non-singular because the λ_k are off the real axis.
     sigma = complex(omega_t**2) if hysteretic else float(omega_t**2)
-    print(f"  GEP | {'complex' if hysteretic else 'real'} K | σ = {sigma:.4e}")
+    log.debug(f"  GEP | {'complex' if hysteretic else 'real'} K | σ = {sigma:.4e}")
 
     op    = shift_invert_operator(K - sigma * M, lambda x: M @ x, K.shape[0])
     k_req = min(n_modes, K.shape[0] - 2)
@@ -163,7 +166,7 @@ def solve_gep(K, M, n_modes, f_target, hysteretic):
 def solve_qep(K, M, C, n_modes, f_target):
     n     = K.shape[0]
     sigma = 1j * 2.0 * np.pi * f_target
-    print(f"  QEP | σ = {sigma:.4e}")
+    log.debug(f"  QEP | σ = {sigma:.4e}")
 
     # (A − σB)⁻¹B from an LU of Q(σ) = K + σC + σ²M (n×n) — see fast_linalg.QEPShiftInvert
     S     = QEPShiftInvert(K, M, C, sigma)
@@ -221,7 +224,7 @@ def filter_modes(s_vals, phi, f_min, f_max, filter_halfplane,
             loss_factors = 2.0 * zeta
             n_kept = int(np.sum(np.logical_and(mask, real_kept)))
             if n_kept:
-                print(f"  Filter | {n_kept} real (overdamped) mode(s) kept, "
+                log.info(f"  Filter | {n_kept} real (overdamped) mode(s) kept, "
                       f"counted once in the modal sum")
 
         n_real = int(np.sum(mask & near_real & np.logical_not(real_kept)))
@@ -243,7 +246,7 @@ def filter_modes(s_vals, phi, f_min, f_max, filter_halfplane,
             )
 
         lower_half = np.imag(s_vals) < -noise
-        print(f"  Filter | {s_vals.size} eigenvalues: "
+        log.info(f"  Filter | {s_vals.size} eigenvalues: "
               f"{int(np.sum(lower_half))} lower half-plane, "
               f"{int(np.sum(near_real))} near-real "
               f"({n_real} dropped in band), "
@@ -274,7 +277,7 @@ def multishift(K, M, C, f_targets, n_modes_per_shift,
     return the concatenated RAW eigenpairs (s_vals, phi) — no dedup,
     no filtering.
     """
-    print(f"\n  Multi-shift | {len(f_targets)} shifts: "
+    log.info(f"\n  Multi-shift | {len(f_targets)} shifts: "
           f"{[f'{f:.0f}' for f in f_targets]} Hz")
 
     s_all, phi_all = [], []
@@ -286,9 +289,9 @@ def multishift(K, M, C, f_targets, n_modes_per_shift,
                 s_v, phi_v = solve_gep(K, M, n_modes_per_shift, ft, hysteretic)
             s_all.append(s_v)
             phi_all.append(phi_v)
-            print(f"    shift {ft:7.1f} Hz → {len(s_v)} raw eigenvalues")
+            log.debug(f"    shift {ft:7.1f} Hz → {len(s_v)} raw eigenvalues")
         except Exception as e:
-            print(f"    shift {ft:7.1f} Hz → FAILED ({type(e).__name__}: {e})")
+            log.info(f"    shift {ft:7.1f} Hz → FAILED ({type(e).__name__}: {e})")
 
     if not s_all:
         raise RuntimeError("All shifts failed — no modes collected.")
@@ -354,10 +357,10 @@ def covering(K, M, C, f_min, f_max, n_modes_per_shift,
     for c_av, r_av in (avoid or []):
         hit = np.abs(grid - c_av) <= r_av
         covered |= hit
-        print(f"  Covering | skipping the overdamped pile at s/2π = {c_av.real/(2*np.pi):.0f} Hz "
+        log.info(f"  Covering | skipping the overdamped pile at s/2π = {c_av.real/(2*np.pi):.0f} Hz "
               f"(disc of {r_av/(2*np.pi):.0f} Hz, {hit.mean():.1%} of the region)")
 
-    print(f"\n  Covering | f = {f_min:g}–{f_max:g} Hz, ζ ≤ {zeta_cover:g}, "
+    log.info(f"\n  Covering | f = {f_min:g}–{f_max:g} Hz, ζ ≤ {zeta_cover:g}, "
           f"{n_modes_per_shift} modes/shift, overlap {overlap:g}, "
           f"max {max_shifts} shifts")
 
@@ -375,12 +378,12 @@ def covering(K, M, C, f_min, f_max, n_modes_per_shift,
                 s_v, phi_v, k_used, tau = solve_qep_at(
                     K, M, C, n_modes_per_shift, sigma, seed=attempt, piles=near_piles)
                 if k_used < k_full:
-                    print(f"    σ/2π = {sigma/(2*np.pi):.1f} Hz: slow convergence, "
+                    log.info(f"    σ/2π = {sigma/(2*np.pi):.1f} Hz: slow convergence, "
                           f"solved with {k_used // 2} modes instead of "
                           f"{n_modes_per_shift} (smaller disc, still complete)")
                 break
             except Exception as e:
-                print(f"    σ/2π = {sigma/(2*np.pi):.1f} Hz failed "
+                log.info(f"    σ/2π = {sigma/(2*np.pi):.1f} Hz failed "
                       f"({type(e).__name__}), moving the shift")
                 sigma = sigma * (1.03 * np.exp(-0.03j))  # slightly higher |σ|, less damped
         if s_v is None:
@@ -414,7 +417,7 @@ def covering(K, M, C, f_min, f_max, n_modes_per_shift,
             if not dup:
                 s_keep.append(si); phi_keep.append(phi_v[:, i])
                 n_new += 1
-        print(f"    shift {len(shifts):3d}: σ/2π = {sigma.imag/(2*np.pi):7.1f} Hz, "
+        log.info(f"    shift {len(shifts):3d}: σ/2π = {sigma.imag/(2*np.pi):7.1f} Hz, "
               f"ζ(σ) = {-sigma.real/abs(sigma):.2f}, radius {r/(2*np.pi):6.1f} Hz → "
               f"{n_new:3d} new ({len(s_keep)} total), "
               f"{covered.mean():6.1%} of the region covered"
@@ -423,9 +426,9 @@ def covering(K, M, C, f_min, f_max, n_modes_per_shift,
             progress_fn(s_keep, phi_keep, shifts)
         if stop_fn is not None:
             stop, msg = stop_fn(s_keep, phi_keep)
-            print(f"             goal check: {msg}")
+            log.info(f"             goal check: {msg}")
             if stop:
-                print(f"  Covering | goal reached after {len(shifts)} shifts, "
+                log.info(f"  Covering | goal reached after {len(shifts)} shifts, "
                       f"{len(s_keep)} distinct eigenvalues "
                       f"({covered.mean():.1%} of the region covered)")
                 return np.array(s_keep), np.column_stack(phi_keep), shifts
@@ -439,7 +442,7 @@ def covering(K, M, C, f_min, f_max, n_modes_per_shift,
             f"ζ up to {(-miss.real/np.abs(miss)).max():.2f}). "
             f"Raise max_shifts or n_modes_per_shift.", stacklevel=2)
     else:
-        print(f"  Covering | complete with {len(shifts)} shifts, "
+        log.info(f"  Covering | complete with {len(shifts)} shifts, "
               f"{len(s_keep)} distinct eigenvalues")
     return np.array(s_keep), np.column_stack(phi_keep), shifts
 
@@ -508,23 +511,24 @@ def normalise_symmetric(phi, s_vals, Ms, Cs):
     return out
 
 def print_acoustic_summary(frequencies):
-    print(f"\n  Acoustic modes (Undamped):")
-    print(f"  {'#':>4}  {'f [Hz]':>12}")
-    print("  " + "─" * 20)
+    """The acoustic modes found: count at INFO, table at DEBUG."""
+    log.debug("  %4s  %12s\n  %s", "#", "f [Hz]", "─" * 20)
     for i, f in enumerate(frequencies, 1):
-        print(f"  {i:4d}  {f:12.4f}")
-    print(f"\n  {len(frequencies)} modes found.")
+        log.debug("  %4d  %12.4f", i, f)
+    log.info("  %d acoustic modes (undamped)", len(frequencies))
+
 
 def print_mode_summary(frequencies, zeta, loss_factors, hysteretic, viscous):
-    kind = ("viscous-damped"        if viscous
-            else "hysteretic"       if hysteretic
-            else "undamped")
-    print(f"\n  Structural modes ({kind}):")
-    print(f"  {'#':>4}  {'f [Hz]':>12}  {'ζ':>10}  {'η = 2ζ':>10}")
-    print("  " + "─" * 44)
+    """The structural modes found: count and frequency range at INFO, table at DEBUG."""
+    kind = "viscous-damped" if viscous else "hysteretic" if hysteretic else "undamped"
+    log.debug("  %4s  %12s  %10s  %10s\n  %s", "#", "f [Hz]", "ζ", "η = 2ζ", "─" * 44)
     for i, (f, z, eta) in enumerate(zip(frequencies, zeta, loss_factors), 1):
-        print(f"  {i:4d}  {f:12.4f}  {z:10.4f}  {eta:10.4f}")
-    print(f"\n  {len(frequencies)} modes found.")
+        log.debug("  %4d  %12.4f  %10.4f  %10.4f", i, f, z, eta)
+    if len(frequencies):
+        log.info("  %d %s modes, %.1f–%.1f Hz", len(frequencies), kind, min(frequencies), max(frequencies))
+    else:
+        log.info("  no %s mode in the band", kind)
+
 
 def normalise_modes(phi, s_vals, M, C, hysteretic, viscous):
     """

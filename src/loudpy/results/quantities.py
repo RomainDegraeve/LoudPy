@@ -49,8 +49,7 @@ class Quantity:
         if which == "phase_deg":
             return Quantity(f"phase {self.name}", f"Phase of {self.label.lower()}", rf"\arg\,{s}", "°", "phase")
         if which == "db":
-            return Quantity(f"{self.name} dB", f"{self.label} level", rf"20\log_{{10}}|{s}|",
-                            f"dB re 1 {self.unit}".strip(), "level")
+            return Quantity(f"{self.name} dB", "Level", rf"20\log_{{10}}|{s}|", f"dB re 1 {self.unit}".strip(), "level")
         raise ValueError(f"unknown part {which!r}")
 
     def relative(self) -> "Quantity":

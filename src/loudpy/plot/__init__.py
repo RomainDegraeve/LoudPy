@@ -15,8 +15,10 @@ here draw them, compose figures and add a few composite plots:
     lp.plot.directivity(res, f=[500, 2000], radius=0.3)  polar SPL (2D or 3D results)
     lp.plot.modes(modes.order(0))                        grid of mode shapes
     lp.plot.coupled_modes(modes.set("fsi"), [0, 3, 7])   coupled modes: air pressure + structure
+    lp.plot.mode_chart(modes, y="zeta" | "order")        modes as points: f against ζ or the order m
     lp.plot.boundary(field, res.boundary(name))          deformed boundary profile
     lp.plot.View3D(…)                                    3D scenes (pyvista) in matplotlib axes
+    lp.plot.scene_view(res, f, cameras, cut=…)           cut-away views of a 3D scene result (SPL + drivers)
     lp.plot.animate(trans, "u.mp4")                      animations
     lp.plot.save(fig, "Results/Figures/x.pdf")           folders created, safe on synced folders
 
@@ -30,7 +32,8 @@ import numpy as np
 from loudpy.plot import style
 from loudpy.plot.animate import animate
 from loudpy.plot.curves import data, line, map, polar
-from loudpy.plot.fields import boundary, coupled_modes, field, modes
+from loudpy.plot.fields import boundary, coupled_modes, field, mode_chart, modes
+from loudpy.plot.scene3d import Camera, scene_view
 from loudpy.plot.view3d import View3D
 
 style.use()
@@ -59,4 +62,4 @@ def directivity(res, f, radius: float, angles=None, center=None, axis="z", towar
 
 
 __all__ = ["style", "figure", "save", "pdf_pages", "label_panels", "data", "line", "map", "polar", "field",
-           "boundary", "modes", "coupled_modes", "directivity", "View3D", "animate"]
+           "boundary", "modes", "coupled_modes", "mode_chart", "directivity", "View3D", "Camera", "scene_view", "animate"]
