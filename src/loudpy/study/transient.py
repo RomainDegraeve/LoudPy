@@ -32,6 +32,16 @@ class Transient(Study):
                                       "small amplitudes it gives the linear response")
         self.drive, self.rho_inf, self.nr_tol, self.nr_max_iter = drive, rho_inf, nr_tol, nr_max_iter
 
+    def _check_damping(self):
+        """Hysteretic damping (a loss factor, complex stiffness) has no time-domain form: refuse it rather
+        than run the region undamped."""
+        from loudpy.model.damping import Hysteretic
+        hyst = [r.name for r in self.model.regions if isinstance(getattr(r, "damping", None), Hysteretic)]
+        if hyst:
+            raise ModelError(f"Transient: {', '.join(map(repr, hyst))} use hysteretic damping (a loss factor), which "
+                             f"exists only in frequency-domain studies; use lp.Rayleigh() (the material's fit) or "
+                             f"lp.Rayleigh.from_loss_factor(eta) for a transient study")
+
     def solve(self, n_steps: int | None = None, duration: float | None = None) -> TimeResults:
         from loudpy.fem.elements.tri6_axi import compute_unit_force_T6
         from loudpy.physics.structural import MecaAssemblerNL
@@ -44,6 +54,7 @@ class Transient(Study):
         n_steps = len(sig) - 1 if n_steps is None else int(n_steps)
         if n_steps > len(sig) - 1:
             raise ModelError(f"the signal has {len(sig)} samples: at most {len(sig) - 1} steps")
+        self._check_damping()
         parts = self._parts()
         coils = select(parts, "coil")
         if not coils:

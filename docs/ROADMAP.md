@@ -16,8 +16,9 @@ of the examples at the end; COMSOL comparison harness now, reference results lat
 After phase C (user, 2026-11-20): **compact model items + a COMSOL-like tree** (keep `lp.Solid` / `lp.Air` …
 bundling domain, physics, material, damping; add the tree view, mesh controls by selection, study steps,
 derived values, the model description saved with the results); **parameters and sweeps in phase F**;
-**phase D next** (API phases after it, on the new core); the coupled 2D examples are **re-run before
-phase M** (phase R); Rubber and PhenolicCloth damping refitted (done).
+**phase D next** (API phases after it, on the new core); the coupled 2D examples are re-run in phase M
+only (an earlier re-run, "phase R", was considered and dropped); Rubber and PhenolicCloth damping
+refitted (done).
 
 Cost unit: one *session* ≈ one long working block (3–5 h). Status: ✅ done · ◐ in progress · ○ to do.
 
@@ -26,7 +27,6 @@ Cost unit: one *session* ≈ one long working block (3–5 h). Status: ✅ done 
 | A | Foundations: no import side effects, OpenMP, exceptions, SI checks, packaging, CI, verification tests | 1 | ✅ |
 | B | Materials and air: library v2 (units, temperature, provenance), damping separate, air from (T, p, RH), one air for 2D and 3D | 1 | ✅ |
 | C | Selections and geometry: selection objects, three geometry sources, nothing read from names, PML by selection, driver profiles from selections | 3 | ✅ |
-| R | Re-run of the coupled 2D examples (FSI, FSI_elec, FSI_DtN) with the coupling fix and the damping refits; compare with the stored results; list of the user's own results to recompute | 0.5 + ~2 h compute | ○ |
 | D | Own generic FE core: Lagrange P1–P3 on lines / triangles / quads / tetrahedra, quadrature, spaces, generic kernels and assembly, curved (isoparametric) elements; old kernels removed | 5 | ○ |
 | E | Physics interfaces and couplings: one contribution protocol, generic system builder, electrical circuit as physics, 3D on the same protocol (the sign convention was fixed in C) | 4 | ○ |
 | F | One model for 2D and 3D: `lp.Model(dim=…)`, COMSOL-like tree (print, `check()`, mesh controls by selection, study steps), parameters and parametric sweeps, selectors and geometry sources in 3D scenes, typed mesh and solver settings, one remeshing rule, immutable model during solves, deterministic meshing by default, examples rewritten | 4 | ○ |
@@ -36,7 +36,7 @@ Cost unit: one *session* ≈ one long working block (3–5 h). Status: ✅ done 
 | J | Plotting: scoped style everywhere, selections in 3D views, interactive HTML viewer, image-comparison tests | 1.5 | ○ |
 | K | Verification and validation pipeline: manufactured solutions, analytical benchmarks, COMSOL harness, generated verification report | 3 (spread) | ◐ |
 | L | Code quality and documentation: no private cross-imports, 100 % public docstrings, mypy, theory and verification manuals | 2 | ○ |
-| M | Full re-run of every example, comparison table, version 0.2.0 | 2 + ~6 h compute | ○ |
+| M | Full re-run of every example (incl. the coupled 2D ones, whose stored results predate the C1 coupling fix and the damping refits), comparison table, version 0.2.0 | 2 + ~6 h compute | ○ |
 
 Gates (each phase is committed and pushed only when its gate passes):
 
@@ -45,8 +45,6 @@ Gates (each phase is committed and pushed only when its gate passes):
 - **B** 2D and 3D use identical air; 3D references regenerated on purpose, change documented.
 - **C** existing models give the same parts and PML layers; P2 regressions unchanged except the coupled
   ones, which change by the coupling fix below, checked by physical invariants (energy balance, swept volume).
-- **R** every coupled 2D example re-run; differences to the stored results explained (coupling fix,
-  damping refit); the figures regenerated.
 - **D** patch tests; exact integration; manufactured-solution orders ≈ p + 1 for P1 / P2 / P3 and Q1 / Q2;
   old operators reproduced at 1e-12 (same machine, former code in a git worktree; the committed
   references at their tolerances); assembly not slower than the former kernels by more than 1.5×.
@@ -284,9 +282,10 @@ The plan holds; adjustments, decided with the user:
   values taken from parameters, `lp.Sweep(study, …)` with results stacked over the parameter.
 - **Order.** D stays next: E's contribution protocol and F's model are designed on the generic spaces
   (orders, quads, 3D), so nothing is written twice.
-- **Phase R** (new, before M; can run while D starts): re-run the coupled 2D examples, compare with the
-  stored results (computed before the coupling fix of C1 and the damping refits), explain, regenerate
-  the figures. The user's own coupled results computed with loudpy before `a5800cd` are affected too.
+- **Coupled examples.** Their stored results (FSI, FSI_elec, FSI_DtN) predate the coupling fix of C1 and
+  the damping refits. A separate early re-run ("phase R") was considered and dropped by the user: phases
+  D–L change the numerics again, so phase M recomputes them once, with the final code. The user's own
+  coupled results computed before `a5800cd` are affected as well (sizes in the C1 notes).
 - **Phase D, lessons of C**: the mesh data model and the 2D mesher know TRI6 / LINE3 (and TET10) only —
   D generalizes `geometry.mesh.CELL_TYPES`, `MeshManager.extract_mesh_data` (element types per order,
   quads via recombination) and the selectors' edge extraction (`selectors._tri_edges`: quads, P3 edges);
@@ -312,3 +311,6 @@ The plan holds; adjustments, decided with the user:
   the peak pressure, 1500 Hz 7.5 %, voltage drive 4 %), transient 3 %, the DtN system's Cs, and the 3D
   tests built on the driver modes (box and two drivers 70 %: lightly damped resonances; open scenes
   0.4–0.5 %). 134 tests pass with `--slow`.
+- Found while answering "Rayleigh or hysteretic?": `lp.Transient` silently ran hysteretic regions undamped
+  (the nonlinear time integration only uses α, β). It now refuses hysteretic damping with an error
+  pointing to `lp.Rayleigh` (test in `test_drive_checks`). Modes and frequency responses accept both.

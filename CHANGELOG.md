@@ -104,6 +104,8 @@ The roadmap of this work is in `docs/ROADMAP.md`.
   damped everywhere). Now the fits of η at 100 Hz and 1 kHz like the other materials: Rubber (85.6798,
   2.1703e-5), PhenolicCloth (39.9839, 1.0128e-5). Damped results of models using `lp.Rayleigh()` on them
   change (speaker: lower modal damping where the spider works).
+- `lp.Transient` ignored hysteretic damping (`lp.Hysteretic`, a loss factor that has no time-domain form):
+  those regions ran undamped without a warning. It now raises an error pointing to `lp.Rayleigh`.
 - `MultiDriver.surface` called a function that had moved (removed; use `DriverResponse.surface`).
 
 ### Removed

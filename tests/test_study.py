@@ -48,6 +48,11 @@ def test_drive_checks(mesh_dir):
         lp.Transient(model, drive=lp.Force(1.0))
     with pytest.raises(RuntimeError, match="mesh the model"):
         lp.Modes(api.speaker_model()).solve(f_max=1000)
+    hyst = api.speaker_model()                     # a loss factor has no time-domain form: refused, not ignored
+    hyst["surround"].damping = lp.Hysteretic()
+    hyst.mesh(mesh_dir / "speaker_0.001_meca.msh")
+    with pytest.raises(ValueError, match="'surround' use hysteretic damping.*lp.Rayleigh"):
+        lp.Transient(hyst, drive=lp.Force(np.zeros(5), fs=48000.0)).solve()
 
 
 def test_modes_arpack_method(mesh_dir):

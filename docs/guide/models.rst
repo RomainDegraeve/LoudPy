@@ -181,8 +181,9 @@ Libraries of the earlier flat format (``"type"``, ``"eta"``, ``"alpha_ray"``, ``
 still read; ``MaterialLibrary.save`` writes the current format.
 
 **Damping is not a material constant.** It is chosen on the region:
-:class:`lp.Rayleigh <loudpy.Rayleigh>` (default; ``C = αM + βK``),
-:class:`lp.Hysteretic <loudpy.Hysteretic>` (complex stiffness ``K(1 + iη)``) or
+:class:`lp.Rayleigh <loudpy.Rayleigh>` (default; ``C = αM + βK``, viscous: every study),
+:class:`lp.Hysteretic <loudpy.Hysteretic>` (complex stiffness ``K(1 + iη)``, a constant loss factor:
+modes and frequency responses only; a transient study refuses it) or
 :class:`lp.Undamped <loudpy.Undamped>`. A coefficient that is not given comes from the
 material's *default damping fit* (``Material.rayleigh = (α [1/s], β [s])``,
 ``Material.loss_factor = η``). ``lp.Rayleigh.from_loss_factor(η, band=(f1, f2))`` gives the α, β
