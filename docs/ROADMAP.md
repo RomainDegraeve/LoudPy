@@ -725,7 +725,7 @@ phase M's mesh choices.
   `wall_mode(n)`, `wall_volume_velocity()`, `driver_volume_velocity()` (saved with the file: attachment "walls",
   cavity "volume_disp"). Checks: modal walls vs the direct shell–air system (one 6 mm MDF wall, uniform pressure
   load, 60–700 Hz, cavity modes to 6 kHz): wall modes to 1.5 / 3 / 6 kHz give the wall displacement to 3.9 % /
-  1.25 % / 1.1e-4 and the cavity pressure to 3.5 % / 0.42 % / 7e-4 (cavity modes to 1.5 / 3 kHz with walls to 6
+  1.25 % / 1.1e-4 and the cavity pressure to 3.5 % / 0.42 % / 7e-4 (2.9e-3 on the Linux CI, whose gmsh meshes the box differently; bound 5e-3) (cavity modes to 1.5 / 3 kHz with walls to 6
   kHz: pressure 3.3 % / 0.48 %); a point force converges much more slowly (4.5 % with 18 wall modes: the local
   static deflection, no residual flexibility of the walls — noted). Committed box (18 mm MDF): wall modes from
   1422 Hz, the driver's excursion within 0.16 % of the rigid box over the test frequencies, file round trip; the
