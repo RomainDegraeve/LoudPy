@@ -28,7 +28,7 @@ Cost unit: one *session* ≈ one long working block (3–5 h). Status: ✅ done 
 | B | Materials and air: library v2 (units, temperature, provenance), damping separate, air from (T, p, RH), one air for 2D and 3D | 1 | ✅ |
 | C | Selections and geometry: selection objects, three geometry sources, nothing read from names, PML by selection, driver profiles from selections | 3 | ✅ |
 | D | Own generic FE core: Lagrange P1–P3 on lines / triangles / quads / tetrahedra, quadrature, spaces, generic kernels and assembly, curved (isoparametric) elements; old kernels removed | 5 | ✅ |
-| E | Physics interfaces and couplings: one contribution protocol, generic system builder, electrical circuit as physics, 3D on the same protocol (the sign convention was fixed in C) | 4 | ○ |
+| E | Physics interfaces and couplings: one contribution protocol, generic system builder, electrical circuit as physics, 3D on the same protocol (the sign convention was fixed in C) | 4 | ◐ |
 | F | One model for 2D and 3D: `lp.Model(dim=…)`, COMSOL-like tree (print, `check()`, mesh controls by selection, study steps), parameters and parametric sweeps, selectors and geometry sources in 3D scenes, typed mesh and solver settings, one remeshing rule, immutable model during solves, deterministic meshing by default, examples rewritten | 4 | ○ |
 | G | Results format 3: one results family, self-contained files (with the model description and parameters), public arrays, derived fields (stress, strain, velocity, intensity) and values (power, volume velocity, impedance, SPL, Thiele–Small parameters), interpolation in tetrahedra, ParaView series | 3 | ○ |
 | H | Error estimation and adaptivity: recovery and residual indicators, `lp.Adaptive`, `lp.convergence` | 3 | ○ |
@@ -420,3 +420,6 @@ The plan holds; adjustments, decided with the user:
 
 Beyond the gate: curved 3D cells (hemisphere 1.8 % → 0.011 %); every element order through the model
 (plate: P2 and P3 within 0.1 %, P1 locks as expected).
+
+**Gate D accepted by the user (2026-11-20)**, the 1.2e-11 included: the nearly inverted spider cell was
+judged negligible (estimated effect ≲ 0.1 % on spider-dominated modes, ≲ 0.01 % elsewhere; not measured).
