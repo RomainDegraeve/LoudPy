@@ -175,6 +175,7 @@ def test_mesh_cells_of_every_order(n_nodes):
     for refine in (False, True):
         tri = mesh.triangles(refine=refine)
         P = mesh.coords[tri]
-        area = 0.5 * np.abs(np.cross(P[:, 1] - P[:, 0], P[:, 2] - P[:, 0])).sum()
+        u, v = P[:, 1] - P[:, 0], P[:, 2] - P[:, 0]
+        area = 0.5 * np.abs(u[:, 0] * v[:, 1] - u[:, 1] * v[:, 0]).sum()
         np.testing.assert_allclose(area, elem.cell.measure, rtol=1e-12)
     assert len(np.unique(mesh.triangles(refine=True))) == n_nodes
