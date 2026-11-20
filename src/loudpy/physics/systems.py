@@ -107,10 +107,10 @@ def dtn_system(s: System, parts, center, f_max: float, half: bool = True, n_max:
     """
     from loudpy.physics.radiation import dtn_boundary_vectors, dtn_orders, reverse_bessel_roots
     from loudpy.solvers.eigen import to_csc_complex
-    K, M, R, Cam, H, Q, rho = s.K, s.M, s.C, s.Cam, s.H, s.Q, s.rho
+    R, rho = s.C, s.rho
     if np.abs(R).sum() < 1e-30:
         R = None
-    nm, na = K.shape[0], H.shape[0]
+    nm, na = s.n_meca, s.n_acou
     c = s.speed_of_sound()
     arcs = select(parts, "radiation")
     if not arcs:
