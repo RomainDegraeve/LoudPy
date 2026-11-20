@@ -37,13 +37,13 @@ def test_format2_roundtrip(tmp_path, name):
     assert back.boundaries.keys() == r.boundaries.keys()
 
 
-def test_format2_has_no_class_names(tmp_path):
-    """Format 2 names the physics by role, not by the Python class of the physics objects."""
+def test_format_has_no_class_names(tmp_path):
+    """The result format (3) names the physics by role, not by the Python class of the physics objects."""
     path = lp.load(_legacy("freq_meca.h5")).save(tmp_path / "v2.h5")
     keys = []
     with h5py.File(path, "r") as f:
         f.visit(keys.append)
-        assert f.attrs["loudpy_format"] == "2.0" and f.attrs["kind"] == "frequency"
+        assert f.attrs["loudpy_format"] == "3.0" and f.attrs["kind"] == "frequency"
     assert any(k.endswith("meshes/solid") for k in keys)
     assert not any("subdomain" in k.lower() for k in keys)
 

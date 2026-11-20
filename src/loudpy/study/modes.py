@@ -81,7 +81,7 @@ class Modes(Study):
             raise ModelError(f"Modes.solve: f_min = {f_min:g} Hz must be below f_max = {f_max:g} Hz")
         if self.is_scene:                       # drivers + cavity modes (scene configuration "cavity")
             from loudpy.study import scene_response
-            self.results = scene_response.coupled_modes(self, f_max=f_max)
+            self.results = self._finish(scene_response.coupled_modes(self, f_max=f_max))
             return self.results
         parts = self._parts()
         if self.physics == "structure":
@@ -99,7 +99,7 @@ class Modes(Study):
         else:
             blocks = [acoustic_modes(parts, n_modes, f_min, f_max, f_target)]
         blocks.sort(key=lambda b: (0, b.meta["order"]) if "order" in b.meta else (1, b.label))
-        self.results = ModeResults(blocks, self._meta(), self.model.boundary_nodes())
+        self.results = self._finish(ModeResults(blocks, self._meta(), self.model.boundary_nodes()))
         return self.results
 
     def _meta(self):

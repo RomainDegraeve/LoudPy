@@ -121,6 +121,8 @@ def test_open_scene_matches_toolkit(driver, mesh_dir, tmp_path, kind, reference)
     scene = _small(kind, driver, mesh_dir)
     freqs = np.array([100.0, 400.0])
     res = lp.FrequencyResponse(scene, drive=lp.Force(1.0)).solve(freqs, store=tmp_path / "s.h5")
+    assert res.model["kind"] == "scene" and res.model.tree                 # format 3: the scene described
+    assert res.study["type"] == "FrequencyResponse"
 
     # the same computation, by hand with the low-level code
     md = multidriver(scene)

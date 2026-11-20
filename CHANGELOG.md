@@ -8,6 +8,10 @@ versions follow [Semantic Versioning](https://semver.org/) (0.x: the API may sti
 The roadmap of this work is in `docs/ROADMAP.md`.
 
 ### Added
+- Result format 3: every result file holds the model description (tree, items, resolved physical data per
+  mesh group, the geometry files or the builder's code) and the study settings (`res.model`, `res.study`,
+  `res.model.extract(folder)`); a parametric sweep is one file (`SweepResults.save("x.h5")`, read by
+  `lp.load`). Formats 2 and 1 are still read.
 
 - One model pattern in 2D and 3D: `lp.Model(cabinet, dim=3, drivers=[…])` builds a scene; scenes have
   `print` / `tree()`, `check()`, `copy()`, parameters (`lp.P` in their settings, `cabinet(occ, p)`),

@@ -101,6 +101,7 @@ def solve(study, freqs, store=None, chunk_hz=50.0, rtol=1e-7, log=None):
     from loudpy.results.results import Block
     from loudpy.results.scene import SceneResults
     from loudpy.results.schema import StreamWriter
+    from loudpy.study.base import finish
     from loudpy.physics.exterior import ExteriorFE, coupled_sweep
     scene = study.model
     if scene.folder is None:
@@ -130,7 +131,7 @@ def solve(study, freqs, store=None, chunk_hz=50.0, rtol=1e-7, log=None):
     if config == "cavity":                                          # A: no FE air
         q, P = cpl.forced(freqs, F)
         block = Block({}, freqs, {}, {"q": q, "P_cavity": P}, {"configuration": config})
-        res = SceneResults([block], meta, {})
+        res = finish(study, SceneResults([block], meta, {}))
         res.attachments = attachments
         if store:
             res.save(store)
@@ -195,9 +196,9 @@ def solve(study, freqs, store=None, chunk_hz=50.0, rtol=1e-7, log=None):
     log(f"  sweep: {len(freqs)} frequencies in {(time.time() - t0) / 60:.1f} min "
         f"(GMRES iterations: mean {iters.mean():.0f}, max {iters.max()})")
     if writer is not None:
-        writer.close(attachments=attachments, meta=meta)
+        writer.close(attachments=attachments, meta=meta, described=finish(study, SceneResults([], meta, {})))
         return load(store)                                            # fields read lazily from the file
-    res = SceneResults(blocks, meta, {})
+    res = finish(study, SceneResults(blocks, meta, {}))
     res.attachments = attachments
     return res
 

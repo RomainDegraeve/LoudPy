@@ -21,45 +21,9 @@ from pathlib import Path
 import numpy as np
 
 from loudpy.errors import ModelError, StateError
+from loudpy.results.sweep import SweepResults
 
 __all__ = ["Sweep", "SweepResults"]
-
-
-class SweepResults:
-    """The results of a sweep: `parameter`, `values` and one results object per value."""
-
-    def __init__(self, parameter: str, values, results: list):
-        self.parameter = parameter
-        self.values = np.asarray(values, float)
-        self.results = list(results)
-
-    def __len__(self):
-        return len(self.results)
-
-    def __getitem__(self, i):
-        return self.results[i]
-
-    def __iter__(self):
-        return iter(self.results)
-
-    def stack(self, fn) -> np.ndarray:
-        """np.stack of fn(results) over the values (fn gives arrays of one shape)."""
-        return np.stack([np.asarray(fn(r)) for r in self.results])
-
-    def save(self, folder, stem: str = "sweep") -> list[Path]:
-        """One result file per value: <folder>/<stem>_<parameter>_<value>.h5."""
-        folder = Path(folder)
-        folder.mkdir(parents=True, exist_ok=True)
-        out = []
-        for v, r in zip(self.values, self.results):
-            path = folder / f"{stem}_{self.parameter}_{v:g}.h5"
-            r.meta.update(sweep_parameter=self.parameter, sweep_value=float(v))
-            r.save(path)
-            out.append(path)
-        return out
-
-    def __repr__(self):
-        return f"SweepResults({self.parameter}: {len(self)} values {self.values.min():g} … {self.values.max():g})"
 
 
 class Sweep:

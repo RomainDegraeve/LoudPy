@@ -1,7 +1,8 @@
 """
 lp.load: read results of any study, any format, one file or many.
 
-    lp.load("sweep.h5")                        one file (format 2, or format 1 of the former studies)
+    lp.load("sweep.h5")                        one file (format 3 or 2, or format 1 of the former studies);
+                                               a parametric sweep file gives a SweepResults
     lp.load("Results/Files")                   every .h5 of a folder (e.g. one file per mesh block)
     lp.load("Results/Files/snap_*.h5")         a glob
     lp.load([path1, path2])                    an explicit list (kept in this order)
@@ -24,7 +25,7 @@ from loudpy.errors import ResultsFormatError
 def _read_one(path):
     with h5py.File(path, "r") as f:
         fmt = str(f.attrs.get("loudpy_format", "1.0"))
-    if fmt.startswith("2"):
+    if fmt.startswith(("2", "3")):
         return schema.read(path)
     return legacy.read(path)
 
@@ -52,6 +53,8 @@ def load(source):
     parts = [_read_one(p) for p in paths]
     if len(parts) == 1:
         return parts[0]
+    if any(getattr(r, "is_sweep", False) for r in parts):
+        raise ResultsFormatError("sweep files are read one at a time (lp.load(path))")
     kinds = {r.kind for r in parts}
     if len(kinds) != 1:
         raise ResultsFormatError(f"cannot merge results of different kinds: {sorted(kinds)}")
@@ -59,4 +62,6 @@ def load(source):
     if sort:
         blocks.sort(key=lambda b: float(b.values[0]) if len(b.values) else 0.0)
     boundaries = {k: v for r in parts for k, v in r.boundaries.items()}
-    return KINDS[kinds.pop()](blocks, parts[0].meta, boundaries, source=[str(p) for p in paths])
+    out = KINDS[kinds.pop()](blocks, parts[0].meta, boundaries, source=[str(p) for p in paths])
+    out.model, out.study = parts[0].model, parts[0].study
+    return out

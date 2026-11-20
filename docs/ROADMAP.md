@@ -30,7 +30,7 @@ Cost unit: one *session* ≈ one long working block (3–5 h). Status: ✅ done 
 | D | Own generic FE core: Lagrange P1–P3 on lines / triangles / quads / tetrahedra, quadrature, spaces, generic kernels and assembly, curved (isoparametric) elements; old kernels removed | 5 | ✅ |
 | E | Physics interfaces and couplings: one contribution protocol, generic system builder, electrical circuit as physics, 3D on the same protocol (the sign convention was fixed in C) | 4 | ✅ |
 | F | One model for 2D and 3D: `lp.Model(dim=…)`, COMSOL-like tree (print, `check()`, mesh controls by selection, study steps), parameters and parametric sweeps, selectors and geometry sources in 3D scenes, typed mesh and solver settings, one remeshing rule, immutable model during solves, deterministic meshing by default, examples rewritten | 4 | ✅ |
-| G | Results format 3: one results family, self-contained files (with the model description and parameters), public arrays, derived fields (stress, strain, velocity, intensity) and values (power, volume velocity, impedance, SPL, Thiele–Small parameters), interpolation in tetrahedra, ParaView series | 3 | ○ |
+| G | Results format 3: one results family, self-contained files (with the model description and parameters), public arrays, derived fields (stress, strain, velocity, intensity) and values (power, volume velocity, impedance, SPL, Thiele–Small parameters), interpolation in tetrahedra, ParaView series | 3 | ◐ |
 | H | Error estimation and adaptivity: recovery and residual indicators, `lp.Adaptive`, `lp.convergence` | 3 | ○ |
 | I | Shells: MITC3/MITC4 Reissner–Mindlin, direct coupling to the 3D air, wall-mode study, elastic-wall enclosure example | 4 | ○ |
 | J | Plotting: scoped style everywhere, selections in 3D views, interactive HTML viewer, image-comparison tests | 1.5 | ○ |
@@ -550,3 +550,21 @@ form raises an error; the 2D frequency study still ignores lp.Radiation, as befo
 Content of F not done, proposed for later (not in the gate): typed mesh / solver settings objects, studies
 as steps (a study list on the model), `lp.plot.selection` (phase J, plotting), the exact DtN radiation in
 a 2D FrequencyResponse (explicit error today).
+
+## Phase G — in progress
+
+- **G1 (done)**: result format 3 (`loudpy_format = "3.0"`). `/model`: the model description
+  (`results/description.py`: loudpy version, geometry name and file digests, parameters, regions with
+  material / damping / mesh size, boundaries, mesh controls, mesh path and signature, the model tree, and
+  per mesh group its resolved physical data — region, role, ρ, E, ν, c, Rayleigh / loss factor, PML layer)
+  plus the geometry files (the .geo and the files it merges, a CAD file) or the builder's code, embedded up
+  to 2 MB; scenes: drivers (frames, modal sources), air, configuration and settings, the cabinet's code.
+  `/study`: the settings (type, drive, options; a transient's drive signal as an array). Every study
+  attaches them (`Study._finish`), including the streamed 3D sweeps (`StreamWriter.close(described=…)`).
+  `res.model` (`.tree`, `.parameters`, `.groups`, `.files`, `.extract(folder)`), `res.study`. Sweeps: one
+  file of kind "sweep" with `/runs/<i>` (`SweepResults` moved to `results/sweep.py`; a folder path keeps
+  the former one-file-per-value layout). Format 2 and 1 still read. Gate item "format-3 round trip":
+  modes, frequency (voltage drive, coupled), transient, sweep (2 values) and the streamed 3D scene saved
+  and read back — fields, meshes, extra, meta and boundaries bit-identical, description and settings
+  equal; the geometry files extracted from a file give the same digests as the originals. 4 tests
+  (`tests/test_results_format3.py`) + format checks in the scene tests; 307 tests pass with `--slow`.

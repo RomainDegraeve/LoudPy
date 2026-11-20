@@ -160,7 +160,7 @@ class FrequencyResponse(Study):
             blocks = [block]
         else:
             blocks, bounds = self._solve_remeshed(freqs, remesh)
-        self.results = FrequencyResults(blocks, meta, bounds)
+        self.results = self._finish(FrequencyResults(blocks, meta, bounds))
         return self.results
 
     def _solve_remeshed(self, freqs, rule: PerWavelength):

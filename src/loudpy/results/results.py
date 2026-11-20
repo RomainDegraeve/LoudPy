@@ -13,7 +13,8 @@ Results: the outcome of any study, with one interface.
     res.probe("p", at=lp.Line((0, .05), (0, .5)))   any field along any selection
     res.scalar("I_coil"), res.impedance()        per-entry quantities as Data
 
-    res.save("sweep.h5")                         loudpy result format 2 (HDF5)
+    res.save("sweep.h5")                         loudpy result format 3 (HDF5, with the model description)
+    res.model, res.study                         what produced them: model tree, groups, geometry files; settings
     res.export("sweep.mat")                      MATLAB / NumPy (.npz) export of every field and mesh
 
 Every Data / Field plots itself (.plot()) and exports (.export("x.csv" | ".mat" | ".npz" | ".vtu"),
@@ -92,6 +93,14 @@ class Results:
         self.boundaries = dict(boundaries or {})     # name → {"node_tags", "edges"}
         self.source = source
         self.attachments: dict = {}                  # name → {array name: array, "meta": {...}}
+        self.model = None                            # the model description (results.description), format 3
+        self.study: dict = {}                        # the study settings, format 3
+
+    def _like(self, blocks) -> "Results":
+        """Results of the same class with other blocks, the same metadata and description."""
+        out = type(self)(blocks, self.meta, self.boundaries, self.source)
+        out.attachments, out.model, out.study = self.attachments, self.model, self.study
+        return out
 
     # ── what is there ──────────────────────────────────────────────────────
     @property
@@ -235,7 +244,8 @@ class Results:
 
     # ── files ──────────────────────────────────────────────────────────────
     def save(self, path):
-        """Write these results in the loudpy result format 2 (loudpy.results.schema)."""
+        """Write these results in the loudpy result format 3 (loudpy.results.schema): fields, meshes, the
+        model description (res.model) and the study settings (res.study)."""
         from loudpy.results.schema import write
         write(self, path)
         return path
@@ -322,13 +332,13 @@ class ModeResults(Results):
         sel = [b for b in self.blocks if int(b.meta.get("order", -1)) == int(m)]
         if not sel:
             raise ResultsError(f"no modes of order m = {m} (orders: {self.orders})")
-        return ModeResults(sel, self.meta, self.boundaries, self.source)
+        return self._like(sel)
 
     def set(self, label: str) -> "ModeResults":
         sel = [b for b in self.blocks if b.label == label]
         if not sel:
             raise ResultsError(f"no mode set {label!r} (sets: {self.sets})")
-        return ModeResults(sel, self.meta, self.boundaries, self.source)
+        return self._like(sel)
 
     def mode(self, k: int, name: str | None = None) -> Field:
         """Shape of mode k (global index; frequency order within each set): "u" (default) or "p"."""

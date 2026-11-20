@@ -98,5 +98,5 @@ class Transient(Study):
                       t_total=float(t[-1]), force_amplitude=1.0, force_direction="_z_" if comp else "_r_")
         block = Block(meshes(System(nl, None, None, None), parts), np.asarray(t), fields, extra, params, "run0")
         meta = {"study": "Transient", "fs": float(self.drive.fs), "geometry": str(self.model.geometry)}
-        self.results = TimeResults([block], meta, self.model.boundary_nodes())
+        self.results = self._finish(TimeResults([block], meta, self.model.boundary_nodes()))
         return self.results

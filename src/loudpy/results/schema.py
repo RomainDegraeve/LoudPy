@@ -1,8 +1,14 @@
 """
-loudpy result format 2 (HDF5). Self-describing, independent of Python class names.
+loudpy result format 3 (HDF5). Self-describing, independent of Python class names, self-contained.
 
-    /                       attrs: loudpy_format = "2.0", kind ("frequency" | "modes" | "time"),
+    /                       attrs: loudpy_format = "3.0", kind ("frequency" | "modes" | "time" | "sweep"),
                                    created, meta (JSON)
+    /model/                 attrs: description (JSON: loudpy version, geometry, parameters, regions with
+                                   their materials and damping, boundaries, mesh controls, mesh, the model
+                                   tree, and "groups": the physical data of every mesh group)
+        files/<i>           the geometry files (uint8; attrs name) or the builder's code
+    /study/                 attrs: settings (JSON: the study type and its settings)
+        arrays/<name>       large settings (e.g. the drive signal of a transient)
     /blocks/<i>/            attrs: label, meta (JSON)
         values              (n,) coordinate of the entries (frequency [Hz] or time [s])
         meshes/<physics>/   physics = "solid" | "air"
@@ -20,7 +26,11 @@ Large datasets (more than LAZY_ELEMENTS values) are read lazily (LazyArray): 3D 
 stay on disk and only the rows / columns asked for are read. StreamWriter writes a result file
 entry by entry (3D sweeps), without holding the fields in memory.
 
-Version 1 files (former ResultStore / StudySaver) are read by loudpy.results.legacy.
+A parametric sweep (kind "sweep", attrs parameter, values) holds one complete result per value in
+/runs/<i>/ (same layout as the root of a single result).
+
+Format 2 (the same without /model and /study) is still read; version 1 files (former ResultStore /
+StudySaver) are read by loudpy.results.legacy.
 """
 from __future__ import annotations
 
@@ -33,7 +43,7 @@ import numpy as np
 
 from loudpy.geometry.mesh import Mesh, MeshGroup
 
-FORMAT = "2.0"
+FORMAT = "3.0"
 LAZY_ELEMENTS = 5_000_000
 
 
@@ -82,6 +92,7 @@ def _write_attachments(f, attachments):
 
 
 def _read_attachments(f, path):
+    """{name: {array name: array, "meta": {...}}} of the group f (the file, or a sweep run)."""
     from loudpy.results.lazy import LazyArray
     out = {}
     for name, ag in f.get("attachments", {}).items():
@@ -96,41 +107,100 @@ def _read_attachments(f, path):
     return out
 
 
+def _write_description(g, results) -> None:
+    """/model and /study of a result (format 3), into the group g (the file, or a sweep run)."""
+    desc = getattr(results, "model", None)
+    if desc is not None:
+        mg = g.create_group("model")
+        mg.attrs["description"] = _json(desc.data)
+        for i, (name, data) in enumerate(desc.files.items()):
+            d = mg.require_group("files").create_dataset(f"{i:03d}", data=np.frombuffer(data, np.uint8))
+            d.attrs["name"] = name
+    study = dict(getattr(results, "study", None) or {})
+    if study:
+        arrays = study.pop("arrays", {})
+        sg = g.create_group("study")
+        sg.attrs["settings"] = _json(study)
+        for name, arr in arrays.items():
+            _dataset(sg.require_group("arrays"), name, np.asarray(arr))
+
+
+def _read_description(g):
+    from loudpy.results.description import ModelDescription
+    model = None
+    if "model" in g:
+        files = {str(d.attrs["name"]): bytes(d[()]) for _, d in sorted(g["model"].get("files", {}).items())}
+        model = ModelDescription(json.loads(g["model"].attrs.get("description", "{}")), files)
+    study = {}
+    if "study" in g:
+        study = json.loads(g["study"].attrs.get("settings", "{}"))
+        if "arrays" in g["study"]:
+            study["arrays"] = {n: d[()] for n, d in g["study"]["arrays"].items()}
+    return model, study
+
+
+def _write_results(g, results) -> None:
+    """One result into the group g (the file root, or /runs/<i> of a sweep)."""
+    g.attrs["kind"] = results.kind
+    g.attrs["meta"] = _json(results.meta)
+    g.attrs["results_class"] = type(results).__name__
+    for i, b in enumerate(results.blocks):
+        bg = g.create_group(f"blocks/{i:04d}")
+        bg.attrs["label"] = b.label
+        bg.attrs["meta"] = _json(b.meta)
+        _dataset(bg, "values", b.values)
+        _write_meshes(bg, b.meshes)
+        bg.create_group("fields").attrs["order"] = list(b.fields)
+        for name, arr in b.fields.items():
+            _dataset(bg["fields"], name, arr)
+        for name, arr in b.extra.items():
+            _dataset(bg.require_group("extra"), name, np.asarray(arr))
+    _write_boundaries(g, results.boundaries)
+    _write_attachments(g, getattr(results, "attachments", None))
+    _write_description(g, results)
+
+
+def _write_meshes(bg, meshes) -> None:
+    bg.create_group("meshes").attrs["order"] = list(meshes)
+    for phys, mesh in meshes.items():
+        mg = bg.create_group(f"meshes/{phys}")
+        _dataset(mg, "node_tags", mesh.node_tags)
+        _dataset(mg, "coords", mesh.coords)
+        mg.create_group("groups").attrs["order"] = list(mesh.groups)
+        for name, grp in mesh.groups.items():
+            d = _dataset(mg["groups"], name, grp.cells)
+            d.attrs["dim"] = grp.dim
+            d.attrs["cell_type"] = grp.cell_type
+
+
+def _write_boundaries(g, boundaries) -> None:
+    for name, bd in (boundaries or {}).items():
+        bg = g.create_group(f"boundaries/{name}")
+        for k in ("node_tags", "edges"):
+            if k in bd and len(bd[k]):
+                _dataset(bg, k, np.asarray(bd[k]))
+
+
+def _head(f, kind) -> None:
+    f.attrs["loudpy_format"] = FORMAT
+    f.attrs["kind"] = kind
+    f.attrs["created"] = datetime.now().isoformat()
+
+
 def write(results, path):
+    """A result file (format 3); a SweepResults gives one file with a run per value."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with h5py.File(path, "w") as f:
-        f.attrs["loudpy_format"] = FORMAT
-        f.attrs["kind"] = results.kind
-        f.attrs["created"] = datetime.now().isoformat()
-        f.attrs["meta"] = _json(results.meta)
-        f.attrs["results_class"] = type(results).__name__
-        for i, b in enumerate(results.blocks):
-            g = f.create_group(f"blocks/{i:04d}")
-            g.attrs["label"] = b.label
-            g.attrs["meta"] = _json(b.meta)
-            _dataset(g, "values", b.values)
-            g.create_group("meshes").attrs["order"] = list(b.meshes)
-            for phys, mesh in b.meshes.items():
-                mg = g.create_group(f"meshes/{phys}")
-                _dataset(mg, "node_tags", mesh.node_tags)
-                _dataset(mg, "coords", mesh.coords)
-                mg.create_group("groups").attrs["order"] = list(mesh.groups)
-                for name, grp in mesh.groups.items():
-                    d = _dataset(mg["groups"], name, grp.cells)
-                    d.attrs["dim"] = grp.dim
-                    d.attrs["cell_type"] = grp.cell_type
-            g.create_group("fields").attrs["order"] = list(b.fields)
-            for name, arr in b.fields.items():
-                _dataset(g["fields"], name, arr)
-            for name, arr in b.extra.items():
-                _dataset(g.require_group("extra"), name, np.asarray(arr))
-        for name, bd in results.boundaries.items():
-            bg = f.create_group(f"boundaries/{name}")
-            for k in ("node_tags", "edges"):
-                if k in bd and len(bd[k]):
-                    _dataset(bg, k, np.asarray(bd[k]))
-        _write_attachments(f, getattr(results, "attachments", None))
+        if getattr(results, "is_sweep", False):
+            _head(f, "sweep")
+            f.attrs["parameter"] = results.parameter
+            f.attrs["values"] = np.asarray(results.values, float)
+            for i, r in enumerate(results.results):
+                _write_results(f.create_group(f"runs/{i:04d}"), r)
+            return
+        _head(f, results.kind)
+        _write_results(f, results)
 
 
 def _ordered(group):
@@ -141,36 +211,45 @@ def _ordered(group):
     return [(n, group[n]) for n in names]
 
 
-def read(path):
+def _read_results(g, path):
     from loudpy.results.lazy import LazyArray
     from loudpy.results.results import Block, result_class
-    with h5py.File(path, "r") as f:
-        kind = str(f.attrs["kind"])
-        blocks = []
-        for key in sorted(f["blocks"]):
-            g = f["blocks"][key]
-            meshes = {}
-            for phys, mg in _ordered(g.get("meshes")):
-                groups = {n: MeshGroup(n, int(d.attrs["dim"]), str(d.attrs["cell_type"]), d[()])
-                          for n, d in _ordered(mg.get("groups"))}
-                meshes[phys] = Mesh(mg["node_tags"][()], mg["coords"][()], groups, str(path))
-            blocks.append(Block(meshes, g["values"][()],
-                                {n: (LazyArray(path, d.name) if d.size > LAZY_ELEMENTS else d[()])
-                                 for n, d in _ordered(g.get("fields"))},
-                                {n: d[()] for n, d in g.get("extra", {}).items()},
-                                json.loads(g.attrs.get("meta", "{}")), str(g.attrs.get("label", ""))))
-        boundaries = {n: {k: bg[k][()] for k in bg} for n, bg in f.get("boundaries", {}).items()}
-        meta = json.loads(f.attrs.get("meta", "{}"))
-        attachments = _read_attachments(f, path)
-        cls = result_class(str(f.attrs.get("results_class", "")), kind)
+    kind = str(g.attrs["kind"])
+    blocks = []
+    for key in sorted(g.get("blocks", {})):
+        bg = g["blocks"][key]
+        meshes = {}
+        for phys, mg in _ordered(bg.get("meshes")):
+            groups = {n: MeshGroup(n, int(d.attrs["dim"]), str(d.attrs["cell_type"]), d[()])
+                      for n, d in _ordered(mg.get("groups"))}
+            meshes[phys] = Mesh(mg["node_tags"][()], mg["coords"][()], groups, str(path))
+        blocks.append(Block(meshes, bg["values"][()],
+                            {n: (LazyArray(path, d.name) if d.size > LAZY_ELEMENTS else d[()])
+                             for n, d in _ordered(bg.get("fields"))},
+                            {n: d[()] for n, d in bg.get("extra", {}).items()},
+                            json.loads(bg.attrs.get("meta", "{}")), str(bg.attrs.get("label", ""))))
+    boundaries = {n: {k: bd[k][()] for k in bd} for n, bd in g.get("boundaries", {}).items()}
+    meta = json.loads(g.attrs.get("meta", "{}"))
+    cls = result_class(str(g.attrs.get("results_class", "")), kind)
     out = cls(blocks, meta, boundaries, source=str(path))
-    out.attachments = attachments
+    out.attachments = _read_attachments(g, path)
+    out.model, out.study = _read_description(g)
     return out
+
+
+def read(path):
+    """A result (or a sweep) from a format-2 or format-3 file."""
+    with h5py.File(path, "r") as f:
+        if str(f.attrs.get("kind", "")) == "sweep":
+            from loudpy.results.sweep import SweepResults
+            runs = [_read_results(f["runs"][k], path) for k in sorted(f.get("runs", {}))]
+            return SweepResults(str(f.attrs["parameter"]), np.asarray(f.attrs["values"]), runs, source=str(path))
+        return _read_results(f, path)
 
 
 class StreamWriter:
     """
-    Write a format-2 result file entry by entry (fields not held in memory):
+    Write a format-3 result file entry by entry (fields not held in memory):
 
         w = StreamWriter(path, "frequency", meta, results_class="SceneResults")
         b = w.block(label, values, meshes, fields={"p": (n_nodes,)}, dtype=np.complex64)
@@ -183,9 +262,7 @@ class StreamWriter:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.f = h5py.File(self.path, "w")
-        self.f.attrs["loudpy_format"] = FORMAT
-        self.f.attrs["kind"] = kind
-        self.f.attrs["created"] = datetime.now().isoformat()
+        _head(self.f, kind)
         self.f.attrs["meta"] = _json(meta or {})
         if results_class:
             self.f.attrs["results_class"] = results_class
@@ -197,15 +274,7 @@ class StreamWriter:
         g.attrs["label"] = label
         g.attrs["meta"] = _json(meta or {})
         _dataset(g, "values", np.asarray(values))
-        g.create_group("meshes").attrs["order"] = list(meshes)
-        for phys, mesh in meshes.items():
-            mg = g.create_group(f"meshes/{phys}")
-            _dataset(mg, "node_tags", mesh.node_tags)
-            _dataset(mg, "coords", mesh.coords)
-            mg.create_group("groups").attrs["order"] = list(mesh.groups)
-            for name, grp in mesh.groups.items():
-                d = _dataset(mg["groups"], name, grp.cells)
-                d.attrs["dim"], d.attrs["cell_type"] = grp.dim, grp.cell_type
+        _write_meshes(g, meshes)
         fg = g.create_group("fields")
         fg.attrs["order"] = list(fields)
         n = len(values)
@@ -227,13 +296,12 @@ class StreamWriter:
         _dataset(g, name, np.asarray(data))
         self.f.flush()
 
-    def close(self, attachments=None, boundaries=None, meta=None):
+    def close(self, attachments=None, boundaries=None, meta=None, described=None):
+        """Finish the file; `described`: an object with .model / .study (format 3 description)."""
         if meta is not None:
             self.f.attrs["meta"] = _json(meta)
-        for name, bd in (boundaries or {}).items():
-            bg = self.f.create_group(f"boundaries/{name}")
-            for k in ("node_tags", "edges"):
-                if k in bd and len(bd[k]):
-                    _dataset(bg, k, np.asarray(bd[k]))
+        _write_boundaries(self.f, boundaries)
         _write_attachments(self.f, attachments)
+        if described is not None:
+            _write_description(self.f, described)
         self.f.close()
