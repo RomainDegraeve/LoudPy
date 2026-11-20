@@ -6,7 +6,7 @@ A group name is a sequence of tokens separated by "_":
     [physics prefix] base tokens [modifiers]          e.g.  submeca_glue_1
                                                             interface_constrained_rz_2
                                                             subacou_rear
-                                                            PML_r+_1_front   (+ "__..." added by the mesher)
+                                                            PML_r+_1_front   (meshes written before 0.2: + "__...")
 
   physics prefix : "submeca", "subacou" (any first token starting with "sub")
   modifiers      : an index (digits), a direction (r, z, rz, zr, r+, r-, z+, z-),
@@ -86,7 +86,8 @@ def matches(selector: str, group: str) -> bool:
 
 
 # ════════════════════════════════════════════════════════════════════════════
-#  PML layers: geometry of a layer, written by the mesher into its surface names
+#  PML layers: the geometry of a layer. The mesher stores it with the mesh (signature file, "pml_layers");
+#  meshes written before held it in their surface names, read by pml_layer()
 # ════════════════════════════════════════════════════════════════════════════
 _FLOAT = r"([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)"
 
@@ -108,7 +109,8 @@ class PMLLayer:
 
 
 def pml_layer(group: str) -> PMLLayer | None:
-    """The PMLLayer of a mesher PML surface name ("PML_r+_1_front__r0=…__t=…"), None if not a PML."""
+    """The PMLLayer of a PML surface name of a mesh written before the layers were stored with the mesh
+    ("PML_r+_1_front__r0=…__t=…"), None if not a PML."""
     if "PML" not in group:
         return None
 

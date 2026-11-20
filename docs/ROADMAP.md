@@ -169,13 +169,34 @@ Gates (each phase is committed and pushed only when its gate passes):
   speaker model whose six boundaries are all selectors (no named curve used) gives the coupled response
   of the named model on the same mesh to ≤ 7e-14 (u, p, 50 Hz – 5 kHz). No reference changed (123 tests
   pass with `--slow`).
-- Limits: before meshing a PML layer is only its base curve (select PMLs by label until C3); `lp.Near`
-  on a boundary takes the chain of edges between corners (> 30°), junctions and changes of the adjacent
-  domains; selectors are 2D (3D scenes come with phase F).
+- Limits: `lp.Near` on a boundary takes the chain of edges between corners (> 30°), junctions and
+  changes of the adjacent domains; selectors are 2D (3D scenes come with phase F).
+
+### C3: PML by selection (done)
+
+- `lp.PML(name, on=…)` selects the **base curves** of the layers on the curves of the `.geo` before
+  meshing (`geometry.selectors.Curves`: the same selectors, sides = the meshed curve loops;
+  `GeometryIndex` reads the groups and samples every curve in one gmsh session). Default: the name as a
+  label of the `PML_*` curve groups, which are now curve groups (`Model.groups("domain")` = the loops).
+- The mesher grows each layer from a straight base line r = const or z = const along the **outward normal
+  of the air surface it bounds** (`gmsh.model.isInside` on that surface) instead of away from the
+  centroid of the drawing; corners where two perpendicular layers meet; errors for a curved / oblique base,
+  a base not bounding exactly one air surface, two layers in opposite directions, or a curve claimed by
+  two PMLs. The layer geometry goes to `pml_layers` in `<mesh>.msh.json`, nothing in the names
+  (`PML_r+_1_front`, `PML_r+_1_front_Corner`; `absorber_1` … for a PML selected by position); the
+  former names (`…__r0=…__t=…`) are still read when a mesh has no stored layers.
+- Gate: the committed FSI mesh is reused and gives the same six PMLLayer values (test); H and Q
+  unchanged (operator references pass). A deterministic fresh mesh of the FSI speaker by the new builder
+  is node-for-node the one of the former builder (17 237 nodes, run with the former code in a git
+  worktree), H and Q equal to 4e-14 and 5e-15 (the former names rounded r0 = 0.2999999999999985 of the
+  brep to 0.3). The same layers come out of `lp.PML("PML")` and of
+  `lp.PML("absorber", on=lp.Box(r=0.3) | lp.Box(z=0.532) | lp.Box(r=0.2) | lp.Box(z=-0.169))`, and are read
+  back when the mesh is reused.
+- **Bug of the former rule, found on the way:** on a drawing that extends beyond the PML base (a solid
+  above a top PML), the centroid rule grew the layer *into* the air (z from 0.05 to 0.1 over an air
+  ending at 0.1, overlapping it) while its name still said +z. The new rule grows it outward
+  (`test_pml_grows_out_of_the_air`). The example models were not affected.
 
 ### Still to do in C
-
-- `lp.PML(on=selection, …)`: layer extruded along the outward normal of the air, its geometry stored
-  as metadata (not in names).
 - Geometry sources: `.geo` Physical Surfaces, STEP, OCC builders.
 - Driver wet profiles from the solid–air interface of the 2D driver model (no curve IDs).

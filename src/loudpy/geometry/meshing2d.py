@@ -6,7 +6,6 @@ import os
 import re
 import multiprocessing
 import numpy as np
-import math
 from dataclasses import dataclass
 from typing import Callable, List, Tuple, Dict, Any, Optional
 from loudpy.errors import MeshError
@@ -58,6 +57,15 @@ class MeshPart:
         return self.cells
 
 
+@dataclass
+class PMLBase:
+    """The base of a PML region: the curves (gmsh tags) its layers grow from, in order, and the name of the
+    layer surface of each curve (several curves with one name get _1, _2 …)."""
+    sizing: DomainSizing
+    curves: List[int]
+    names: Dict[int, str]
+
+
 class MeshManager:
     """
     Builds the surfaces from the physical curve groups and meshes them.
@@ -75,9 +83,10 @@ class MeshManager:
     ``grading=None`` (or 0) gives the previous behaviour (gmsh extension from the boundary).
 
     Only what the simulation uses is meshed (``prune_unused``, default True, when the
-    interface specs are given): a domain group is built only if a domain spec matches it
-    (PML layers only with a PML spec), a curve group is kept only if an interface spec matches
-    it, and every curve / point that does not bound a built surface is removed before meshing.
+    interface specs are given): a domain group is built only if a domain spec matches it,
+    PML layers only from the base curves given (``pml``: PMLBase, see _build_pml_surfaces), a
+    curve group is kept only if it is in ``interfaces``, and every curve / point that does not
+    bound a built surface is removed before meshing.
     E.g. a structural study on a .geo that also draws the air meshes and stores only the
     structure.
 
@@ -93,7 +102,7 @@ class MeshManager:
                  grading: Optional[float] = DEFAULT_MESH_GRADING,
                  interfaces: Optional[List[str]] = None, prune_unused: bool = True,
                  match: Optional[Callable[[str, str], bool]] = None, deterministic: bool = False,
-                 groups: Optional[Dict[str, Any]] = None):
+                 groups: Optional[Dict[str, Any]] = None, pml: Optional[List[PMLBase]] = None):
         self.SimObjects = list(domains)
         self.subdomains_key = subdomains_key
         self.mesh_order = mesh_order
@@ -103,6 +112,8 @@ class MeshManager:
         self._match = match or (lambda spec_name, group_name: spec_name in group_name)
         self.deterministic = deterministic
         self.groups = groups          # what is meshed: {"domains": [[group, kind, size, t]], "boundaries": [group]}
+        self.pml = list(pml or [])    # PML bases (PMLBase)
+        self.pml_layers: Optional[Dict[str, Dict[str, Any]]] = None   # {PML surface: geometry}; None: not known
 
     # =========================================================================
     # CORE MESH GENERATION
@@ -123,7 +134,7 @@ class MeshManager:
 
             # Step 1: Create domains and PML layers
             normal_surfaces = self._build_normal_surfaces(phys_curves, surfaces_by_obj)
-            pml_surfaces = self._build_pml_surfaces(phys_curves, surfaces_by_obj)
+            pml_surfaces = self._build_pml_surfaces(normal_surfaces, surfaces_by_obj)
 
             # Step 2: Assign Physical Groups (and drop what the simulation does not use)
             self._assign_physical_groups(normal_surfaces + pml_surfaces)
@@ -187,8 +198,11 @@ class MeshManager:
         return sig
 
     def _write_signature(self, geo_path: str, msh_path: str) -> None:
+        """The signature, plus what the mesh file cannot hold: the geometry of the PML layers (pml_layers)."""
+        sig = self.mesh_signature(geo_path)
+        sig["pml_layers"] = self.pml_layers or {}
         with open(self.signature_path(msh_path), "w") as fh:
-            json.dump(self.mesh_signature(geo_path), fh, indent=1)
+            json.dump(sig, fh, indent=1)
 
     def can_reuse(self, geo_path: str, msh_path: str) -> Tuple[bool, str]:
         """(True, "") if msh_path was written from this geometry and these specs."""
@@ -208,6 +222,11 @@ class MeshManager:
         """Read a mesh written by generate_mesh (same data as generate_mesh(..., extract_mesh_data=True))."""
         if not os.path.exists(msh_path):
             raise FileNotFoundError(f"The file {msh_path} could not be found.")
+        sig = self.signature_path(msh_path)
+        self.pml_layers = None
+        if os.path.exists(sig):
+            with open(sig) as fh:
+                self.pml_layers = json.load(fh).get("pml_layers")      # None: written before (names hold it)
         self._initialize_gmsh(False)
         gmsh.open(msh_path)
         return self.extract_mesh_data()          # finalizes gmsh
@@ -262,10 +281,6 @@ class MeshManager:
 
     def _get_matched_obj(self, name: str) -> Optional[Any]:
         return next((obj for obj in self.SimObjects if self._match(obj.name, name)), None)
-
-    def _get_pml_thickness(self, name: str) -> float:
-        obj = self._get_matched_obj(name)
-        return (obj.t if obj.t is not None else 0.1) if obj else 0.1
 
     # -------------------------------------------------------------------------
     # FIX 1 — Ordered loop with hard closure validation (no silent fallback)
@@ -386,245 +401,122 @@ class MeshManager:
 
         return surfaces
 
-    def _build_pml_surfaces(
-        self,
-        phys_curves: List[Tuple[int, int]],
-        surfaces_by_obj: Dict,
-    ) -> List[Tuple[int, str]]:
-        surfaces = []
+    # -------------------------------------------------------------------------
+    # PML layers. Each base curve (PMLBase.curves) must be a straight line r = const or z = const bounding
+    # exactly one meshed air surface; its layer is the quad grown by the thickness t along the outward
+    # normal of that surface (found with gmsh.model.isInside, whatever the drawing direction of the curve).
+    # Where two layers of perpendicular directions share an end point, a corner quad fills the gap. The
+    # geometry of every layer goes to self.pml_layers {surface name: {"base": [curve tags], "use_r", "r0",
+    # "tr", "sgn_r", "use_z", "z0", "tz", "sgn_z"}} (the fields of geometry.naming.PMLLayer), stored with the
+    # mesh signature: nothing is read from the names.
+    # -------------------------------------------------------------------------
 
-        # Reference "inside" point: centroid of all non-PML curve endpoints
-        inside_ref = self._compute_domain_centroid(phys_curves)
+    def _build_pml_surfaces(self, normal_surfaces: List[Tuple[int, str]],
+                            surfaces_by_obj: Dict) -> List[Tuple[int, str]]:
+        from collections import Counter
+        surfaces: List[Tuple[int, str]] = []
+        self.pml_layers = {}
+        if not self.pml:
+            return surfaces
+        built = {s: name for s, name in normal_surfaces}
+        kind_of = {s: obj.kind for obj, s_list in surfaces_by_obj.items() for s in s_list}
+        corners: Dict[int, List[Dict[str, Any]]] = {}
 
-        # Maps original node tag → list of side geometry info (for corner generation)
-        pml_corners_info: Dict[int, List[Dict]] = {}
+        def unique(name):
+            if name in self.pml_layers or name in built.values():
+                raise MeshError(f"two surfaces would be named {name!r}: give the PML regions different names")
+            return name
 
-        for _, pg_tag in phys_curves:
-            name = gmsh.model.getPhysicalName(1, pg_tag)
-            if "PML" not in name.upper():
-                continue
-            if self.prune_unused and self._get_matched_obj(name) is None:
-                continue                       # no PML spec: no PML layer
-
-            thickness = self._get_pml_thickness(name)
-            curve_tags = gmsh.model.getEntitiesForPhysicalGroup(1, pg_tag)
-
-            for curve_tag in curve_tags:
-                bnd = gmsh.model.getBoundary([(1, curve_tag)], oriented=True)
+        for base in self.pml:
+            obj = base.sizing
+            t = obj.t if obj.t is not None else 0.1
+            counts, seen = Counter(base.names[c] for c in base.curves), Counter()
+            for c in base.curves:
+                where = f"PML {obj.name!r}, curve {c}"
+                bnd = gmsh.model.getBoundary([(1, c)], oriented=True)
                 if len(bnd) < 2:
-                    continue
-
+                    raise MeshError(f"{where}: the curve has no end points")
                 pt0, pt1 = abs(bnd[0][1]), abs(bnd[1][1])
-                p0 = gmsh.model.getValue(0, pt0, [])
-                p1 = gmsh.model.getValue(0, pt1, [])
+                p0 = np.asarray(gmsh.model.getValue(0, pt0, []))
+                p1 = np.asarray(gmsh.model.getValue(0, pt1, []))
+                d = (p1 - p0)[:2]
+                length = float(np.hypot(*d))
+                lo, hi = gmsh.model.getParametrizationBounds(1, c)
+                middle = np.asarray(gmsh.model.getValue(1, c, [0.5 * (lo[0] + hi[0])]))[:2]
+                chord = 0.5 * (p0 + p1)[:2]
+                if length < 1e-14 or np.hypot(*(middle - chord)) > 1e-6 * length \
+                        or min(abs(d[0]), abs(d[1])) > 1e-9 * length:
+                    raise MeshError(f"{where}: a PML layer grows along r or z, its base must be a straight line "
+                                    f"r = const or z = const (curve from {p0[:2]} to {p1[:2]})")
+                n = np.array([-d[1], d[0]]) / length          # unit normal of the drawn line (the layer follows
+                axis_n = np.round(n)                           # it exactly); its direction: (±1, 0) or (0, ±1)
+                adjacent = [s for s in gmsh.model.getAdjacencies(1, c)[0] if s in built]
+                if len(adjacent) != 1 or kind_of.get(adjacent[0]) != "air":
+                    raise MeshError(f"{where}: the base of a PML must bound exactly one meshed air domain "
+                                    f"(it bounds {[built[s] for s in adjacent] or 'none'})")
+                probe = chord + 1e-4 * length * axis_n
+                if gmsh.model.isInside(2, adjacent[0], [probe[0], probe[1], 0.0]):
+                    n, axis_n = -n, -axis_n                                 # pointed into the air
+                nx, ny = n * t
 
-                dx, dy = p1[0] - p0[0], p1[1] - p0[1]
-                length = math.hypot(dx, dy)
-                if length < 1e-14:
-                    continue
-
-                # Outward normal (perpendicular to edge, scaled by thickness)
-                nx, ny = -dy / length, dx / length
-                mx, my = 0.5 * (p0[0] + p1[0]), 0.5 * (p0[1] + p1[1])
-                ox, oy = mx - inside_ref[0], my - inside_ref[1]
-
-                if nx * ox + ny * oy < 0:        # flip if pointing inward
-                    nx, ny = -nx, -ny
-
-                nx *= thickness
-                ny *= thickness
-
-                # Build the 4 vertices of the PML quad (in domain order: p0, p1, p2, p3)
                 p2 = gmsh.model.occ.addPoint(p1[0] + nx, p1[1] + ny, p1[2])
                 p3 = gmsh.model.occ.addPoint(p0[0] + nx, p0[1] + ny, p0[2])
+                side_a = gmsh.model.occ.addLine(pt1, p2)      # p1 → p2
+                top = gmsh.model.occ.addLine(p2, p3)          # p2 → p3
+                side_b = gmsh.model.occ.addLine(p3, pt0)      # p3 → p0
+                quad = [(p0[0], p0[1]), (p1[0], p1[1]), (p1[0] + nx, p1[1] + ny), (p0[0] + nx, p0[1] + ny)]
+                loop = [c, side_a, top, side_b] if self._signed_area_2d(quad) > 0 \
+                    else [-c, -side_b, -top, -side_a]                       # counter-clockwise for OCC
+                s = gmsh.model.occ.addPlaneSurface([gmsh.model.occ.addCurveLoop(loop)])
                 gmsh.model.occ.synchronize()
 
-                side_a = gmsh.model.occ.addLine(pt1, p2)   # p1 → p2
-                top    = gmsh.model.occ.addLine(p2,  p3)   # p2 → p3
-                side_b = gmsh.model.occ.addLine(p3, pt0)   # p3 → p0
-                gmsh.model.occ.synchronize()
+                name = base.names[c]
+                if counts[name] > 1:
+                    seen[name] += 1
+                    name = f"{name}_{seen[name]}"
+                name = unique(name)
+                axis = 0 if axis_n[0] != 0 else 1
+                layer = dict(base=[int(c)], use_r=False, r0=0.0, tr=0.0, sgn_r=0.0,
+                             use_z=False, z0=0.0, tz=0.0, sgn_z=0.0)
+                key = "r" if axis == 0 else "z"
+                layer.update({f"use_{key}": True, f"{key}0": float(chord[axis]), f"t{key}": float(t),
+                              f"sgn_{key}": float(axis_n[axis])})
+                self.pml_layers[name] = layer
+                surfaces.append((s, name))
+                surfaces_by_obj[obj].append(s)
+                # side lines, traversed origin → outer as sign * line (for the corners)
+                for orig, outer, line, sign in [(pt1, p2, side_a, 1), (pt0, p3, side_b, -1)]:
+                    corners.setdefault(orig, []).append(dict(outer=outer, line=line, sign=sign, n=axis_n, v=(nx, ny),
+                                                             t=t, name=name, obj=obj, curve=int(c)))
 
-                # ----------------------------------------------------------
-                # FIX: Use Shoelace signed area to determine winding — no
-                # cross-product heuristic, no blind try/except fallback.
-                # Quad vertices in the order [pt0→pt1→p2→p3] (base edge first)
-                # ----------------------------------------------------------
-                quad_pts = [
-                    (p0[0],       p0[1]),
-                    (p1[0],       p1[1]),
-                    (p1[0] + nx,  p1[1] + ny),   # p2
-                    (p0[0] + nx,  p0[1] + ny),   # p3
-                ]
-                if self._signed_area_2d(quad_pts) > 0:
-                    # Already CCW: traverse base edge forward
-                    loop_edges = [curve_tag, side_a, top, side_b]
-                else:
-                    # CW: reverse all edge orientations to force CCW
-                    loop_edges = [-curve_tag, -side_b, -top, -side_a]
-
-                cl = gmsh.model.occ.addCurveLoop(loop_edges)
-                s  = gmsh.model.occ.addPlaneSurface([cl])
-                gmsh.model.occ.synchronize()
-
-                # Save corner-generation info for each endpoint.
-                #
-                # side_sign encodes the direction of the stored line tag relative
-                # to the (orig_pt → outer_pt) traversal direction:
-                #   side_a = addLine(pt1, p2)  →  pt1→p2  = orig→outer  →  sign = +1
-                #   side_b = addLine(p3, pt0)  →  p3→pt0  = outer→orig  →  sign = -1
-                #
-                # To traverse orig→outer use:  side_sign * side_line
-                # To traverse outer→orig use: -side_sign * side_line
-                for orig_pt, outer_pt, side_line, side_sign in [
-                    (pt1, p2, side_a,  1),
-                    (pt0, p3, side_b, -1),
-                ]:
-                    pml_corners_info.setdefault(orig_pt, []).append({
-                        'outer_pt':    outer_pt,
-                        'side_line':   side_line,
-                        'side_sign':   side_sign,
-                        'nx':          nx,
-                        'ny':          ny,
-                        'pml_name':    name,
-                        'matched_obj': self._get_matched_obj(name),
-                    })
-
-                dir_label, coord_label, axis = self._classify_direction(nx, ny)
-                if axis == "x":
-                    coord_str = f"{coord_label}={mx:.8e}"
-                elif axis == "y":
-                    coord_str = f"{coord_label}={my:.8e}"
-                else:
-                    coord_str = f"x0={mx:.8e},{my:.8e}"
-
-                pml_name = f"{name}__{coord_str}__t={thickness:.8e}"
-                surfaces.append((s, pml_name))
-
-                if matched_obj := self._get_matched_obj(name):
-                    surfaces_by_obj[matched_obj].append(s)
-
-        # ======================================================================
-        # Corner generation
-        # Each original node shared by exactly two PML edges needs a corner quad.
-        # ======================================================================
-        for pt_tag, infos in pml_corners_info.items():
+        for pt, infos in corners.items():
             if len(infos) != 2:
                 continue
-
-            info1, info2 = infos[0], infos[1]
-            orig_coords = gmsh.model.getValue(0, pt_tag, [])
-
-            # Corner point = original point + both displacement vectors
-            cx = orig_coords[0] + info1['nx'] + info2['nx']
-            cy = orig_coords[1] + info1['ny'] + info2['ny']
-            cz = orig_coords[2]
-
-            p_corner = gmsh.model.occ.addPoint(cx, cy, cz)
+            i1, i2 = infos
+            if np.array_equal(i1["n"], i2["n"]):
+                continue                                   # two layers in line: they share a side, no gap
+            if np.array_equal(i1["n"], -i2["n"]):
+                raise MeshError(f"PML layers of curves {i1['curve']} and {i2['curve']} grow in opposite "
+                                f"directions from one point")
+            o = gmsh.model.getValue(0, pt, [])
+            cx, cy = o[0] + i1["v"][0] + i2["v"][0], o[1] + i1["v"][1] + i2["v"][1]
+            pc = gmsh.model.occ.addPoint(cx, cy, o[2])
+            l1 = gmsh.model.occ.addLine(i1["outer"], pc)
+            l2 = gmsh.model.occ.addLine(pc, i2["outer"])
+            fwd = [i1["sign"] * i1["line"], l1, l2, -i2["sign"] * i2["line"]]
+            quad = [(o[0], o[1]), (o[0] + i1["v"][0], o[1] + i1["v"][1]), (cx, cy),
+                    (o[0] + i2["v"][0], o[1] + i2["v"][1])]
+            loop = fwd if self._signed_area_2d(quad) > 0 else [-e for e in reversed(fwd)]
+            s = gmsh.model.occ.addPlaneSurface([gmsh.model.occ.addCurveLoop(loop)])
             gmsh.model.occ.synchronize()
-
-            line1 = gmsh.model.occ.addLine(info1['outer_pt'], p_corner)
-            line2 = gmsh.model.occ.addLine(p_corner, info2['outer_pt'])
-            gmsh.model.occ.synchronize()
-
-            # ------------------------------------------------------------------
-            # Build the corner loop in two steps:
-            #
-            # Step 1 - Topology: construct a head-to-tail closed loop using
-            #   side_sign to traverse each side line in the correct direction.
-            #
-            #   Desired traversal:
-            #     orig   -> outer1 :  info1['side_sign'] * info1['side_line']
-            #     outer1 -> corner :  line1  (defined as outer1 -> corner)
-            #     corner -> outer2 :  line2  (defined as corner -> outer2)
-            #     outer2 -> orig   : -info2['side_sign'] * info2['side_line']
-            #
-            # Step 2 - Winding: Shoelace signed area on the actual vertex
-            #   coordinates flips the whole loop if CW, so gmsh OCC always
-            #   receives a CCW-oriented curve loop.
-            # ------------------------------------------------------------------
-            loop_fwd = [
-                 info1['side_sign'] * info1['side_line'],
-                 line1,
-                 line2,
-                -info2['side_sign'] * info2['side_line'],
-            ]
-
-            corner_quad_pts = [
-                (orig_coords[0],                       orig_coords[1]),
-                (orig_coords[0] + info1['nx'],         orig_coords[1] + info1['ny']),
-                (cx,                                   cy),
-                (orig_coords[0] + info2['nx'],         orig_coords[1] + info2['ny']),
-            ]
-            if self._signed_area_2d(corner_quad_pts) > 0:
-                corner_cl = gmsh.model.occ.addCurveLoop(loop_fwd)
-            else:
-                corner_cl = gmsh.model.occ.addCurveLoop([-e for e in reversed(loop_fwd)])
-
-            corner_surf = gmsh.model.occ.addPlaneSurface([corner_cl])
-            gmsh.model.occ.synchronize()
-
-            # Structured corner name
-            dir1, _, ax1 = self._classify_direction(info1['nx'], info1['ny'])
-            dir2, _, ax2 = self._classify_direction(info2['nx'], info2['ny'])
-
-            # Always put the x (r) direction before the y (z) direction
-            if ax1 == "y" and ax2 == "x":
-                dir1, dir2 = dir2, dir1
-
-            r0, z0     = orig_coords[0], orig_coords[1]
-            thickness  = self._get_pml_thickness(info1['pml_name'])
-            base_name  = info1['pml_name']
-
-            corner_name = (
-                f"{base_name}_Corner__{dir1}_{dir2}"
-                f"__r0={r0:.8e}__z0={z0:.8e}__t={thickness:.8e}"
-            )
-            surfaces.append((corner_surf, corner_name))
-
-            if info1['matched_obj']:
-                surfaces_by_obj[info1['matched_obj']].append(corner_surf)
-
+            ir, iz = (i1, i2) if i1["n"][0] != 0 else (i2, i1)
+            name = unique(f"{i1['name']}_Corner")
+            self.pml_layers[name] = dict(base=[i1["curve"], i2["curve"]],
+                                         use_r=True, r0=float(o[0]), tr=float(ir["t"]), sgn_r=float(ir["n"][0]),
+                                         use_z=True, z0=float(o[1]), tz=float(iz["t"]), sgn_z=float(iz["n"][1]))
+            surfaces.append((s, name))
+            surfaces_by_obj[i1["obj"]].append(s)
         return surfaces
-
-    def _classify_direction(
-        self, nx: float, ny: float, tol: float = 1e-6
-    ) -> Tuple[str, str, str]:
-        """
-        Classifies a displacement vector into an axis-aligned PML direction.
-        Returns (dir_label, coord_label, axis).
-            dir_label   : 'r+', 'r-', 'z+', 'z-'  (or 'oblique')
-            coord_label : 'r0' or 'z0'
-            axis        : 'x' or 'y'
-        Convention: r ↔ x,  z ↔ y  (axisymmetric).
-        """
-        if abs(ny) < tol and nx > 0:
-            return "r+", "r0", "x"
-        if abs(ny) < tol and nx < 0:
-            return "r-", "r0", "x"
-        if abs(nx) < tol and ny > 0:
-            return "z+", "z0", "y"
-        if abs(nx) < tol and ny < 0:
-            return "z-", "z0", "y"
-        return "oblique", "x0", "xy"
-
-    def _compute_domain_centroid(
-        self, phys_curves: List[Tuple[int, int]]
-    ) -> Tuple[float, float]:
-        """Centroid of all non-PML curve endpoints — used as the 'inside' reference."""
-        xs, ys = [], []
-        for _, pg_tag in phys_curves:
-            name = gmsh.model.getPhysicalName(1, pg_tag)
-            if "PML" in name.upper():
-                continue
-            for curve_tag in gmsh.model.getEntitiesForPhysicalGroup(1, pg_tag):
-                bnd = gmsh.model.getBoundary([(1, curve_tag)], oriented=False)
-                for _, pt in bnd:
-                    coords = gmsh.model.getValue(0, abs(pt), [])
-                    xs.append(coords[0])
-                    ys.append(coords[1])
-        if not xs:
-            return (0.0, 0.0)
-        return (sum(xs) / len(xs), sum(ys) / len(ys))
 
     def _assign_physical_groups(self, surfaces_list: List[Tuple[int, str]]):
         for s, name in surfaces_list:

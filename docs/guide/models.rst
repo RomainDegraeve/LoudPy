@@ -27,7 +27,7 @@ Regions
 ========================================= ==================================================
 :class:`lp.Solid <loudpy.Solid>`          elastic structure (P2 triangles, axisymmetric or with an azimuthal order *m*)
 :class:`lp.Air <loudpy.Air>`              linear acoustic fluid
-:class:`lp.PML <loudpy.PML>`              perfectly matched layer, built by the mesher outward from the ``PML`` curves
+:class:`lp.PML <loudpy.PML>`              perfectly matched layer, grown by the mesher outward from its base curves
 ========================================= ==================================================
 
 The first argument is the region's **name**, its label in the results. By default it also selects
@@ -82,8 +82,8 @@ covers. Python's precedence applies (``-`` before ``&`` before ``|``): use paren
    )
 
 **Where they are evaluated.** A region covers whole domain groups: its selector is evaluated
-before meshing, on the curve loops of the geometry (a PML layer only exists after meshing: select
-it by label). A boundary covers edges of the mesh: its selector is evaluated after meshing, on the
+before meshing, on the curve loops of the geometry. A PML grows from curves of the geometry: its
+selector is evaluated before meshing, on the curves (see `PML layers`_). A boundary covers edges of the mesh: its selector is evaluated after meshing, on the
 edges between two different domain groups, on the outside of the meshed domains and on the named
 curve groups kept in the mesh. A boundary made of labels only (``lp.Group``) keeps one part per
 named curve group, as before; any other selector gives one part named after the boundary.
@@ -91,7 +91,28 @@ named curve group, as before; any other selector gives one part named after the 
 (``kind="domain"``: the mesh groups), and ``field.restrict(selector)`` restricts a result field.
 
 A "boundary curve" of :class:`lp.Near <loudpy.Near>` is a chain of edges that stops at corners
-(a turn of more than 30°), at junctions and where the adjacent domains change.
+(a turn of more than 30°), at junctions and where the adjacent domains change (on the mesh), or a
+curve of the ``.geo`` (for a PML).
+
+PML layers
+~~~~~~~~~~
+
+``lp.PML(name, on=…)`` selects the **base curves** of the layers: straight lines r = const or
+z = const, each bounding one air region. Each layer grows by ``thickness`` along the outward normal
+of that air (found from the geometry, whatever the direction in which the curve is drawn), and a
+corner layer fills the gap where two layers meet at a right angle. The absorption grows from the base
+across the layer (along r, z, or both in a corner).
+
+.. code-block:: python
+
+   lp.PML("PML", thickness=0.1, tuned_to=1000.0)                      # the PML_* curve groups (labels)
+   lp.PML("absorber", on=lp.Box(r=0.3) | lp.Box(z=0.532), thickness=0.1, tuned_to=1000.0)
+
+The geometry of every layer (start, thickness, direction) is stored with the mesh
+(``<mesh>.msh.json``, ``pml_layers``), not in the names of its surfaces. Layers built from named
+curve groups are named after them (``PML_r+_1_front``, ``PML_r+_1_front_Corner``), the others after the
+region (``absorber_1``, ``absorber_1_Corner`` …). Meshes written by earlier versions held the layer
+geometry in their surface names (``PML_r+_1_front__r0=…__t=…``): they are still read.
 
 Materials and damping
 ---------------------

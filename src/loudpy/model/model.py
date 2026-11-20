@@ -26,14 +26,15 @@ from pathlib import Path
 import numpy as np
 
 from loudpy.geometry import naming
+from loudpy.geometry.naming import PMLLayer
 from loudpy.geometry.gmsh_session import physical_groups
-from loudpy.geometry.selectors import Domains, Edges, as_selector
+from loudpy.geometry.selectors import Curves, Domains, Edges, GeometryIndex, as_selector
 from loudpy.geometry.mesh import Mesh
 from loudpy.geometry.meshing2d import DEFAULT_MESH_GRADING, DomainSizing
 from loudpy.model.boundaries import Boundary
 from loudpy.model.materials import MaterialLibrary, load_materials
 from loudpy.model.regions import PML, Air, Region, Solid
-from loudpy.errors import ModelError, SelectionError, StateError
+from loudpy.errors import MeshError, ModelError, SelectionError, StateError
 
 log = logging.getLogger("loudpy.model")
 
@@ -41,8 +42,9 @@ SUBDOMAINS_KEY = "sub"
 
 
 def _is_domain_group(name: str) -> bool:
+    """A curve loop of the .geo convention (submeca_*, subacou_*): the other curve groups are boundaries."""
     t = naming.tokens(name)
-    return bool(t) and (naming.is_prefix(t[0]) or t[0].upper() == "PML")
+    return bool(t) and naming.is_prefix(t[0])
 
 
 class Model:
@@ -75,6 +77,8 @@ class Model:
         self._region_groups: dict = {}         # {region: mesh groups}
         self._item_parts: dict = {}            # {boundary: its parts}
         self._edges: Edges | None = None       # the boundary edges of the mesh (selector evaluation)
+        self._pml_bases: dict = {}             # {PML: (base curve tags, {tag: layer name})}
+        self._pml_layer: dict = {}             # {PML surface of the mesh: PMLLayer}
 
     # ── description ────────────────────────────────────────────────────────
     def add(self, *items) -> "Model":
@@ -111,14 +115,19 @@ class Model:
 
     def selection(self) -> dict[str, list[str]]:
         """
-        {item name: groups of the geometry}, checked (module docstring): for a region the domain groups it
-        covers; for a boundary the named curve groups its labels select (kept in the mesh). The edges of a
-        boundary are found on the mesh: model.select(boundary).
+        {item name: what it selects in the geometry}, checked (module docstring): for a region the domain
+        groups (curve loops) it covers; for a PML the curve groups its labels select, or its base curves
+        ("curve 12") when its selector is not made of labels; for a boundary the named curve groups its
+        labels select (kept in the mesh). The edges of a boundary are found on the mesh: model.select(…).
         """
-        domains, bounds = self.groups("domain"), self.groups("boundary")
-        ctx = Domains.from_geometry(self.geometry, domains)
+        index = GeometryIndex(self.geometry)
+        domains = [n for n in index.groups if _is_domain_group(n)]
+        bounds = [n for n in index.groups if not _is_domain_group(n)]
+        ctx = Domains.from_geometry(index, domains)
         out, owner = {}, {}
         for r in self.regions:
+            if isinstance(r, PML):
+                continue
             sel = self._evaluate(r, lambda: r.selector.domains(ctx))
             if not sel:
                 raise SelectionError(f"{type(r).__name__}({r.name!r}) selects no domain group of "
@@ -128,6 +137,8 @@ class Model:
                     raise SelectionError(f"group {g!r} is selected by both {owner[g]!r} and {r.name!r}")
                 owner[g] = r.name
             out[r.name] = [g for g in domains if g in sel]
+        self._pml_bases = self._select_pml(index, bounds, [g for g in domains if g in owner],
+                                           dict(out), out)
         for b in self.boundaries:
             sel = set()
             for label in b.selector.labels():
@@ -137,7 +148,40 @@ class Model:
                                          f"{self.geometry.name}; boundary groups: {bounds}")
                 sel |= set(found)
             out[b.name] = [g for g in bounds if g in sel]
-        return out
+        return {it.name: out[it.name] for it in self.regions + self.boundaries}
+
+    def _select_pml(self, index, bounds, meshed, regions, out) -> dict:
+        """
+        The base curves of each PML region, selected on the curves of the geometry (geometry.selectors.Curves,
+        sides = the meshed loops): {name: (curve tags in order, {tag: name of its layer surface})}. A selector
+        made of labels keeps the order of the curve groups and names each layer after its group (as the
+        meshes written before); any other selector names the layers after the region. Fills out[name].
+        """
+        pmls = [r for r in self.regions if isinstance(r, PML)]
+        if not pmls:
+            return {}
+        curves = Curves(index, meshed, regions)
+        bases, taken = {}, {}
+        for r in pmls:
+            tags = self._evaluate(r, lambda: r.selector.edges(curves))
+            if not tags:
+                raise SelectionError(f"PML({r.name!r}) selects no curve of {self.geometry.name} "
+                                     f"(selector {r.selector!r})")
+            for t in sorted(tags):
+                if t in taken:
+                    raise SelectionError(f"curve {t} is the base of both PML {taken[t]!r} and {r.name!r}")
+                taken[t] = r.name
+            if r.selector.by_groups:
+                groups = [g for g in bounds if any(naming.matches(lb, g) for lb in r.selector.labels())]
+                order = list(dict.fromkeys(c for g in groups for c in index.groups[g] if c in tags))
+                names = {c: next(g for g in groups if c in index.groups[g]) for c in order}
+                out[r.name] = groups
+            else:
+                order = sorted(tags)
+                names = {c: r.name for c in order}
+                out[r.name] = [f"curve {c}" for c in order]
+            bases[r.name] = (order, names)
+        return bases
 
     @staticmethod
     def _evaluate(item, fn):
@@ -172,14 +216,16 @@ class Model:
         deterministic : one meshing thread, so that the same model always gives the same mesh
         show          : open the gmsh window after meshing
         """
-        from loudpy.geometry.meshing2d import MeshManager
+        from loudpy.geometry.meshing2d import MeshManager, PMLBase
         selection = self.selection()                            # checks the names first
         path = Path(path) if path is not None else self.geometry.with_suffix(".msh")
-        members = {r.name: set(selection[r.name]) for r in self.regions}
+        members = {r.name: set(selection[r.name]) for r in self.regions if not isinstance(r, PML)}
         kept = sorted({g for b in self.boundaries for g in selection[b.name]})
-        mm = MeshManager(self._sizing(), SUBDOMAINS_KEY, mesh_order=self.mesh_order, grading=self.grading,
+        sizing = self._sizing()
+        pml = [PMLBase(sz, *self._pml_bases[sz.name]) for sz in sizing if sz.kind == "pml"]
+        mm = MeshManager(sizing, SUBDOMAINS_KEY, mesh_order=self.mesh_order, grading=self.grading,
                          interfaces=kept, match=lambda spec, group: group.strip() in members.get(spec, ()),
-                         deterministic=deterministic, groups=self._meshed_groups(selection))
+                         deterministic=deterministic, groups=self._meshed_groups(selection), pml=pml)
         ok, why = mm.can_reuse(str(self.geometry), str(path)) if reuse else (False, "")
         if ok:
             log.info("mesh reused: %s", path)
@@ -192,8 +238,20 @@ class Model:
         self._mesh_path = path
         self._selection = selection
         self.meshed = Mesh.from_axisymmetric(domains, boundaries, nodes, str(path))
-        self._region_groups = {r.name: [g.name for g in domains if naming.source_group(g.name) in selection[r.name]]
-                               for r in self.regions}
+        layers = mm.pml_layers          # {PML surface: geometry}; None for a mesh written before (in the names)
+        self._pml_layer = {n: PMLLayer(**{k: v for k, v in m.items() if k != "base"})
+                           for n, m in (layers or {}).items()}
+        self._region_groups = {}
+        for r in self.regions:
+            if isinstance(r, PML) and layers is not None:
+                tags = set(self._pml_bases[r.name][0])
+                groups = [g.name for g in domains if g.name in layers and layers[g.name]["base"][0] in tags]
+            else:
+                groups = [g.name for g in domains if naming.source_group(g.name) in selection[r.name]]
+            if not groups:
+                raise MeshError(f"{type(r).__name__}({r.name!r}) has no surface in the mesh {path.name} "
+                                f"(remesh with reuse=False)")
+            self._region_groups[r.name] = groups
         self._edges = Edges(self.meshed, regions=self._region_groups)
         self.parts = self._parts(domains, boundaries)
         return self.meshed
@@ -232,7 +290,7 @@ class Model:
         for g in domains:
             for r in self.regions:
                 if g.name in self._region_groups[r.name]:
-                    out.append(region_part(r, g, self.materials))
+                    out.append(region_part(r, g, self.materials, layer=self._pml_layer.get(g.name)))
         self._item_parts = {b.name: [] for b in self.boundaries}
         edges = {}
         for b in self.boundaries:

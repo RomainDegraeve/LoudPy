@@ -76,14 +76,15 @@ class AirPart(RegionPart):
 
 
 class PMLPart(AirPart):
-    """PML layer: absorption strength alpha, profile order n, tuned to f_pml; its geometry in `layer`."""
+    """PML layer: absorption strength alpha, profile order n, tuned to f_pml; its geometry in `layer` (a
+    PMLLayer stored with the mesh; for meshes written before, read from the name of the surface)."""
     role = "pml"
 
-    def __init__(self, group, rho, c, alpha, n, f_pml):
+    def __init__(self, group, rho, c, alpha, n, f_pml, layer=None):
         super().__init__(group, rho, c)
         self.alpha, self.n = alpha, n
         self.omega_pml = 2 * np.pi * f_pml
-        self.layer = pml_layer(self.name)
+        self.layer = layer if layer is not None else pml_layer(self.name)
 
 
 # ── boundaries ───────────────────────────────────────────────────────────────
@@ -168,14 +169,14 @@ def region_parameters(region, lib) -> dict:
     raise ModelError(f"unknown region {region!r}")
 
 
-def region_part(region, group, lib) -> RegionPart:
-    """The part of a region on one mesh group."""
+def region_part(region, group, lib, layer=None) -> RegionPart:
+    """The part of a region on one mesh group (a PML: with the geometry `layer` of its surface)."""
     from loudpy.model.regions import PML, Solid
     p = region_parameters(region, lib)
     if isinstance(region, Solid):
         return SolidPart(group, **p)
     if isinstance(region, PML):
-        return PMLPart(group, **p)
+        return PMLPart(group, **p, layer=layer)
     return AirPart(group, **p)
 
 

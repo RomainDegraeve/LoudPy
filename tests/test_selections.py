@@ -5,6 +5,8 @@ Regions are selected on the geometry before meshing, boundaries on the mesh: the
 selected edges with the named curve groups drawn in the .geo, and the response of a model whose
 boundaries are all selectors with the one of the named model.
 """
+import json
+
 import numpy as np
 import pytest
 
@@ -153,3 +155,104 @@ def test_restrict_field_by_selector(speaker):
     near = f.restrict(lp.Near((0.0058, -0.005)))
     assert list(near.mesh.groups) == ["submeca_coil"]
     assert np.array_equal(near.values, f.restrict("coil").values)
+
+
+# ── PML layers: base curves selected on the geometry ─────────────────────────
+LEGACY_LAYERS = {   # the committed FSI mesh (written before the layers were stored): read from the names
+    "PML_r+_1_front": dict(use_r=True, r0=0.3, tr=0.1, sgn_r=1.0),
+    "PML_r+_2_rear": dict(use_r=True, r0=0.2, tr=0.1, sgn_r=1.0),
+    "PML_z-_2_rear": dict(use_z=True, z0=-0.169, tz=0.1, sgn_z=-1.0),
+    "PML_z+_1_front": dict(use_z=True, z0=0.532, tz=0.1, sgn_z=1.0),
+    "PML_r+_1_front_Corner": dict(use_r=True, r0=0.3, tr=0.1, sgn_r=1.0, use_z=True, z0=0.532, tz=0.1, sgn_z=1.0),
+    "PML_r+_2_rear_Corner": dict(use_r=True, r0=0.2, tr=0.1, sgn_r=1.0, use_z=True, z0=-0.169, tz=0.1, sgn_z=-1.0),
+}
+
+
+def layers(model):
+    from loudpy.geometry.naming import base_name
+    return {base_name(p.name): p.layer for p in model.parts if p.role == "pml"}
+
+
+def same_layer(a, b, rtol=1e-12):
+    from dataclasses import asdict
+    a, b = asdict(a), asdict(b)
+    return all(np.isclose(a[k], b[k], rtol=rtol, atol=1e-15) for k in a)
+
+
+def test_pml_layers_of_the_committed_mesh(speaker):
+    from loudpy.geometry.naming import PMLLayer
+    got = layers(speaker)
+    assert set(got) == set(LEGACY_LAYERS)
+    for name, kw in LEGACY_LAYERS.items():
+        assert got[name] == PMLLayer(**kw), name
+
+
+def test_pml_by_selector(tmp_path):
+    """Fresh meshes: the layers of lp.PML("PML") (labels) and of a PML on curves selected by position are the
+    ones of the committed mesh; they are stored with the mesh and read back when it is reused."""
+    def speaker(pml):
+        model = api.speaker_model(acoustic=True)
+        model.regions = [r for r in model.regions if not isinstance(r, lp.PML)]
+        return model.add(pml)
+    kw = dict(thickness=0.1, mesh_size=0.025, tuned_to=1000.0, order=2, strength=1.5)
+    by_label = speaker(lp.PML("PML", **kw))
+    by_box = speaker(lp.PML("absorber", on=lp.Box(r=0.3) | lp.Box(z=0.532) | lp.Box(r=0.2) | lp.Box(z=-0.169), **kw))
+    assert by_box.selection()["absorber"] == ["curve 11", "curve 12", "curve 16", "curve 17"]
+    for model, path in [(by_label, tmp_path / "label.msh"), (by_box, tmp_path / "box.msh")]:
+        model.mesh(path, deterministic=True)
+        expected = sorted(LEGACY_LAYERS.values(), key=repr)
+        from loudpy.geometry.naming import PMLLayer
+        got = sorted(layers(model).values(), key=lambda L: (L.use_r, L.r0, L.use_z, L.z0))
+        exp = sorted((PMLLayer(**kw) for kw in expected), key=lambda L: (L.use_r, L.r0, L.use_z, L.z0))
+        assert all(same_layer(a, b) for a, b in zip(got, exp)) and len(got) == len(exp)
+        stored = json.loads(path.with_suffix(".msh.json").read_text())["pml_layers"]
+        assert len(stored) == 6 and not any("__" in n for n in stored)              # nothing in the names
+        again = speaker(model[next(r.name for r in model.regions if isinstance(r, lp.PML))])
+        again.mesh(path)                                                              # reused
+        assert layers(again) == layers(model)
+    assert sorted(layers(by_box)) == ["absorber_1", "absorber_1_Corner", "absorber_2", "absorber_3",
+                                      "absorber_3_Corner", "absorber_4"]
+
+
+BLOCK_GEO = """SetFactory("OpenCASCADE");
+Point(1) = {0, 0, 0}; Point(2) = {0.1, 0, 0}; Point(3) = {0.1, 0.1, 0}; Point(4) = {0, 0.1, 0};
+Line(1) = {1, 2}; Line(2) = {2, 3}; Line(3) = {3, 4}; Line(4) = {4, 1};
+Point(5) = {0, 0.5, 0}; Point(6) = {0.05, 0.5, 0}; Point(7) = {0.05, 0.6, 0}; Point(8) = {0, 0.6, 0};
+Line(5) = {5, 6}; Line(6) = {6, 7}; Line(7) = {7, 8}; Line(8) = {8, 5};
+Point(9) = {0.2, 0, 0}; Line(9) = {2, 9}; Line(10) = {9, 3};
+Physical Curve("subacou_air", 1) = {1, 2, 3, 4};
+Physical Curve("submeca_block", 2) = {5, 6, 7, 8};
+Physical Curve("subacou_wedge", 3) = {9, 10, 2};
+"""
+
+
+def _block_model(tmp_path, *pml):
+    geo = tmp_path / "block.geo"
+    geo.write_text(BLOCK_GEO)
+    return lp.Model(geo).add(lp.Air("air", mesh_size=0.02), lp.Air("wedge", mesh_size=0.02),
+                             lp.Solid("block", "Paper", mesh_size=0.02), *pml)
+
+
+def test_pml_grows_out_of_the_air(tmp_path):
+    """The layer grows along the outward normal of its air, whatever the rest of the drawing: here the
+    centroid of the drawing lies above the base (a solid far above), where the former rule would have
+    turned the layer into the air."""
+    model = _block_model(tmp_path, lp.PML("pml", on=lp.Box(z=0.1) & lp.BoundaryOf("air"), thickness=0.05,
+                                          mesh_size=0.02, tuned_to=1000.0))
+    model.mesh(tmp_path / "block.msh", deterministic=True)
+    (layer,) = layers(model).values()
+    assert layer.use_z and not layer.use_r and layer.sgn_z == 1.0 and np.isclose(layer.z0, 0.1)
+    z = model.meshed.coords_of(np.unique(model.meshed.groups["pml"].cells))[:, 1]
+    assert z.min() > 0.1 - 1e-12 and np.isclose(z.max(), 0.15)
+
+
+def test_pml_errors(tmp_path):
+    from loudpy.errors import MeshError
+    kw = dict(thickness=0.05, mesh_size=0.02, tuned_to=1000.0)
+    with pytest.raises(MeshError, match="straight line r = const or z = const"):
+        _block_model(tmp_path, lp.PML("pml", on=lp.Near((0.15, 0.06)), **kw)).mesh(tmp_path / "a.msh")
+    with pytest.raises(MeshError, match="exactly one meshed air domain"):
+        _block_model(tmp_path, lp.PML("pml", on=lp.Box(z=0.6), **kw)).mesh(tmp_path / "b.msh")
+    with pytest.raises(SelectionError, match="base of both PML"):
+        _block_model(tmp_path, lp.PML("a", on=lp.Box(z=0.1), **kw),
+                     lp.PML("b", on=lp.Near((0.05, 0.1)), **kw)).selection()

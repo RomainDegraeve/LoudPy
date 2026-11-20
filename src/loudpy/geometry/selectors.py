@@ -23,7 +23,9 @@ Where they are evaluated:
   * a boundary covers edges of the mesh. Its selector is evaluated after meshing on the boundary edges of
     the 2D mesh (Edges): the edges between two different domain groups or on the outside of the meshed
     domains, plus those of the named curve groups kept in the mesh. An interface therefore needs no curve
-    drawn in the geometry, and a mesh read from a file is selected the same way as a fresh one.
+    drawn in the geometry, and a mesh read from a file is selected the same way as a fresh one;
+  * a PML layer grows from curves of the geometry: its selector is evaluated before meshing on the curves
+    of the .geo (Curves), with the same rules (sides = the meshed curve loops on each side).
 
 A "boundary curve" (lp.Near on edges) is a chain of edges between corners (turn > 30°), junctions (a node
 with more than two boundary edges) and changes of the adjacent domains.
@@ -165,7 +167,7 @@ class Box(Selector):
         return {n for n in ctx.names if self._inside(ctx.points(n)[None], ctx.scale)[0]}
 
     def edges(self, ctx):
-        keep = self._inside(ctx.coords_of(ctx.rows), ctx.scale)
+        keep = self._inside(ctx.points(), ctx.scale)
         return set(ctx.codes[keep].tolist())
 
     def __repr__(self):
@@ -186,8 +188,8 @@ def _interval(name, v):
 
 class Near(Selector):
     """For a region: the domain group containing `point` (the nearest one if none does). For a boundary:
-    the boundary curve nearest to `point` (a chain of edges between corners, junctions and changes of the
-    adjacent domains)."""
+    the boundary curve nearest to `point` (on the mesh: a chain of edges between corners, junctions and
+    changes of the adjacent domains; on the geometry, e.g. the base of a PML: a curve of the .geo)."""
 
     def __init__(self, point):
         self.point = np.asarray(point, float).ravel()
@@ -203,10 +205,7 @@ class Near(Selector):
         return {cands[int(np.argmin(d))]}
 
     def edges(self, ctx):
-        p = self.point[:ctx.dim]
-        X = ctx.coords_of(ctx.rows)
-        segs = np.concatenate([X[:, [0, 2]], X[:, [2, 1]]]) if X.shape[1] == 3 else X[:, :2]
-        d = _distance_to_segments(segs, p, reduce=False).reshape(-1, len(X)).min(axis=0)
+        d = ctx.distance(self.point[:ctx.dim])
         chain = ctx.chains()
         return set(ctx.codes[chain == chain[int(np.argmin(d))]].tolist())
 
@@ -343,10 +342,14 @@ class Domains:
         self.where = where
 
     @classmethod
-    def from_geometry(cls, path, names, regions=None) -> "Domains":
-        """The curve-loop domain groups of a 2D .geo (outlines sampled on the curves with gmsh)."""
-        from pathlib import Path
-        return cls(names, lambda: geometry_outlines(path, names), dim=2, regions=regions, where=Path(path).name)
+    def from_geometry(cls, geometry, names, regions=None) -> "Domains":
+        """The curve-loop domain groups of a 2D .geo (a path or its GeometryIndex): outlines sampled on the
+        curves (with gmsh, when first needed)."""
+        def outlines():
+            index = geometry if isinstance(geometry, GeometryIndex) else GeometryIndex(geometry)
+            return {n: index.segments(index.groups[n]) for n in names}
+        where = geometry.name if isinstance(geometry, GeometryIndex) else _name(geometry)
+        return cls(names, outlines, dim=2, regions=regions, where=where)
 
     @classmethod
     def from_mesh(cls, mesh, regions=None) -> "Domains":
@@ -461,6 +464,16 @@ class Edges:
     def coords_of(self, rows) -> np.ndarray:
         return self.mesh.coords_of(rows)
 
+    def points(self) -> np.ndarray:
+        """(k, nodes per edge, dim) the nodes of every edge."""
+        return self.coords_of(self.rows)
+
+    def distance(self, p) -> np.ndarray:
+        """(k,) distance from p to every edge (through its mid node)."""
+        X = self.points()
+        segs = np.concatenate([X[:, [0, 2]], X[:, [2, 1]]]) if X.shape[1] == 3 else X[:, :2]
+        return _distance_to_segments(segs, p, reduce=False).reshape(-1, len(X)).min(axis=0)
+
     def domain_mask(self, selector: Selector) -> np.ndarray:
         """(n_domains + 1,) bool: the domain groups selected by `selector` (on this mesh); the last entry,
         False, is indexed by the side −1 (no domain)."""
@@ -507,6 +520,91 @@ class Edges:
         return self._chains
 
 
+class Curves:
+    """
+    The curves of a 2D .geo: what the base of a PML layer is selected on (before meshing), with the rules
+    of Edges. codes: curve tags; sides (k, 2): indices into domain_names of the meshed curve loops on each
+    side (−1: none); curve_groups: the named curve groups that are not meshed loops {name: set of tags}.
+    Every curve is its own "boundary curve" for lp.Near.
+    """
+
+    def __init__(self, index: "GeometryIndex", loops, regions: dict | None = None):
+        self.index = index
+        self.domain_names = list(loops)
+        self.where = index.name
+        self.dim = 2
+        self.curve_groups = {n: set(t) for n, t in index.groups.items() if n not in set(self.domain_names)}
+        sides = {}
+        for gi, n in enumerate(self.domain_names):
+            for t in index.groups[n]:
+                sides.setdefault(t, []).append(gi)
+        named = set().union(*self.curve_groups.values()) if self.curve_groups else set()
+        tags = sorted(set(sides) | named)              # curves of the meshed loops and of the named groups
+        sides = {t: sides.get(t, []) for t in tags}
+        self.codes = np.array(tags, np.int64)
+        bad = [t for t, s in sides.items() if len(s) > 2]
+        if bad:
+            raise SelectionError(f"curves {bad} of {index.name} bound more than two curve loops")
+        self.sides = np.array([(s + [-1, -1])[:2] for s in (sides[t] for t in tags)], np.int64).reshape(-1, 2)
+        self.domains = Domains.from_geometry(index, self.domain_names, regions)
+
+    @property
+    def regions(self):
+        return self.domains.regions
+
+    @property
+    def scale(self) -> float:
+        return self.domains.scale if self.domain_names else \
+            float(np.linalg.norm(np.ptp(np.concatenate(list(self.index.curves.values())), axis=0)))
+
+    def points(self) -> np.ndarray:
+        return np.stack([self.index.curves[int(t)] for t in self.codes])
+
+    def distance(self, p) -> np.ndarray:
+        return np.array([_distance_to_segments(self.index.segments([int(t)]), p) for t in self.codes])
+
+    def chains(self) -> np.ndarray:
+        return np.arange(len(self.codes))
+
+    def domain_mask(self, selector: Selector) -> np.ndarray:
+        names = selector.domains(self.domains)
+        return np.array([n in names for n in self.domain_names] + [False], bool)
+
+
+class GeometryIndex:
+    """
+    The curves of a 2D .geo read once with gmsh: groups {physical curve group: [curve tags]} (in the order of
+    the file) and curves {tag: (samples + 1, 2) points along the curve}.
+    """
+
+    def __init__(self, path, samples: int = 16):
+        from loudpy.geometry.gmsh_session import gmsh_session
+        self.name = _name(path)
+        self.groups: dict[str, list[int]] = {}
+        self.curves: dict[int, np.ndarray] = {}
+        with gmsh_session() as gmsh:
+            gmsh.open(str(path))
+            for _, tag in gmsh.model.getPhysicalGroups(1):
+                name = gmsh.model.getPhysicalName(1, tag).strip()
+                if name:
+                    self.groups.setdefault(name, [])
+                    self.groups[name] += [int(c) for c in gmsh.model.getEntitiesForPhysicalGroup(1, tag)]
+            for _, c in gmsh.model.getEntities(1):
+                lo, hi = gmsh.model.getParametrizationBounds(1, c)
+                t = np.linspace(lo[0], hi[0], samples + 1)
+                self.curves[int(c)] = np.asarray(gmsh.model.getValue(1, c, t)).reshape(-1, 3)[:, :2]
+
+    def segments(self, tags) -> np.ndarray:
+        """(k, 2, 2) segments along the curves `tags`."""
+        segs = [np.stack([x[:-1], x[1:]], axis=1) for x in (self.curves[int(t)] for t in tags)]
+        return np.concatenate(segs) if segs else np.zeros((0, 2, 2))
+
+
+def _name(path) -> str:
+    from pathlib import Path
+    return Path(path).name
+
+
 # ════════════════════════════════════════════════════════════════════════════
 #  Helpers
 # ════════════════════════════════════════════════════════════════════════════
@@ -546,23 +644,3 @@ def _inside_outline(segs, p) -> bool:
     with np.errstate(divide="ignore", invalid="ignore"):
         xc = x1 + (p[1] - y1) * (x2 - x1) / (y2 - y1)
     return bool((cross & (p[0] < xc)).sum() % 2)
-
-
-def geometry_outlines(path, names, samples: int = 16) -> dict[str, np.ndarray]:
-    """{group: segments (k, 2, 2)} sampled along the curves of the named physical curve groups of a 2D .geo."""
-    from loudpy.geometry.gmsh_session import gmsh_session
-    wanted, out = set(names), {}
-    with gmsh_session() as gmsh:
-        gmsh.open(str(path))
-        for _, tag in gmsh.model.getPhysicalGroups(1):
-            name = gmsh.model.getPhysicalName(1, tag).strip()
-            if name not in wanted:
-                continue
-            segs = []
-            for c in gmsh.model.getEntitiesForPhysicalGroup(1, tag):
-                lo, hi = gmsh.model.getParametrizationBounds(1, c)
-                t = np.linspace(lo[0], hi[0], samples + 1)
-                xy = np.asarray(gmsh.model.getValue(1, c, t)).reshape(-1, 3)[:, :2]
-                segs.append(np.stack([xy[:-1], xy[1:]], axis=1))
-            out[name] = np.concatenate(segs) if segs else np.zeros((0, 2, 2))
-    return out

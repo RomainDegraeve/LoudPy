@@ -5,10 +5,11 @@ Regions: the domains of a model (one or several physical groups of the geometry 
     lp.Solid("plate", lp.Material("Steel", rho=7850, E=2.1e11, nu=0.3), damping=lp.Undamped())
     lp.Air("subacou", mesh_size=5e-3)
     lp.PML("PML", thickness=0.1, tuned_to=1000.0)
+    lp.PML("absorber", on=lp.Box(r=0.3) | lp.Box(z=0.532), thickness=0.1, tuned_to=1000.0)
     lp.Solid("cone", "Paper", on=lp.Group("membranne", "dustcap"))      # name = label, on = selection
 
 `on` selects the domain groups (loudpy.geometry.selectors: lp.Group, lp.Box, lp.Near and their
-combinations); by default the name is the label that selects them (rules in loudpy.geometry.naming:
+combinations; for a PML the curves it grows from); by default the name is the label that selects them (rules in loudpy.geometry.naming:
 "glue" selects submeca_glue_1 and submeca_glue_2, "coil" does not select coil_former; "glue_*" is a
 glob). The name is the label of the region in the results. Material properties given here override
 those of the material.
@@ -70,7 +71,12 @@ class Air(Region):
 
 @dataclass
 class PML(Region):
-    """Perfectly matched layer built by the mesher outward from the PML curves of the geometry."""
+    """Perfectly matched layer grown by the mesher from its base curves, outward from the air they bound.
+
+    on: the base curves (straight lines r = const or z = const of the geometry, each bounding one air
+    region), any selector of curves: lp.Box(r=0.3) | lp.Box(z=0.5), lp.BoundaryOf("air") - …; by default
+    the name is the label of named curve groups ("PML" selects PML_r+_1_front …). Where two layers meet at
+    a right angle a corner layer is added. thickness [m]; tuned_to [Hz]: frequency of the absorption."""
     material: str | Material = "Air"
     thickness: float = 1.0              # layer thickness [m]
     mesh_size: float = 0.01

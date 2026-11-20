@@ -37,6 +37,9 @@ The roadmap of this work is in `docs/ROADMAP.md`.
   `-`, given to any region or boundary as `on=` (the name stays its label). Boundaries are selected on
   the mesh: interfaces, clamps and the coil no longer need curves drawn in the `.geo`.
   `Model.select(selector)` shows what a selector selects; `Field.restrict` accepts selectors.
+- `lp.PML(…, on=selector)`: the base curves of the layers, selected on the curves of the geometry (no
+  `PML_*` group needed). The geometry of the layers is stored with the mesh (`pml_layers` in
+  `<mesh>.msh.json`), not in the surface names; meshes written before are still read.
 
 ### Changed
 - One air everywhere: the library's `Air` is computed by `lp.air()` at 20 °C, 101.325 kPa, dry
@@ -56,6 +59,9 @@ The roadmap of this work is in `docs/ROADMAP.md`.
   Meshes saved before are rebuilt once. A saved mesh that keeps more boundary groups than the model
   needs is reused.
 - `Model.add` refuses two items with the same name (the name is the label of the results).
+- PML surfaces of new meshes are named after their curve group or region (`PML_r+_1_front`, `absorber_1`,
+  `…_Corner`), without the layer geometry (`__r0=…__t=…`). `Model.groups("domain")` lists the curve loops
+  only; the `PML_*` groups are curve groups.
 - `import loudpy` has no side effects: no environment variable, logging silent by default
   (`lp.set_verbosity("info")` to see progress), the plot style no longer changes matplotlib's
   global settings (`lp.plot.style.use()` to opt in).
@@ -77,6 +83,10 @@ The roadmap of this work is in `docs/ROADMAP.md`.
 - Library material `SolidGlue` (cured epoxy): its Rayleigh fit (α = 8e-5 1/s, β = 1.2e-7 s) gave a loss
   factor of 1e-4 – 8e-4 instead of its own 0.03; now the fit of η = 0.03 at 100 Hz and 1 kHz
   (α = 17.136 1/s, β = 4.34e-6 s). Results of models with Rayleigh-damped glue change (damping only).
+- PML layers grow along the outward normal of the air they bound (from the geometry). The former rule
+  pointed them away from the centroid of the drawing, which put a layer inside its air when the
+  drawing extended beyond it (e.g. a structure above a top PML); the models of the examples were not
+  affected (identical meshes and operators).
 - `MultiDriver.surface` called a function that had moved (removed; use `DriverResponse.surface`).
 
 ### Removed
