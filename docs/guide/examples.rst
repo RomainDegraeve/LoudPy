@@ -6,6 +6,11 @@ folder separates the computation from the figures:
 
 * ``Running_*.py`` — builds the model, solves, writes ``Results/Files/``
 * ``Loading_*.py``, ``Plot_*.py`` — reads the results (``lp.load``), writes ``Results/Figures/``
+  (figures) and ``Results/Files/`` (the key curves as CSV, fields as VTU for ParaView)
+
+The plotting scripts are short: they only use the result objects (``res.spl(at=…)``,
+``res.field(…)``, ``.plot()``, ``.export()``) and ``lp.plot`` — read them as worked examples of
+:doc:`results`, :doc:`postprocessing` and :doc:`plotting`.
 
 2D (axisymmetric)
 -----------------
