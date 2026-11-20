@@ -70,5 +70,5 @@ def test_registry_covers_the_roles():
     b = SystemBuilder()
     with pytest.raises(ValueError, match="form"):
         contribute(b, None, [], None, ["solid"], form="time")
-    with pytest.raises(ModelError, match="symmetric form only"):
+    with pytest.raises(ModelError, match="symmetric form"):
         contribute(b, None, [], None, ["radiation"], form="frequency")
