@@ -218,3 +218,17 @@ def element_for_gmsh_type(gmsh_type: int) -> LagrangeElement:
     if gmsh_type not in GMSH_TYPES:
         raise ValueError(f"gmsh element type {gmsh_type} is not supported; known: {sorted(GMSH_TYPES)}")
     return lagrange(*GMSH_TYPES[gmsh_type])
+
+
+def tri10_interior_nodes(cell_coords: np.ndarray) -> np.ndarray:
+    """
+    Interior-node positions of cubic triangles (TRI10) from their corners and edge nodes:
+    x₉ = ¼ Σ edge nodes − ⅙ Σ corners (exact for every cubic map whose edges are the given cubics;
+    the centroid on straight cells).
+
+    gmsh moves the interior node of curved boundary cells elsewhere, which lowers the L2 order of P3
+    on curved domains from 4 to ≈ 3.5 (quarter annulus, u = ln r: 3.42 / 3.82 / 3.54 with gmsh's node,
+    3.89 / 4.12 / 4.01 with this one). `cell_coords` (n_e, 10, gdim) → (n_e, gdim).
+    """
+    ec = np.asarray(cell_coords, dtype=float)
+    return ec[:, 3:9].sum(axis=1) / 4.0 - ec[:, :3].sum(axis=1) / 6.0

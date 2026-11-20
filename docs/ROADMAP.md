@@ -329,3 +329,18 @@ The plan holds; adjustments, decided with the user:
   1e-12, gradients 1e-11), facet restriction = facet basis, monomials exact to degree 8 on every cell
   (1e-13), generic TRI6 / LINE3 equal the former hand-written shape functions (1e-13). 226 tests pass
   with `--slow`.
+- **D2 (done)**: `fem/space.py` (`Space`: DOFs = sorted node tags of the cells, components interleaved
+  as in the former assemblers; isoparametric cell coordinates; `Space.from_mesh`), `fem/kernels.py`
+  (generic Numba kernels on tabulated bases: mass, Laplace, load, boundary mass / load on lines in 2D and
+  triangles in 3D; real or complex coefficients per quadrature point; optional 2πr weight; `Assembler`:
+  CSR pattern once, scatter map). 31 tests (`tests/test_fem_assembly.py`, in-memory gmsh meshes,
+  `tests/support/fem_meshes.py`): textbook P1 matrices, measures (area, 2π∫r dA, perimeter, revolved
+  area 4π), patch tests on distorted curved cells (P1–P3, Q1–Q2, axisymmetric, tetrahedra P1–P3:
+  1e-10), manufactured solutions with L2 orders ≥ p + 1 − 0.15 for P1–P3 and Q1–Q2 (Poisson,
+  Helmholtz k² = 4, axisymmetric with the natural axis condition) and ≥ p + 1 − 0.3 on unstructured
+  tetrahedra (P1 1.80, P2 2.73, P3 3.73 with h_eff = n_cells^(−1/3)); curved cells: ∫r² dA on a
+  quarter annulus converges as h² with straight sides and is 10³–10⁸ times more accurate curved.
+  **Found**: gmsh places the interior node of curved TRI10 cells so that P3 converges at ≈ 3.5 instead
+  of 4 on curved domains (ln r: 3.42 / 3.82 / 3.54); re-placing it by x₉ = ¼ Σ edge nodes − ⅙ Σ corners
+  (`fem.reference.tri10_interior_nodes`) gives 3.89 / 4.12 / 4.01 and a 4× smaller error. To be applied
+  when P3 meshes are read (D4). 257 tests pass with `--slow`.
