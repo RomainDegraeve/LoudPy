@@ -278,3 +278,20 @@ def test_boundary_normals(dim, p):
         Mi = asm.matrix(np.ascontiguousarray(blocks[:, i]))
         np.testing.assert_allclose(one @ Mi @ one, 0.0, atol=1e-13)
         np.testing.assert_allclose(abs(one @ Mi @ sp.node_coords[:, i]), 1.0, rtol=1e-12)
+
+
+def test_tet10_toolkit_curved():
+    """3D toolkit (fem.tet10): straight-sided cells see a polyhedron (volume, area errors ~ h²);
+    isoparametric cells follow gmsh's mid nodes on the sphere (errors ~ h⁴); Laplace rows sum to 0."""
+    from loudpy.fem import tet10
+    X, tets, tris = fem_meshes.ball(0.4)
+    K, M, V_straight = tet10.assemble_p2(X, tets, curved=False)
+    _, Mc, V_curved = tet10.assemble_p2(X, tets, curved=True)
+    a_straight = tet10.surface_quadrature(X, tris, curved=False)[1].sum()
+    a_curved = tet10.surface_quadrature(X, tris, curved=True)[1].sum()
+    V, A = 4 * np.pi / 3, 4 * np.pi
+    assert abs(V_straight - V) / V > 0.02 and abs(V_curved - V) / V < 5e-4
+    assert abs(a_straight - A) / A > 0.01 and abs(a_curved - A) / A < 5e-4
+    np.testing.assert_allclose(M.sum(), V_straight, rtol=1e-13)
+    np.testing.assert_allclose(Mc.sum(), V_curved, rtol=1e-13)
+    np.testing.assert_allclose(K @ np.ones(len(X)), 0.0, atol=1e-12)

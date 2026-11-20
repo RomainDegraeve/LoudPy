@@ -96,3 +96,21 @@ def quarter_annulus(h: float, order: int, curved: bool = True):
         return _collect(gmsh, 2, order, curved)
     finally:
         gmsh.finalize()
+
+
+def ball(h: float, order: int = 2):
+    """Unit ball (OCC sphere), unstructured; returns nodes (n, 3), tets and boundary triangles as row
+    indices (the layout of the 3D toolkit, loudpy.fem.tet10)."""
+    import gmsh
+    _start(gmsh)
+    try:
+        gmsh.model.occ.addSphere(0, 0, 0, 1)
+        gmsh.model.occ.synchronize()
+        gmsh.option.setNumber("Mesh.MeshSizeMax", h)
+        gmsh.option.setNumber("Mesh.MeshSizeMin", h)
+        m = _collect(gmsh, 3, order)
+    finally:
+        gmsh.finalize()
+    rows = {int(t): i for i, t in enumerate(m["node_tags"])}
+    to_rows = np.vectorize(rows.get)
+    return m["coords"], to_rows(m["cells"]), to_rows(m["boundary_cells"])

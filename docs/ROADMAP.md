@@ -369,3 +369,9 @@ The plan holds; adjustments, decided with the user:
   Gauss rule. Former code, same machine: Cam 2.9e-16, F 2.5e-16, DtN system Ms 1.2e-14, Ks / Cs 1.16e-11
   (their structure block: the spider cell of D3). Test: divergence theorem ∮ x_i n_i = |Ω|, ∮ n = 0 on
   the unit square (P1–P3) and cube (P1–P2). 276 tests pass with `--slow`.
+- **D4b, step 1 (done)**: the 3D toolkit (`fem/tet10.py`: `assemble_p2`, `surface_quadrature`) on the
+  generic kernels (P2 tetrahedra, degree-4 rule; TRI6 faces with the former 6-point Dunavant rule), with
+  `curved=False` (cells mapped from their corners, as before) as the default for this step: same matrices
+  as the former exact integrals at ≤ 1.3e-15 (K 1.1e-15, M 7.1e-16, surface points / weights / W
+  ≤ 1.3e-15 on a P2 ball), every reference unchanged. On that ball (h = 0.4) straight cells give the
+  volume −3.5 % and the area −1.9 %; curved (isoparametric) cells −0.015 % and −0.010 %.
