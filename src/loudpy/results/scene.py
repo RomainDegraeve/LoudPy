@@ -6,46 +6,60 @@ per frequency the stacked driver modal amplitudes ("q"), the coefficients of the
 expansion outside the hemisphere ("dtn") and, with cavity modes, the modal pressures
 ("P_cavity"); the attachments hold the driver modal bases and the cavity modes.
 
-    res.drivers                          names of the drivers
-    res.driver("top").excursion()        axial displacement of the dust-cap centre over frequency
-    res.driver("top").surface(f=500)     deformed 3D surface of the driver (pyvista)
-    res.driver("top").in_vacuo()         modal amplitudes of the same drive without air
-    res.driver("top").kinetic_energy(by_order=True)
-    res.far_field(points)                pressure outside the hemisphere, from the DtN expansion
-    res.spl(at=point)                    SPL: far field outside the hemisphere, FE field inside
-    res.cavity_pressure(point)           pressure in the cavity (cavity modes)
+    res.drivers                               names of the drivers
+    hp = res.driver("top")                    DriverResponse
+    hp.excursion()                            Data: axial displacement of the dust-cap centre over f
+    hp.displacement(at=(r, z), theta=0)       Data: (u_r, u_z, u_θ) at a meridian point
+    hp.kinetic_energy(by_order=True)          Data over (f, order)
+    hp.in_vacuo()                             the same driver and drive without air (DriverResponse)
+    hp.surface(f=500)                         deformed 3D surface (pyvista)
+    res.pressure(at), res.spl(at)             far field outside the hemisphere (exact DtN expansion),
+                                              FE field inside, cavity modes in the cavity
+    res.spl(at=lp.Arc(1.0, range(-180, 181, 5), center=c, axis="z", toward="x"))   directivity
+    res.cavity_pressure(at)                   pressure in the cavity (cavity modes)
 """
 from __future__ import annotations
 
 import numpy as np
 
-from loudpy.results.results import FrequencyResults, spl as _spl
+from loudpy.results.data import Data
+from loudpy.results.results import FrequencyResults
+from loudpy.results.selection import as_selection
 
 
 class DriverResponse:
-    """One driver of a scene: its modal amplitudes over frequency and its modal basis."""
+    """One driver of a scene: its modal amplitudes q (n_f, n_modes) over frequency and its modal basis."""
 
-    def __init__(self, name, modes, frame, q, freqs, coil_nodes, force=None):
+    def __init__(self, name, modes, frame, q, freqs, coil_nodes, force=None, label=""):
         self.name, self.modes, self.frame = name, modes, frame
-        self.q, self.frequencies, self.coil_nodes = q, freqs, coil_nodes
+        self.q, self.frequencies, self.coil_nodes = q, np.asarray(freqs), coil_nodes
         self.force = force                                     # modal force of the drive (or None)
+        self.label = label or name
 
-    def in_vacuo(self) -> np.ndarray:
-        """Modal amplitudes (n_f, n_modes) of the same driver under the same drive, without air."""
+    def __repr__(self):
+        return f"DriverResponse({self.label!r}, {len(self.modes)} modes, {len(self.frequencies)} frequencies)"
+
+    def _data(self, values, coords, q, **meta):
+        return Data(values, {"f": self.frequencies, **coords}, q, self.label, {"driver": self.name, **meta})
+
+    def in_vacuo(self) -> "DriverResponse":
+        """The same driver under the same drive, without air (in vacuo modal response)."""
         if self.force is None:
             raise ValueError("these results do not store the drive (re-run the study)")
-        w = 2 * np.pi * np.asarray(self.frequencies)[:, None]
+        w = 2 * np.pi * self.frequencies[:, None]
         wk = 2 * np.pi * self.modes.freq[None, :]
-        return self.force[None, :] / (wk ** 2 + 2j * self.modes.zeta[None, :] * wk * w - w ** 2)
+        q0 = self.force[None, :] / (wk ** 2 + 2j * self.modes.zeta[None, :] * wk * w - w ** 2)
+        return DriverResponse(self.name, self.modes, self.frame, q0, self.frequencies, self.coil_nodes, self.force,
+                              f"{self.label} (in vacuo)")
 
-    def kinetic_energy(self, q=None, by_order: bool = False):
-        """Kinetic energy ½ω²|q|² over frequency (mass-normalised modes); by_order: {m: E_m}."""
-        q = self.q if q is None else q
-        w2 = (2 * np.pi * np.asarray(self.frequencies)) ** 2
+    def kinetic_energy(self, by_order: bool = False) -> Data:
+        """Kinetic energy ½ω²|q|² over frequency (mass-normalised modes) [J]; by_order: per azimuthal order m."""
+        w2 = (2 * np.pi * self.frequencies) ** 2
         if not by_order:
-            return 0.5 * w2 * np.sum(np.abs(q) ** 2, axis=1)
-        return {int(m): 0.5 * w2 * np.sum(np.abs(q[:, self.modes.m == m]) ** 2, axis=1)
-                for m in np.unique(self.modes.m)}
+            return self._data(0.5 * w2 * np.sum(np.abs(self.q) ** 2, axis=1), {}, "energy")
+        orders = np.unique(self.modes.m)
+        E = np.column_stack([0.5 * w2 * np.sum(np.abs(self.q[:, self.modes.m == m]) ** 2, axis=1) for m in orders])
+        return self._data(E, {"order": orders}, "energy")
 
     def node(self, at=None) -> int:
         """Meridian node nearest `at` (r, z); default: on the axis at the top (dust-cap centre)."""
@@ -55,26 +69,33 @@ class DriverResponse:
             return int(on_axis[np.argmax(xy[on_axis, 1])])
         return int(np.argmin(np.linalg.norm(xy - np.asarray(at, float), axis=1)))
 
-    def displacement(self, at=None, theta: float = 0.0) -> np.ndarray:
-        """(n_f, 3) displacement (u_r, u_z, u_θ) at a meridian point, azimuth θ (driver frame)."""
-        k = self.node(at)
+    def _displacement(self, k, theta):
         U = self.modes.U[:, k, :]                                              # (n_modes, 3)
         a = self.modes.angular(theta)[:, 0]
         b = np.where(self.modes.family == "s", -np.cos(self.modes.m * theta), np.sin(self.modes.m * theta))
         b[self.modes.m == 0] = 1.0
         return np.column_stack([self.q @ (U[:, 0] * a), self.q @ (U[:, 1] * a), self.q @ (U[:, 2] * b)])
 
-    def excursion(self, at=None) -> np.ndarray:
-        """Axial displacement u_z over frequency (default: dust-cap centre)."""
-        return self.displacement(at)[:, 1]
+    def displacement(self, at=None, theta: float = 0.0, component: str | None = None) -> Data:
+        """Displacement (u_r, u_z, u_θ) at a meridian point (r, z) of the driver, azimuth θ [rad] in its frame."""
+        k = self.node(at)
+        u = self._displacement(k, theta)
+        where = dict(at=f"(r, z) = ({self.modes.xy[k, 0]:.4g}, {self.modes.xy[k, 1]:.4g}) m", theta=theta)
+        if component is not None:
+            return self._data(u[:, {"r": 0, "z": 1, "theta": 2}[component]], {}, f"u_{component}", **where)
+        return self._data(u, {"component": np.array(["r", "z", "theta"])}, "u", **where)
 
-    def coil_excursion(self) -> np.ndarray:
+    def excursion(self, at=None, theta: float = 0.0) -> Data:
+        """Axial displacement u_z over frequency (default: dust-cap centre)."""
+        return self.displacement(at, theta, "z")
+
+    def coil_excursion(self) -> Data:
         """Mean axial displacement of the coil over frequency."""
-        uz = np.mean([self.displacement(self.modes.xy[n])[:, 1] for n in self.coil_nodes], axis=0)
-        return uz
+        uz = np.mean([self._displacement(n, 0.0)[:, 1] for n in self.coil_nodes], axis=0)
+        return self._data(uz, {}, "u_z", at="coil (mean)")
 
     def surface(self, f: float, **kwargs):
-        """Deformed 3D surface at the frequency nearest f (driver_surface keyword arguments)."""
+        """Deformed 3D surface (pyvista) at the frequency nearest f (results.surfaces.driver_surface keywords)."""
         from loudpy.results.surfaces import driver_surface
         i = int(np.argmin(np.abs(self.frequencies - f)))
         return driver_surface(self.modes, self.q[i], self.frame, **kwargs)
@@ -122,6 +143,16 @@ class SceneResults(FrequencyResults):
         return DriverResponse(name, modes, frame, q, self.frequencies, np.asarray(a["coil_nodes"]),
                               None if F is None else np.asarray(F)[sl])
 
+    def _far(self, pts) -> np.ndarray:
+        dtn = self._dtn()
+        C = self._stacked("dtn")
+        n_h = np.concatenate([np.asarray(b.extra["dtn_n"]) for b in self.blocks]).astype(int)
+        c = self.scene["c"]
+        out = np.zeros((len(self), len(pts)), complex)
+        for i, f in enumerate(self.frequencies):
+            out[i] = dtn.pressure(pts, C[i, :n_h[i]], 2 * np.pi * f / c)
+        return out
+
     # ── pressure ───────────────────────────────────────────────────────────
     def _dtn(self):
         from loudpy.physics.exterior import HalfSpaceDtN
@@ -130,21 +161,26 @@ class SceneResults(FrequencyResults):
             raise ValueError("these results have no exterior air (no DtN expansion)")
         return HalfSpaceDtN(h["center"], h["radius"], up=h["up"])
 
-    def far_field(self, points) -> np.ndarray:
-        """Pressure (n_f, n_points) at points outside the hemisphere, from the exact DtN expansion."""
-        dtn = self._dtn()
-        pts = np.atleast_2d(np.asarray(points, float))
-        r = np.linalg.norm(pts - np.asarray(dtn.center), axis=1)
-        if np.any(r < dtn.R * (1 - 1e-9)):
-            raise ValueError(f"far_field needs points outside the hemisphere (radius {dtn.R:.3f} m); "
-                             f"use probe() inside")
-        C = self._stacked("dtn")
-        n_h = np.concatenate([np.asarray(b.extra["dtn_n"]) for b in self.blocks]).astype(int)
-        c = self.scene["c"]
-        out = np.zeros((len(self), len(pts)), complex)
-        for i, f in enumerate(self.frequencies):
-            out[i] = dtn.pressure(pts, C[i, :n_h[i]], 2 * np.pi * f / c)
-        return out
+    def far_field(self, at) -> Data:
+        """Pressure outside the hemisphere (exact DtN expansion) at points / a selection [Pa]."""
+        sel = as_selection(at)
+        pts = sel.points(3)
+        h = self.scene.get("hemisphere")
+        if not h:
+            raise ValueError("these results have no exterior air (no DtN expansion)")
+        r = np.linalg.norm(pts - np.asarray(h["center"]), axis=1)
+        if np.any(r < h["radius"] * (1 - 1e-9)):
+            raise ValueError(f"far_field needs points outside the hemisphere (radius {h['radius']:.3f} m); "
+                             f"use pressure() for points inside")
+        return self._pressure_data(self._far(pts), sel)
+
+    def _pressure_data(self, P, sel):
+        coords = {"f": self.frequencies}
+        if sel.dim is None:
+            P = P[:, 0]
+        else:
+            coords[sel.dim] = sel.coord
+        return Data(P, coords, "p", meta=self._meta(at=sel.describe()))
 
     @property
     def cavity_frequencies(self) -> np.ndarray:
@@ -154,22 +190,39 @@ class SceneResults(FrequencyResults):
             raise ValueError("these results have no cavity modes")
         return self.scene["c"] * np.sqrt(np.maximum(np.asarray(cav["kappa2"]), 0.0)) / (2 * np.pi)
 
-    def cavity_pressure(self, point) -> np.ndarray:
-        """Pressure over frequency at the cavity node nearest `point` (cavity modes)."""
+    def _cavity(self, pts):
         cav = self.attachments.get("cavity")
         if cav is None:
             raise ValueError("these results have no cavity modes")
-        k = int(np.argmin(np.linalg.norm(np.asarray(cav["nodes"]) - np.asarray(point, float), axis=1)))
-        return self._stacked("P_cavity") @ np.asarray(cav["psi"][k])
+        nodes = np.asarray(cav["nodes"])
+        rows = np.array([int(np.argmin(np.linalg.norm(nodes - p, axis=1))) for p in pts])
+        uniq, inv = np.unique(rows, return_inverse=True)                  # increasing rows (lazy datasets)
+        psi = np.asarray(cav["psi"][uniq])
+        return self._stacked("P_cavity") @ psi[inv].T
 
-    def spl(self, at, rms: bool = True) -> np.ndarray:
-        """SPL at `at`: far field outside the hemisphere, nearest FE node inside (or the cavity)."""
-        at = np.asarray(at, float)
+    def cavity_pressure(self, at) -> Data:
+        """Pressure in the cavity (cavity modes, nearest node) at points / a selection [Pa]."""
+        sel = as_selection(at)
+        return self._pressure_data(self._cavity(sel.points(3)), sel)
+
+    def pressure(self, at) -> Data:
+        """Pressure at points / a selection: far field outside the hemisphere, FE field inside, cavity otherwise."""
+        sel = as_selection(at)
+        pts = sel.points(3)
+        P = np.zeros((len(self), len(pts)), complex)
         h = self.scene.get("hemisphere")
-        if h and np.linalg.norm(at - np.asarray(h["center"])) >= h["radius"]:
-            p = self.far_field(at)[:, 0]
-        elif "p" in self.names:
-            p = self.probe(at, "p")
-        else:
-            p = self.cavity_pressure(at)
-        return _spl(p, rms)
+        out = np.zeros(len(pts), bool) if not h else \
+            np.linalg.norm(pts - np.asarray(h["center"]), axis=1) >= h["radius"]
+        if out.any():
+            P[:, out] = self._far(pts[out])
+        if (~out).any():
+            if "p" in self.names:
+                from loudpy.results.selection import Points
+                P[:, ~out] = np.asarray(self.probe("p", Points(pts[~out])))
+            else:
+                P[:, ~out] = self._cavity(pts[~out])
+        return self._pressure_data(P, sel)
+
+    def spl(self, at, rms: bool = True) -> Data:
+        """Sound pressure level [dB re 20 µPa] at points / a selection (see pressure)."""
+        return self.pressure(at).spl(rms)

@@ -1,20 +1,28 @@
 """
 Results: the outcome of any study, with one interface.
 
-    res = lp.load("sweep.h5")                # FrequencyResults, ModeResults or TimeResults
-    res.frequencies                          # (or res.times) the coordinate of the entries
-    res.names                                # fields: "u" (displacement), "p" (pressure), "v", "a"
-    res.field("p", f=1000)                   # FieldView: mesh + values at the entry nearest 1 kHz
-    res.probe((0.0, 0.3), "p")               # values at the node nearest a point, for every entry
-    res.spl(at=(0.0, 0.3))                   # SPL [dB re 20 µPa], RMS by default
-    res.save("sweep_v2.h5")
+    res = lp.load("sweep.h5")                    FrequencyResults, ModeResults or TimeResults
+    res.frequencies                              (res.times) the coordinate of the entries: NumPy array
+    res.names                                    fields: "u" (displacement), "p" (pressure), "v", "a"
 
-A Results is a list of blocks: one block per mesh (a frequency sweep remeshed per band gives
-one block per band) or per mode set (one per azimuthal order). The block structure is hidden:
-`frequencies`, `probe`, `spl` run over all the blocks in order; `field` finds the block.
+    res.field("p", f=1000)                       Field: the values on the mesh at the entry nearest 1 kHz
+    res.spl(at=(0.0, 0.3))                       Data: SPL [dB re 20 µPa] over frequency (RMS)
+    res.spl(at=lp.Arc(0.3, range(0, 91, 5)))     Data over (f, angle): directivity
+    res.displacement(at=(0, 0.02), component="z")   Data: u_z over frequency (complex amplitude)
+    res.velocity(...), res.acceleration(...)     jω u, −ω² u (harmonic) or the stored v, a (transient)
+    res.probe("p", at=lp.Line((0, .05), (0, .5)))   any field along any selection
+    res.scalar("I_coil"), res.impedance()        per-entry quantities as Data
 
-Fields live on the mesh of their physics: "u", "v", "a" on the "solid" mesh, "p" on the "air"
-mesh (geometry.Mesh, node order = the field rows).
+    res.save("sweep.h5")                         loudpy result format 2 (HDF5)
+    res.export("sweep.mat")                      MATLAB / NumPy (.npz) export of every field and mesh
+
+Every Data / Field plots itself (.plot()) and exports (.export("x.csv" | ".mat" | ".npz" | ".vtu"),
+.to_pandas()); np.asarray(d) gives the plain array.
+
+A Results is a list of blocks: one block per mesh (a frequency sweep remeshed per band gives one
+block per band) or per mode set (one per azimuthal order). The block structure is hidden:
+evaluations run over all the blocks in order; `field` finds the block. Fields live on the mesh of
+their physics: "u", "v", "a" on the "solid" mesh, "p" on the "air" mesh.
 """
 from __future__ import annotations
 
@@ -23,8 +31,10 @@ from dataclasses import dataclass, field as dc_field
 import numpy as np
 
 from loudpy.geometry.mesh import Mesh
+from loudpy.results.data import Data, Field, spl  # noqa: F401  (spl re-exported)
+from loudpy.results.quantities import COMPONENTS, quantity
+from loudpy.results.selection import as_selection
 
-P_REF = 20e-6
 PHYSICS_OF = {"u": "solid", "v": "solid", "a": "solid", "p": "air"}
 ALIASES = {"u_meca": "u", "v_meca": "v", "a_meca": "a", "p_acou": "p"}     # former field names
 
@@ -55,48 +65,15 @@ class Block:
         raise KeyError(f"no mesh for field {name!r} (meshes: {list(self.meshes)})")
 
 
-@dataclass
-class FieldView:
-    """One field at one entry: values (n_nodes[, dpn]) on `mesh`, at `coordinate`."""
-    name: str
-    mesh: Mesh
-    values: np.ndarray
-    coordinate: float
-    extra: dict = dc_field(default_factory=dict)
-
-    def magnitude(self) -> np.ndarray:
-        """Modulus per node (Euclidean norm of the moduli for a vector field)."""
-        v = np.abs(self.values)
-        return v if v.ndim == 1 else np.linalg.norm(v, axis=1)
-
-    def spl(self, rms: bool = True) -> np.ndarray:
-        return spl(self.values, rms)
-
-    def triangles(self) -> np.ndarray:
-        return self.mesh.triangles()
-
-    def restrict(self, region: str) -> "FieldView":
-        """The field on the mesh groups selected by `region` (e.g. "surround"; naming rules)."""
-        from loudpy.geometry.naming import matches
-        names = [n for n in self.mesh.groups if matches(region, n)]
-        if not names:
-            raise KeyError(f"no mesh group selected by {region!r} (groups: {list(self.mesh.groups)})")
-        tags = np.unique(np.concatenate([self.mesh.groups[n].cells.ravel() for n in names]))
-        rows = self.mesh.rows_of(tags)
-        sub = Mesh(tags, self.mesh.coords[rows], {n: self.mesh.groups[n] for n in names}, self.mesh.path)
-        return FieldView(self.name, sub, self.values[rows], self.coordinate, self.extra)
-
-    def at_nodes(self, tags) -> tuple[np.ndarray, np.ndarray]:
-        """(coords, values) at the node tags present on this field's mesh (e.g. res.boundary(...))."""
-        pos = self.mesh._positions
-        rows = np.array([pos[int(t)] for t in np.asarray(tags) if int(t) in pos], dtype=np.int64)
-        return self.mesh.coords[rows], self.values[rows]
-
-
-def spl(p, rms: bool = True) -> np.ndarray:
-    """Sound pressure level [dB re 20 µPa] of complex amplitudes (RMS: |p|/√2; rms=False: |p|)."""
-    a = np.abs(np.asarray(p)) / (np.sqrt(2.0) if rms else 1.0)
-    return 20.0 * np.log10(np.maximum(a, 1e-300) / P_REF)
+def _at_rows(arr, W):
+    """W @ arr[i] for every entry i of a (n, n_nodes[, dpn]) field (arrays or lazy datasets)."""
+    W = W.tocsr()
+    cols = np.unique(W.indices)                                       # the nodes W uses
+    sub = np.asarray(arr[:, cols])                                     # reads only those (lazy datasets)
+    Wc = W[:, cols].toarray()
+    if sub.ndim == 2:
+        return sub @ Wc.T                                              # (n, n_pts)
+    return np.einsum("pk,nkd->npd", Wc, sub)                           # (n, n_pts, dpn)
 
 
 class Results:
@@ -104,6 +81,8 @@ class Results:
     modes, times), per-entry quantities (`extra`), metadata and attachments. Read with lp.load."""
     kind = "results"
     coordinate = "value"
+    dim = "index"                                  # name of the entry coordinate of evaluated Data
+    real = False                                   # values are real (transients), not complex amplitudes
 
     def __init__(self, blocks: list[Block], meta: dict | None = None, boundaries: dict | None = None,
                  source=None):
@@ -130,8 +109,21 @@ class Results:
         return sum(len(b) for b in self.blocks)
 
     def extra(self, name: str) -> np.ndarray:
-        """A per-entry quantity (e.g. "zeta", "I_coil") over all blocks (NaN where missing)."""
-        return np.concatenate([b.extra.get(name, np.full(len(b), np.nan)) for b in self.blocks])
+        """A per-entry quantity (e.g. "zeta", "I_coil") over all blocks, as an array (NaN where missing)."""
+        return np.concatenate([np.asarray(b.extra[name]) if name in b.extra else np.full(len(b), np.nan)
+                               for b in self.blocks])
+
+    @property
+    def scalars(self) -> list[str]:
+        """Names of the per-entry quantities (scalar() / extra())."""
+        out = []
+        for b in self.blocks:
+            out += [n for n, v in b.extra.items() if np.ndim(v) == 1 and n not in out]
+        return out
+
+    def scalar(self, name: str) -> Data:
+        """A per-entry quantity (e.g. "I_coil", "zeta", "force") as Data over the entries."""
+        return Data(self.extra(name), {self.dim: self._coord()}, quantity(name), meta=self._meta())
 
     def mesh(self, physics: str = "solid", block: int = 0) -> Mesh:
         return self.blocks[block].meshes[physics]
@@ -150,44 +142,94 @@ class Results:
         return (f"{type(self).__name__}({len(self)} entries, {self.coordinate} {rng}, fields {self.names}, "
                 f"{len(self.blocks)} block(s))")
 
+    def _coord(self) -> np.ndarray:
+        return self.values
+
+    def _meta(self, **kw) -> dict:
+        src = self.source if isinstance(self.source, str) or self.source is None else ", ".join(map(str, self.source))
+        out = {"source": src} if src else {}
+        return {**out, **kw}
+
     # ── one field at one entry ─────────────────────────────────────────────
     def _locate(self, index=None, value=None):
-        """(block, row) of the entry with global index `index`, or nearest to `value`."""
+        """(block, row, global index) of the entry with global index `index`, or nearest to `value`."""
         if index is None:
-            if value is None:
-                index = 0
-            else:
-                index = int(np.argmin(np.abs(self.values - value)))
+            index = 0 if value is None else int(np.argmin(np.abs(self.values - value)))
         if index < 0:
             index += len(self)
+        k = index
         for b in self.blocks:
-            if index < len(b):
-                return b, index
-            index -= len(b)
+            if k < len(b):
+                return b, k, index
+            k -= len(b)
         raise IndexError("entry index out of range")
 
-    def field(self, name: str, index: int | None = None, value: float | None = None) -> FieldView:
+    def field(self, name: str, index: int | None = None, value: float | None = None) -> Field:
+        """One field on its mesh at one entry (by global index, or nearest to a coordinate value)."""
         name = canonical(name)
-        b, i = self._locate(index, value)
+        b, i, g = self._locate(index, value)
         if name not in b.fields:
             raise KeyError(f"no field {name!r} (fields: {list(b.fields)})")
-        return FieldView(name, b.mesh_of(name), b.fields[name][i], float(b.values[i]),
-                         {k: v[i] for k, v in b.extra.items()})
+        values = np.asarray(b.fields[name][i])
+        return Field(name, b.mesh_of(name), np.real(values) if self.real else values, float(b.values[i]),
+                     "t" if self.dim == "t" else "f", {k: v[i] for k, v in b.extra.items() if np.ndim(v) == 1},
+                     meta=self._meta(index=g, block=b.label))
 
-    # ── values at a point, over all entries ────────────────────────────────
-    def probe(self, point, name: str = "p") -> np.ndarray:
-        """Values at the node nearest `point` (per block mesh), for every entry: (n,) or (n, dpn)."""
+    # ── values over all entries ────────────────────────────────────────────
+    def probe(self, name: str, at, component: str | None = None) -> Data:
+        """
+        A field at `at` (a point, points, lp.Arc, lp.Line …) for every entry: linear interpolation
+        on 2D meshes, the nearest node on 3D meshes. Vector fields: one component ("r", "z",
+        "theta") or all of them (a "component" dimension). Complex amplitudes for harmonic results.
+        """
+        if isinstance(name, (tuple, list, np.ndarray)) and isinstance(at, str):   # former order probe(point, name)
+            name, at = at, name
         name = canonical(name)
+        sel = as_selection(at)
         out = []
         for b in self.blocks:
             if name not in b.fields:
-                raise KeyError(f"no field {name!r} in block {b.label!r}")
-            out.append(b.fields[name][:, b.mesh_of(name).nearest(point)])
-        return np.concatenate(out)
+                raise KeyError(f"no field {name!r} in block {b.label!r} (fields: {list(b.fields)})")
+            mesh = b.mesh_of(name)
+            out.append(_at_rows(b.fields[name], mesh.interpolation(sel.points(mesh.dim))))
+        v = np.concatenate(out, axis=0)                                   # (n, n_pts[, dpn])
+        if self.real:
+            v = np.real(v)
+        q = quantity(name)
+        if v.ndim == 3 and component is not None:
+            v, q = v[..., COMPONENTS[component]], quantity(f"{name}_{component}")
+        coords = {self.dim: self._coord()}
+        if sel.dim is None:
+            v = v[:, 0]
+        else:
+            coords[sel.dim] = sel.coord
+        if v.ndim == len(coords) + 1:
+            coords["component"] = np.array(["r", "z", "theta"][:v.shape[-1]])
+        return Data(v, coords, q, meta=self._meta(at=sel.describe()))
 
-    def spl(self, at, rms: bool = True) -> np.ndarray:
-        """SPL [dB re 20 µPa] of the pressure at the node nearest `at`, for every entry."""
-        return spl(self.probe(at, "p"), rms)
+    def pressure(self, at) -> Data:
+        """Pressure p at `at` over the entries (complex amplitude [Pa])."""
+        return self.probe("p", at)
+
+    def spl(self, at, rms: bool = True) -> Data:
+        """Sound pressure level [dB re 20 µPa] at `at` (RMS by default)."""
+        return self.pressure(at).spl(rms)
+
+    def displacement(self, at, component: str | None = None) -> Data:
+        """Displacement u at `at` (one component "r", "z", "theta", or all)."""
+        return self.probe("u", at, component)
+
+    def velocity(self, at, component: str | None = None) -> Data:
+        """Velocity at `at`: the stored field "v" if there is one, else jω u (harmonic)."""
+        if "v" in self.names:
+            return self.probe("v", at, component)
+        return self.displacement(at, component).velocity()
+
+    def acceleration(self, at, component: str | None = None) -> Data:
+        """Acceleration at `at`: the stored field "a" if there is one, else −ω² u (harmonic)."""
+        if "a" in self.names:
+            return self.probe("a", at, component)
+        return self.displacement(at, component).acceleration()
 
     # ── files ──────────────────────────────────────────────────────────────
     def save(self, path):
@@ -196,30 +238,50 @@ class Results:
         write(self, path)
         return path
 
+    def export(self, path, fields=None):
+        """
+        Every block (meshes, fields, per-entry quantities) to a file read outside loudpy:
+        .mat (MATLAB / Octave: one struct per block) or .npz (NumPy: keys block<i>_<name>).
+        fields: the fields to write (default: all).
+        """
+        from loudpy.results.export import export_results
+        return export_results(self, path, fields)
+
 
 class FrequencyResults(Results):
     """Harmonic responses: one entry per frequency (blocks: one per mesh of a remeshed sweep)."""
     kind = "frequency"
     coordinate = "frequency"
+    dim = "f"
 
     @property
     def frequencies(self) -> np.ndarray:
         return self.values
 
-    def field(self, name: str, f: float | None = None, index: int | None = None) -> FieldView:
+    def field(self, name: str, f: float | None = None, index: int | None = None) -> Field:
+        """One field on its mesh at the frequency nearest f (or at a global entry index)."""
         return super().field(name, index, f)
+
+    def impedance(self) -> Data:
+        """Electrical input impedance Z = U / I_coil over frequency (voltage drive) [Ω]."""
+        if "I_coil" not in self.scalars:
+            raise ValueError("no coil current in these results (lp.Voltage drive needed)")
+        return Data(self.extra("U") / self.extra("I_coil"), {"f": self.frequencies}, "Z", meta=self._meta())
 
 
 class TimeResults(Results):
     """Transient responses: one entry per time step."""
     kind = "time"
     coordinate = "time"
+    dim = "t"
+    real = True
 
     @property
     def times(self) -> np.ndarray:
         return self.values
 
-    def field(self, name: str, t: float | None = None, index: int | None = None) -> FieldView:
+    def field(self, name: str, t: float | None = None, index: int | None = None) -> Field:
+        """One field on its mesh at the time nearest t (or at a step index)."""
         return super().field(name, index, t)
 
 
@@ -227,9 +289,14 @@ class ModeResults(Results):
     """
     Modes: one entry per mode (frequency, damping ratio "zeta"); one block per mode set
     (structural modes, each azimuthal order m, coupled modes …), labelled e.g. "m0", "m1", "fsi".
+    Evaluations (probe …) run over the modes: Data over the "mode" index (frequencies in .meta).
     """
     kind = "modes"
     coordinate = "frequency"
+    dim = "mode"
+
+    def _coord(self):
+        return np.arange(len(self))
 
     @property
     def frequencies(self) -> np.ndarray:
@@ -261,12 +328,35 @@ class ModeResults(Results):
             raise KeyError(f"no mode set {label!r} (sets: {self.sets})")
         return ModeResults(sel, self.meta, self.boundaries, self.source)
 
-    def mode(self, k: int, name: str = "u") -> FieldView:
-        """Shape of mode k (global index, frequency order within each set)."""
-        return self.field(name, index=k)
+    def mode(self, k: int, name: str | None = None) -> Field:
+        """Shape of mode k (global index; frequency order within each set): "u" (default) or "p"."""
+        name = name or ("u" if "u" in self.names else self.names[0])
+        f = self.field(name, index=k)
+        f.coord = "f"
+        return f
 
-    def field(self, name: str, index: int | None = None, f: float | None = None) -> FieldView:
+    def field(self, name: str, index: int | None = None, f: float | None = None) -> Field:
         return super().field(name, index, f)
+
+    def table(self):
+        """pandas DataFrame, one row per mode: set, order m, frequency f [Hz], damping ratio ζ."""
+        import pandas as pd
+        rows = []
+        for b in self.blocks:
+            z = b.extra.get("zeta", np.full(len(b), np.nan))
+            for k in range(len(b)):
+                rows.append({"set": b.label, "order": b.meta.get("order", np.nan), "f [Hz]": float(b.values[k]),
+                             "zeta": float(np.real(z[k]))})
+        return pd.DataFrame(rows, index=pd.RangeIndex(len(rows), name="mode"))
+
+    def to_pandas(self):
+        """The mode table (see table())."""
+        return self.table()
+
+    def to_csv(self, path):
+        """The mode table as a CSV file."""
+        from loudpy.results.data import _write_atomic
+        return _write_atomic(path, lambda tmp: self.table().to_csv(tmp))
 
 
 KINDS = {"frequency": FrequencyResults, "modes": ModeResults, "time": TimeResults}

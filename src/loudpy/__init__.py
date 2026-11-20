@@ -28,7 +28,8 @@ from .model import (
     Material, MaterialLibrary, load_materials, materials,
 )
 from .geometry import Frame, Mesh
-from .results import load, spl, Results, FrequencyResults, ModeResults, TimeResults
+from .results import (load, spl, Results, FrequencyResults, ModeResults, TimeResults, Data, Field,
+                      Point, Points, Polar, Arc, Line)
 from .study import Modes, FrequencyResponse, PerWavelength, Transient
 from .scene import Driver, Profile, Scene, Cabinet
 
@@ -54,8 +55,9 @@ __all__ = [
     "Modes", "FrequencyResponse", "PerWavelength", "Transient",
     # 3D scenes
     "Driver", "Profile", "Scene", "Cabinet",
-    # results
-    "load", "spl", "Results", "FrequencyResults", "ModeResults", "TimeResults",
+    # results and evaluation
+    "load", "spl", "Results", "FrequencyResults", "ModeResults", "TimeResults", "Data", "Field",
+    "Point", "Points", "Polar", "Arc", "Line",
     # lazily imported
     "plot",
 ]

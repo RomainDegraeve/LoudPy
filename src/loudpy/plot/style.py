@@ -1,19 +1,20 @@
 """
-loudpy.plot.style — one figure style for the whole library (lp.plot, loudpy.Plotter, examples).
+loudpy.plot.style — one figure style for the whole library (lp.plot and the examples).
 
     import loudpy as lp
     lp.plot.style.use()                         # the loudpy style for every figure that follows
-    fig, ax = lp.plot.style.figure("wide")      # standard sizes: "single", "wide", "square", "tall"
+    fig, ax = lp.plot.figure("wide")            # standard sizes: "single", "wide", "square", "tall", "field"
     lp.plot.style.frequency_axis(ax)            # log axis 20 Hz … with 20, 50, 100, 200, 500, 1k … ticks
-    ax.set_ylabel(lp.plot.style.LABELS["spl"])
-    lp.plot.style.save(fig, "Results/Figures/spl.pdf")
+    ax.set_ylabel(lp.plot.style.LABELS["spl"])  # labels of every quantity (loudpy.results.quantities)
+    lp.plot.save(fig, "Results/Figures/spl.pdf")
 
 Choices (journal-like, colour-blind safe):
   - serif text and maths (STIX), 9–10 pt, thin axes, ticks inside on all four sides, minor ticks
   - Okabe–Ito colour cycle
   - colormaps by quantity: CMAPS["spl"] (magma), ["pressure"] (signed, RdBu_r), ["displacement"]
     (viridis), ["phase"] (twilight, cyclic), ["level"] (directivity maps, viridis)
-  - SPL is RMS, in dB re 20 µPa (lp.spl), everywhere
+  - SPL is RMS, in dB re 20 µPa (lp.spl), everywhere; labels "Name $symbol$ [unit]" from the
+    quantity registry (loudpy.results.quantities)
   - PDF with embedded TrueType fonts (editable text), 300 dpi rasters
 """
 from __future__ import annotations
@@ -34,25 +35,18 @@ CMAPS = {
     "displacement": "viridis",
     "phase": "twilight",
     "level": "viridis",
+    "plain": "viridis",
 }
+DIVERGING = "RdBu_r"                   # signed fields (real / imaginary parts, mode shapes)
 
-LABELS = {
-    "f": "Frequency $f$ [Hz]",
-    "t": "Time $t$ [s]",
-    "spl": "SPL [dB re 20 µPa RMS]",
-    "spl_n": "SPL [dB re 20 µPa RMS / N]",
-    "spl_v": "SPL [dB re 20 µPa RMS / V]",
-    "p": "Pressure $p$ [Pa]",
-    "u": "Displacement $|u|$ [m]",
-    "uz": "Axial displacement $|u_z|$ [m]",
-    "v": "Velocity $|v|$ [m/s]",
-    "phase": "Phase [rad]",
-    "angle": "Angle [deg]",
-    "r": "$r$ [m]",
-    "z": "$z$ [m]",
-    "zeta": r"Damping ratio $\zeta$",
-    "impedance": r"$|Z_e|$ [$\Omega$]",
-}
+def _labels():
+    from loudpy.results.quantities import QUANTITIES
+    out = {k: q.axis_label() for k, q in QUANTITIES.items()}
+    out.update({k: f"${k}$ [m]" for k in ("r", "z", "x", "y")})
+    return out
+
+
+LABELS = _labels()                     # axis label of every quantity: LABELS["spl"], LABELS["u_z"], LABELS["f"] …
 
 SIZES = {                                     # inches (width, height)
     "single": (3.5, 2.6),                     # one journal column
@@ -128,9 +122,10 @@ def context():
 
 
 def figure(size: str | tuple = "wide", nrows: int = 1, ncols: int = 1, **kwargs):
-    """plt.subplots with a standard size (SIZES name, or (width, height) in inches)."""
+    """plt.subplots with a standard size (SIZES name, or (width, height) in inches), constrained layout."""
     import matplotlib.pyplot as plt
     figsize = SIZES[size] if isinstance(size, str) else size
+    kwargs.setdefault("layout", "constrained")
     return plt.subplots(nrows, ncols, figsize=figsize, **kwargs)
 
 
@@ -228,5 +223,5 @@ def pdf_pages(path):
     os.replace(tmp, path)
 
 
-__all__ = ["COLORS", "CMAPS", "LABELS", "SIZES", "RC", "use", "reset", "context", "figure", "frequency_axis", "tidy",
-           "label_panels", "save", "pdf_pages"]
+__all__ = ["COLORS", "CMAPS", "DIVERGING", "LABELS", "SIZES", "RC", "use", "reset", "context", "figure",
+           "frequency_axis", "tidy", "label_panels", "save", "pdf_pages"]

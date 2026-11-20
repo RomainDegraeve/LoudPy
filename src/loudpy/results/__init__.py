@@ -1,14 +1,20 @@
 """
 loudpy.results — the outcome of a study, independent of how it was computed.
 
-  Results           FrequencyResults, ModeResults, TimeResults: one interface (fields on meshes,
-                    probes, SPL, mode sets / azimuthal orders, multi-block sweeps)
+  Results           FrequencyResults, ModeResults, TimeResults (and SceneResults): fields on meshes,
+                    evaluations at points / arcs / lines, mode sets, multi-block sweeps
+  Data, Field       evaluated results: labelled arrays (Data) and fields on a mesh (Field) that
+                    know their quantity and units, plot themselves and export (.csv, .mat, .npz, .vtu)
+  Point … Line      where to evaluate (selection)
+  quantities        names, labels, symbols and units of every quantity
   load              lp.load(file | folder | glob | list): format 2, and format 1 of the former studies
-  schema            result format 2 (HDF5), written by Results.save
-  legacy            reader of format 1
+  schema / legacy   result format 2 (HDF5, written by Results.save) / reader of format 1
 """
+from loudpy.results.data import Data, Field, spl
 from loudpy.results.io import load
-from loudpy.results.results import (Block, FieldView, FrequencyResults, ModeResults, Results,
-                                    TimeResults, spl)
+from loudpy.results.quantities import Quantity, quantity
+from loudpy.results.results import Block, FrequencyResults, ModeResults, Results, TimeResults
+from loudpy.results.selection import Arc, Line, Point, Points, Polar
 
-__all__ = ["load", "Results", "FrequencyResults", "ModeResults", "TimeResults", "FieldView", "Block", "spl"]
+__all__ = ["load", "Results", "FrequencyResults", "ModeResults", "TimeResults", "Block", "Data", "Field",
+           "Quantity", "quantity", "Point", "Points", "Polar", "Arc", "Line", "spl"]
