@@ -132,3 +132,50 @@ def test_pml_coefficients():
     np.testing.assert_allclose(rt, x[:, 0] - 1j * alpha * lam * xi ** 2)
     np.testing.assert_array_equal(sz, 1.0)
     assert np.all(np.diff(rt.imag[1:4]) < 0)
+
+
+def test_plate_at_every_order(tmp_path):
+    """End to end through lp.Model(mesh_order=p): P2 and P3 meshes of the clamped plate give the first
+    two axisymmetric bending modes within 0.1 % of each other, P3 below Kirchhoff by < 0.5 % (3D
+    elasticity); linear triangles lock in bending (> 10 % too stiff)."""
+    import loudpy as lp
+    from support import current_api as api
+    E_, NU_, RHO_, A_, H_ = 2.1e11, 0.3, 7850.0, 0.1, 0.002
+    scale = np.sqrt(E_ * H_ ** 3 / (12 * (1 - NU_ ** 2)) / (RHO_ * H_)) / (2 * np.pi * A_ ** 2)
+    kirchhoff = np.array([10.2158, 39.771]) * scale
+    steel = lp.Material("Steel", rho=RHO_, E=E_, nu=NU_)
+    f = {}
+    for p in (1, 2, 3):
+        model = lp.Model(api.PLATE_GEO, mesh_order=p).add(
+            lp.Solid("plate", steel, damping=lp.Undamped(), mesh_size=H_),
+            lp.Clamped("interface_constrained_rz"), lp.Clamped("interface_constrained_r", dofs="r"))
+        model.mesh(tmp_path / f"plate_p{p}.msh", deterministic=True)
+        cell = {g.cell_type for g in model.meshed.groups.values() if g.dim == 2}
+        assert cell == {{1: "tri3", 2: "tri6", 3: "tri10"}[p]}
+        f[p] = np.sort(lp.Modes(model).solve(f_min=10.0, f_max=2500.0, orders=[0],
+                                             n_per_shift=10).order(0).frequencies)[:2]
+    np.testing.assert_allclose(f[2], f[3], rtol=1e-3)
+    assert np.all((f[3] < kirchhoff) & (f[3] > 0.995 * kirchhoff)), (f[3], kirchhoff)
+    assert np.all(f[1] > 1.1 * kirchhoff), f[1]
+
+
+@pytest.mark.parametrize("n_nodes", [3, 6, 10, 4, 9])
+def test_mesh_cells_of_every_order(n_nodes):
+    """Edges of 2D cells (selectors) and the linear sub-triangles (plots, interpolation) of every order."""
+    from loudpy.fem.reference import element_for_cells
+    from loudpy.geometry.mesh import Mesh, MeshGroup
+    from loudpy.geometry.selectors import _tri_edges
+    elem = element_for_cells(2, n_nodes)
+    cells = np.arange(1, n_nodes + 1)[None]
+    rows, owner = _tri_edges(cells)
+    assert rows.shape == (len(elem.cell.edges), elem.order + 1) and np.all(owner == 0)
+    for row, (a, b) in zip(rows, elem.cell.edges):
+        assert tuple(row[:2] - 1) == (a, b)
+    mesh = Mesh(np.arange(1, n_nodes + 1), elem.nodes.copy(),
+                {"g": MeshGroup("g", 2, "x", cells)})
+    for refine in (False, True):
+        tri = mesh.triangles(refine=refine)
+        P = mesh.coords[tri]
+        area = 0.5 * np.abs(np.cross(P[:, 1] - P[:, 0], P[:, 2] - P[:, 0])).sum()
+        np.testing.assert_allclose(area, elem.cell.measure, rtol=1e-12)
+    assert len(np.unique(mesh.triangles(refine=True))) == n_nodes

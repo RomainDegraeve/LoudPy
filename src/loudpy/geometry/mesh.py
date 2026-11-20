@@ -12,8 +12,20 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-CELL_TYPES = {"line3": (1, 3), "tri3": (2, 3), "tri6": (2, 6), "tet10": (3, 10)}   # name: (dim, nodes per cell)
+CELL_TYPES = {"line2": (1, 2), "line3": (1, 3), "line4": (1, 4), "tri3": (2, 3), "tri6": (2, 6),
+              "tri10": (2, 10), "quad4": (2, 4), "quad9": (2, 9), "tet4": (3, 4), "tet10": (3, 10),
+              "tet20": (3, 20)}                                     # name: (dim, nodes per cell)
 _SUB_TRI6 = np.array([[0, 3, 5], [3, 1, 4], [5, 4, 2], [3, 4, 5]])   # gmsh TRI6 → 4 linear triangles
+# linear sub-triangles through every node (plotting / interpolation), gmsh node layouts
+_SUB_CELLS = {
+    6: _SUB_TRI6,
+    10: np.array([[0, 3, 8], [3, 4, 9], [3, 9, 8], [4, 1, 5], [4, 5, 9], [8, 9, 7], [9, 6, 7], [9, 5, 6],
+                  [7, 6, 2]]),                                       # TRI10 → 9
+    4: np.array([[0, 1, 2], [0, 2, 3]]),                             # QUAD4 → 2
+    9: np.array([[0, 4, 8], [0, 8, 7], [4, 1, 5], [4, 5, 8], [7, 8, 6], [7, 6, 3], [8, 5, 2],
+                 [8, 2, 6]]),                                        # QUAD9 → 8
+}
+_CORNERS = {3: 3, 6: 3, 10: 3, 4: 4, 9: 4}
 
 
 @dataclass(frozen=True)
@@ -66,8 +78,11 @@ class Mesh:
         out = []
         for n in names:
             cells = self.groups[n].cells
-            if refine and cells.shape[1] == 6:
-                cells = cells[:, _SUB_TRI6].reshape(-1, 3)
+            k = cells.shape[1]
+            if refine and k in _SUB_CELLS:
+                cells = cells[:, _SUB_CELLS[k]].reshape(-1, 3)
+            elif _CORNERS.get(k) == 4:                                 # quadrilaterals: 2 triangles
+                cells = cells[:, _SUB_CELLS[4]].reshape(-1, 3)
             out.append(self.rows_of(cells[:, :3]))
         return np.vstack(out)
 
@@ -134,10 +149,13 @@ class Mesh:
     @classmethod
     def from_axisymmetric(cls, domains, boundaries, nodes, path=None) -> "Mesh":
         """From the 2D mesher output (TR6_Surfs domains, L3_Edges boundaries, Nodes)."""
+        from loudpy.fem.reference import cell_type_name
         groups = {}
         for d in domains:
-            groups[d.name] = MeshGroup(d.name, 2, "tri6", np.asarray(d.tri))
+            cells = np.asarray(d.tri)
+            groups[d.name] = MeshGroup(d.name, 2, cell_type_name(2, cells.shape[1]), cells)
         for b in boundaries:
-            groups[b.name] = MeshGroup(b.name, 1, "line3", np.asarray(b.edges))
+            cells = np.asarray(b.edges)
+            groups[b.name] = MeshGroup(b.name, 1, cell_type_name(1, cells.shape[1]), cells)
         coords = np.asarray(nodes.node_coords).reshape(-1, 3)[:, :2]
         return cls(np.asarray(nodes.node_tags), coords, groups, path)

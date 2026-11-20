@@ -37,7 +37,7 @@ import numpy as np
 from loudpy.errors import MeshError
 from loudpy.fem.kernels import _boundary_load_kernel, quadrature_points, tabulate
 from loudpy.fem.quadrature import quadrature
-from loudpy.fem.reference import lagrange
+from loudpy.fem.reference import element_for_cells
 
 
 # ── Reverse Bessel polynomials θ_n and their roots ─────────────────────────────
@@ -99,7 +99,7 @@ def dtn_boundary_vectors(edges: np.ndarray, node_tags: np.ndarray,
     b_n (dense over the acoustic DOFs, only boundary entries non-zero) for
     every n in `orders`, and the boundary radius R.
 
-    edges        : (n_e, 3) gmsh node tags of the L3 edges (corner, corner, mid)
+    edges        : (n_e, n) gmsh node tags of the line edges (corners first, gmsh order)
     node_coords  : coordinates matching node_tags (r, z)
     center       : (r0, z0) of the sphere, r0 must be 0 (on the axis)
     """
@@ -114,14 +114,15 @@ def dtn_boundary_vectors(edges: np.ndarray, node_tags: np.ndarray,
     orders = list(orders)
     n_max = max(orders)
     edges = np.asarray(edges, dtype=np.int64)
-    ec = np.ascontiguousarray(np.array([[xy[int(t)] for t in e] for e in edges]).reshape(len(edges), 3, 2))
+    n_p = edges.shape[1]
+    ec = np.ascontiguousarray(np.array([[xy[int(t)] for t in e] for e in edges]).reshape(len(edges), n_p, 2))
     loc = np.vectorize(lambda t: tag_to_local[int(t)])(edges) if len(edges) else edges
-    N, dN, w = tabulate(lagrange("line", 2), quadrature("line", 15))          # 8-point Gauss
+    N, dN, w = tabulate(element_for_cells(1, n_p), quadrature("line", 15))     # 8-point Gauss
     x = quadrature_points(ec, N)                                                # (n_e, n_q, 2)
     cos_t = (x[..., 1] - z0) / np.hypot(x[..., 0] - r0, x[..., 1] - z0)
     P = _legendre_all(n_max, cos_t.ravel()).reshape(n_max + 1, *cos_t.shape)
     B = np.zeros((len(orders), n_dof))
-    be = np.empty((len(ec), 3))
+    be = np.empty((len(ec), n_p))
     for j, n in enumerate(orders):                    # b_n,i = ∮ P_n(cos θ) N_i 2πr ds
         _boundary_load_kernel(ec, N, dN, w, np.ascontiguousarray(P[n]), True, be)
         np.add.at(B[j], loc, be)

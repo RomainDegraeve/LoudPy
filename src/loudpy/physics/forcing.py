@@ -7,9 +7,8 @@ from __future__ import annotations
 import numpy as np
 
 from loudpy.fem.indexing import _fill_dof_idx
-from loudpy.fem.kernels import _boundary_load_kernel, tabulate
-from loudpy.fem.quadrature import legacy_line
-from loudpy.fem.reference import lagrange
+from loudpy.fem.assembly import cell_tabulation
+from loudpy.fem.kernels import _boundary_load_kernel
 from loudpy.fem.sparse import _local_coords
 from loudpy.fem.sparse_kernels import _scatter_add
 from loudpy.physics.registry import select
@@ -45,8 +44,9 @@ class ForceAssembler:
         self.IDX = np.concatenate(idx_list, axis=0)
 
     def assemble(self):
-        N, dN, w = tabulate(lagrange("line", 2), legacy_line(3))
-        Fe = np.empty((self.ec.shape[0], self.PTS_PER_EDGE), dtype=np.float64)
+        n_pts = self.ec.shape[1]
+        N, dN, w = cell_tabulation(1, n_pts)
+        Fe = np.empty((self.ec.shape[0], n_pts), dtype=np.float64)
         ec = np.ascontiguousarray(self.ec[:, :, :2], dtype=np.float64)
         _boundary_load_kernel(ec, N, dN, w, np.ones((len(ec), len(w))), True, Fe)
         F = np.zeros(self.total_dofs, dtype=np.float64)

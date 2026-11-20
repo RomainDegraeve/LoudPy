@@ -147,6 +147,7 @@ class MecaAssemblerFourier(ElementAssembler):
             raise ValueError(f"azimuthal order m must be a non-negative integer, got {m}")
         self.m = int(m)
         self.subdomains = solids
+        self.PTS_PER_TRI = self._cell_width(solids)
         self.ndof_e = self.PTS_PER_TRI * self.dofs_per_node
         self.block = self.ndof_e ** 2
         self.unique_tags = np.unique(np.concatenate([sd.node_tags for sd in solids]))

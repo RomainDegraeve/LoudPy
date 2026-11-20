@@ -601,16 +601,16 @@ class Curves:
 # ════════════════════════════════════════════════════════════════════════════
 #  Helpers
 # ════════════════════════════════════════════════════════════════════════════
-_TRI6_EDGES = np.array([[0, 1, 3], [1, 2, 4], [2, 0, 5]])
-_TRI3_EDGES = np.array([[0, 1], [1, 2], [2, 0]])
 
 
 def _tri_edges(cells) -> tuple[np.ndarray, np.ndarray]:
-    """Edge rows of triangles: (3n, 3) [a, b, mid] for TRI6, (3n, 2) for TRI3; and the triangle of each."""
+    """Edge rows of 2D cells, ordered as line cells of the same order ([a, b] TRI3 / QUAD4, [a, b, mid]
+    TRI6 / QUAD9, [a, b, m1, m2] TRI10), and the cell of each edge."""
+    from loudpy.fem.reference import element_for_cells
     cells = np.asarray(cells, np.int64)
-    loc = _TRI6_EDGES if cells.shape[1] == 6 else _TRI3_EDGES
+    loc = np.array(element_for_cells(2, cells.shape[1]).facet_nodes)
     rows = cells[:, loc].reshape(-1, loc.shape[1])
-    return rows, np.repeat(np.arange(len(cells)), 3)
+    return rows, np.repeat(np.arange(len(cells)), len(loc))
 
 
 def _codes(rows) -> np.ndarray:

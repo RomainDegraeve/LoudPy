@@ -15,9 +15,8 @@ import numpy as np
 
 from loudpy.fem.batch_coupling import _fsi_local_to_V
 from loudpy.fem.indexing import _fill_ij_rect
-from loudpy.fem.kernels import _boundary_normal_mass_kernel, tabulate
-from loudpy.fem.quadrature import legacy_line
-from loudpy.fem.reference import lagrange
+from loudpy.fem.assembly import cell_tabulation
+from loudpy.fem.kernels import _boundary_normal_mass_kernel
 from loudpy.fem.sparse import _SparseAssemblerBase, _local_coords
 from loudpy.physics.registry import select
 from loudpy.errors import StateError
@@ -36,7 +35,10 @@ class FsiAssembler(_SparseAssemblerBase):
         n_dof_meca = meca_assembler.matrix_size
         n_dof_acou = acou_assembler.matrix_size
 
-        n_p = self.PTS_PER_EDGE
+        widths = {np.asarray(iface.edges).shape[1] for iface in interfaces}
+        if len(widths) > 1:
+            raise ValueError(f"fluid–structure edges of different orders ({sorted(widths)} nodes)")
+        n_p = self.PTS_PER_EDGE = widths.pop() if widths else self.PTS_PER_EDGE
         n_u = n_p * 2
         block = n_p * n_u
         self.block = block
@@ -78,7 +80,7 @@ class FsiAssembler(_SparseAssemblerBase):
 
     def assemble(self):
         n_e, n_p = self.ec.shape[0], self.n_pts
-        N, dN, w = tabulate(lagrange("line", 2), legacy_line(3))
+        N, dN, w = cell_tabulation(1, n_p)
         out = np.empty((n_e, 2, n_p * n_p), dtype=np.float64)
         if n_e:
             _boundary_normal_mass_kernel(self.ec, N, dN, w, True, out)

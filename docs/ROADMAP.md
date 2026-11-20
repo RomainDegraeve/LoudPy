@@ -386,3 +386,16 @@ The plan holds; adjustments, decided with the user:
   nodes and are still reused (the scene signature does not include the node placement), so no reference
   moves; meshes built from now on are curved. **For phase F** (one remeshing rule): put the node
   placement in the mesh signature so that old straight meshes are rebuilt.
+- **D4c (done)**: every element order through the model. Mesh cell types line2/3/4, tri3/6/10, quad4/9,
+  tet4/10/20 (`geometry.mesh.CELL_TYPES`, `fem.reference.cell_type_name`); the 2D mesher reads every
+  order and quadrangles (one element type per group: a partial recombination is refused with a
+  `MeshError`) and re-places the interior node of cubic triangles (`tri10_interior_nodes`, see D2);
+  `Mesh.triangles` sub-triangulates TRI10 (9) and QUAD4 / QUAD9 (2 / 8); the selectors take the edges
+  from the element's facet tables (`_tri_edges`: quads, P3); the assemblers (structure, Fourier, TL, air,
+  PML, coupling, force, DtN) infer the element from the cells (`fem.assembly.cell_tabulation`: TRI6 /
+  LINE3 keep the former rules, other elements a rule of degree 2·degree + 2). Through
+  `lp.Model(mesh_order=p)` on the clamped plate (h = 2 mm), first two axisymmetric modes vs Kirchhoff
+  508.96 / 1981.4 Hz: P1 620.9 / 2463.6 (shear locking of linear triangles, +22 %), P2 509.00 / 1976.8,
+  P3 508.74 / 1975.5 (P2 and P3 within 0.1 %; at h = 1 mm P2 508.76, P3 508.67). The public API is
+  unchanged (`mesh_order` existed; element orders are documented for users in phase F). Operators of
+  the committed meshes unchanged. 283 tests pass with `--slow`.

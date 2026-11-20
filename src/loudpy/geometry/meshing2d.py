@@ -226,24 +226,37 @@ class MeshManager:
             coords_map[node_tags] = node_coords[:, :2]
 
             domains, boundaries = [], []
-            target_elem_types = {2: 9, 1: 8, 0: 15}  # 2D: TR6 | 1D: L3 | 0D: Point
-            nodes_per_elem = {9: 6, 8: 3, 15: 1}
+            # cells of every order: 2D TRI3/6/10, QUAD4/9; 1D LINE2/3/4
+            target_elem_types = {2: (2, 9, 21, 3, 10), 1: (1, 8, 26)}
+            nodes_per_elem = {1: 2, 8: 3, 26: 4, 2: 3, 9: 6, 21: 10, 3: 4, 10: 9}
 
+            groups = []
             for dim, phys_tag in gmsh.model.getPhysicalGroups():
                 name = gmsh.model.getPhysicalName(dim, phys_tag)
-                if not name:
+                if not name or dim not in target_elem_types:
                     continue
+                elements_array = self._get_elements_for_group(dim, phys_tag, target_elem_types, nodes_per_elem,
+                                                              name)
+                if elements_array is not None:
+                    groups.append((dim, name, elements_array))
 
-                elements_array = self._get_elements_for_group(dim, phys_tag, target_elem_types, nodes_per_elem)
-                if elements_array is None:
-                    continue
+            # cubic triangles: gmsh's interior node of curved cells costs P3 half an order; put it where
+            # the cubic map of the cell's edges places it (fem.reference.tri10_interior_nodes)
+            from loudpy.fem.reference import tri10_interior_nodes
+            for dim, _, cells in groups:
+                if dim == 2 and cells.shape[1] == 10:
+                    centre = cells[:, 9]
+                    coords_map[centre] = tri10_interior_nodes(coords_map[cells])
+                    rows = np.searchsorted(node_tags, centre) if np.all(np.diff(node_tags) > 0) else \
+                        np.array([np.flatnonzero(node_tags == t)[0] for t in centre])
+                    node_coords[rows, :2] = coords_map[centre]
 
+            for dim, name, elements_array in groups:
                 unique_nodes = np.unique(elements_array)
                 group_coords = coords_map[unique_nodes]
-
                 if dim == 2:
                     domains.append(MeshPart(unique_nodes, group_coords, elements_array, name, 2))
-                elif dim == 1:
+                else:
                     boundaries.append(MeshPart(unique_nodes, group_coords, elements_array, name, 1))
 
             return domains, boundaries, NodeSet(node_tags, node_coords)
@@ -588,15 +601,21 @@ class MeshManager:
         self,
         dim: int,
         phys_tag: int,
-        target_types: Dict[int, int],
+        target_types: Dict[int, tuple],
         nodes_per_elem: Dict[int, int],
+        name: str = "",
     ) -> Optional[np.ndarray]:
-        """Extracts and reshapes elements for a physical group, filtered by element type."""
-        group_elements = []
+        """Cells of a physical group (one element type per group: mixed triangles and quadrangles are
+        refused)."""
+        group_elements, types = [], set()
         for entity in gmsh.model.getEntitiesForPhysicalGroup(dim, phys_tag):
             elem_types, _, node_tags_list = gmsh.model.mesh.getElements(dim, entity)
             for etype, enodes in zip(elem_types, node_tags_list):
-                if etype == target_types.get(dim):
+                if etype in target_types.get(dim, ()):
+                    types.add(int(etype))
                     group_elements.append(enodes.reshape(-1, nodes_per_elem[etype]))
+        if len(types) > 1:
+            raise MeshError(f"group {name!r} mixes element types {sorted(types)} (e.g. triangles and "
+                            f"quadrangles after a partial recombination): one type per group")
 
         return np.vstack(group_elements) if group_elements else None

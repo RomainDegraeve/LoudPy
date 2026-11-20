@@ -30,7 +30,7 @@ from itertools import product
 import numpy as np
 
 __all__ = ["ReferenceCell", "LagrangeElement", "CELLS", "lagrange", "element_for_gmsh_type",
-           "GMSH_TYPES"]
+           "GMSH_TYPES", "CELL_NAMES", "cell_type_name", "element_for_cells", "tri10_interior_nodes"]
 
 
 @dataclass(frozen=True)
@@ -112,6 +112,25 @@ GMSH_TYPES: dict[int, tuple[str, int]] = {
     4: ("tetrahedron", 1), 11: ("tetrahedron", 2), 29: ("tetrahedron", 3),
 }
 _GMSH_TYPE_OF = {v: k for k, v in GMSH_TYPES.items()}
+
+# loudpy mesh cell type names (geometry.mesh.MeshGroup.cell_type) → gmsh element type
+CELL_NAMES: dict[str, int] = {"line2": 1, "line3": 8, "line4": 26, "tri3": 2, "tri6": 9, "tri10": 21,
+                              "quad4": 3, "quad9": 10, "tet4": 4, "tet10": 11, "tet20": 29}
+_NAME_OF = {(GMSH_TYPES[t][0], GMSH_TYPES[t][1]): n for n, t in CELL_NAMES.items()}
+
+
+def cell_type_name(dim: int, n_nodes: int) -> str:
+    """Mesh cell type name ("tri6", "quad9", …) from the dimension and the nodes per cell."""
+    for name, t in CELL_NAMES.items():
+        cell, order = GMSH_TYPES[t]
+        if CELLS[cell].dim == dim and lagrange(cell, order).n_nodes == n_nodes:
+            return name
+    raise ValueError(f"no {dim}D cell type with {n_nodes} nodes")
+
+
+def element_for_cells(dim: int, n_nodes: int) -> "LagrangeElement":
+    """The Lagrange element of cells of dimension `dim` with `n_nodes` nodes."""
+    return element_for_gmsh_type(CELL_NAMES[cell_type_name(dim, n_nodes)])
 
 
 def _exponents(cell: ReferenceCell, p: int) -> np.ndarray:

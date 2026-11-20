@@ -13,9 +13,24 @@ import numpy as np
 
 from loudpy.fem.indexing import _fill_ij_square
 from loudpy.fem.kernels import tabulate
-from loudpy.fem.quadrature import legacy_triangle7
-from loudpy.fem.reference import lagrange
+from loudpy.fem.quadrature import legacy_line, legacy_triangle7, quadrature
+from loudpy.fem.reference import element_for_cells
 from loudpy.fem.sparse import _SparseAssemblerBase, _local_coords
+
+
+def cell_tabulation(dim: int, n_nodes: int):
+    """
+    (N, dN, w) for cells of dimension `dim` with `n_nodes` nodes. TRI6 and LINE3 cells use the rules of
+    the former kernels (7-point triangle, 3-point Gauss line) so that their operators are unchanged;
+    other elements a rule exact to degree 2·degree + 2 (axisymmetric weight r and 1/r terms included
+    up to that degree).
+    """
+    elem = element_for_cells(dim, n_nodes)
+    if (elem.cell.name, elem.order) == ("triangle", 2):
+        return tabulate(elem, legacy_triangle7())
+    if (elem.cell.name, elem.order) == ("line", 2):
+        return tabulate(elem, legacy_line(3))
+    return tabulate(elem, quadrature(elem.cell.name, 2 * elem.degree + 2))
 
 
 class ElementAssembler(_SparseAssemblerBase):
@@ -24,14 +39,22 @@ class ElementAssembler(_SparseAssemblerBase):
 
     @property
     def tabulation(self):
-        """(N, dN, w) of the cells' element (TRI6) at the quadrature rule of the former kernels."""
+        """(N, dN, w) of the cells' element at its quadrature rule (see `cell_tabulation`)."""
         if not hasattr(self, "_tabulation"):
-            self._tabulation = tabulate(lagrange("triangle", 2), legacy_triangle7())
+            self._tabulation = cell_tabulation(2, self.PTS_PER_TRI)
         return self._tabulation
+
+    def _cell_width(self, subdomains):
+        """Nodes per cell, the same in every region (one element type per assembler)."""
+        widths = {np.asarray(sd.tri).shape[1] for sd in subdomains}
+        if len(widths) != 1:
+            raise ValueError(f"regions with different cell types ({sorted(widths)} nodes per cell)")
+        return widths.pop()
 
     def _setup(self, subdomains):
         """Node numbering and pattern for `subdomains` (objects with node_tags, node_coords, tri)."""
         self.subdomains = subdomains
+        self.PTS_PER_TRI = self._cell_width(subdomains)
         self.ndof_e = self.PTS_PER_TRI * self.dofs_per_node
         self.block = self.ndof_e ** 2
         self.unique_tags = np.unique(np.concatenate([sd.node_tags for sd in subdomains]))

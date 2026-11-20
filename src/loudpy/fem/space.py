@@ -15,13 +15,12 @@ from __future__ import annotations
 
 import numpy as np
 
-from loudpy.fem.reference import LagrangeElement, lagrange
+from loudpy.fem.reference import CELL_NAMES, GMSH_TYPES, LagrangeElement, lagrange
 
 __all__ = ["Space", "MESH_CELL_ELEMENTS"]
 
 # loudpy.geometry.mesh cell type names → (reference cell, order)
-MESH_CELL_ELEMENTS = {"line3": ("line", 2), "tri3": ("triangle", 1), "tri6": ("triangle", 2),
-                      "tet10": ("tetrahedron", 2)}
+MESH_CELL_ELEMENTS = {name: GMSH_TYPES[t] for name, t in CELL_NAMES.items()}
 
 
 class Space:
