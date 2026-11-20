@@ -8,6 +8,8 @@ versions follow [Semantic Versioning](https://semver.org/) (0.x: the API may sti
 The roadmap of this work is in `docs/ROADMAP.md`.
 
 ### Added
+- `loudpy.fem.adapt`: element sizes from error indicators (equidistribution) written as a gmsh size view;
+  `model.mesh(path, size_field="sizes.pos")` meshes with it (part of the mesh signature).
 - `loudpy.fem.estimate`: a-posteriori error estimation — polynomial-preserving gradient recovery, recovery
   indicators (scalar, axisymmetric elastic energy) and an explicit residual indicator.
 - Derived values: `res.volume_velocity(on=…)`, `res.radiated_power(on=… | radius=…)`, `res.thiele_small(on=…)`

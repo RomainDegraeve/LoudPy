@@ -635,3 +635,17 @@ other than the scenes. Found on the way (recorded in G2): the coarse test model'
   residual indicator keeps a constant ratio to the error (≈ 5, 10, 18 for P1–P3: the error's rate, constant
   not calibrated) except on curved P3 cells (the straight-cell Hessians: ratio 140 → 333), noted as a limit.
   12 tests (`tests/test_estimate.py`).
+- **H2 (done)**: remeshing from the indicators (`fem/adapt.py`). New cell sizes by equidistribution: a cell's
+  squared indicator scales as h^(2p + dim), so h_new = h (T² / (N η²))^(1/(2p + dim)) for the target estimate
+  T over N cells, the factor kept within [0.3, 2] per step; nodal sizes (smallest of the adjacent cells) go to
+  a gmsh list-format view (`.pos`), read through a PostView field and combined (Min) with the regions'
+  size fields; `MeshManager(size_field=…)` / `model.mesh(size_field=…)`, the view's sha256 in the mesh
+  signature (reused while unchanged, rebuilt when it changes). Gate item "the adaptive loop beats uniform
+  refinement": L-shaped Laplace, exact r^(2/3) sin(2θ/3), P2, energy-norm error, target 0.5 × current
+  estimate per step. Uniform h = 0.2 → 0.025: 421 DOFs 6.34e-2, 1533 3.99e-2, 5781 2.51e-2, 22541 1.59e-2
+  (rate N^(-1/3), the singularity). Adaptive from h = 0.2: 338 DOFs 3.55e-2, 422 2.09e-2, 562 1.27e-2, 820
+  7.27e-3, 1204 4.29e-3 (rate N^(-1.43) over the last two steps; N^(-1) asymptotically): at 1204 DOFs the
+  error is 0.10 × the uniform error at the same DOFs, and 0.27 × the uniform error with 19× more DOFs. The
+  recovery effectivity on this singular solution is 1.75 → 1.56 along the loop (pre-asymptotic at the
+  corner; the gate's 0.8–1.5 is on smooth solutions, H1). 3 tests (`tests/test_adapt.py`, incl. a plate
+  meshed with a size view: refined near the rim, reused / rebuilt by the signature).

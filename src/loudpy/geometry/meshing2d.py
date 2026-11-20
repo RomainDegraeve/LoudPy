@@ -105,8 +105,9 @@ class MeshManager:
     def __init__(self, source, domains: List[DomainSizing], plan: List[DomainPlan], mesh_order: int = 2,
                  grading: Optional[float] = DEFAULT_MESH_GRADING, interfaces: Optional[List[str]] = None,
                  deterministic: bool = False, groups: Optional[Dict[str, Any]] = None,
-                 pml: Optional[List[PMLBase]] = None):
+                 pml: Optional[List[PMLBase]] = None, size_field: Optional[str] = None):
         self.source = source          # geometry.sources.GeometrySource
+        self.size_field = size_field  # a gmsh size view (.pos, loudpy.fem.adapt), combined (Min) with the sizes
         self.SimObjects = list(domains)
         self.plan = list(plan)
         self.mesh_order = mesh_order
@@ -175,10 +176,15 @@ class MeshManager:
         """What the mesh depends on (see the section comment)."""
         if self.groups is None:
             raise MeshError("MeshManager.mesh_signature needs the meshed groups (groups=)")
-        return dict(version=SIGNATURE_VERSION, files=self.source.files(),
-                    domains=sorted([list(d) for d in self.groups["domains"]]),
-                    boundaries=sorted(self.groups["boundaries"]),
-                    mesh_order=self.mesh_order, grading=self.grading, deterministic=bool(self.deterministic))
+        sig = dict(version=SIGNATURE_VERSION, files=self.source.files(),
+                   domains=sorted([list(d) for d in self.groups["domains"]]),
+                   boundaries=sorted(self.groups["boundaries"]),
+                   mesh_order=self.mesh_order, grading=self.grading, deterministic=bool(self.deterministic))
+        if self.size_field is not None:                    # an adapted mesh depends on its size view
+            import hashlib
+            with open(self.size_field, "rb") as fh:
+                sig["size_field"] = hashlib.sha256(fh.read()).hexdigest()
+        return sig
 
     def _write_signature(self, msh_path: str) -> None:
         """The signature, plus what the mesh file cannot hold: the geometry of the PML layers (pml_layers)."""
@@ -577,6 +583,9 @@ class MeshManager:
             restrict_fields.append(f_restrict)
 
         size_fields = restrict_fields + self._grading_fields(surfaces_by_obj)
+        if self.size_field is not None:
+            from loudpy.fem.adapt import background_field
+            size_fields.append(background_field(gmsh, self.size_field))
         if size_fields:
             min_field = gmsh.model.mesh.field.add("Min")
             gmsh.model.mesh.field.setNumbers(min_field, "FieldsList", size_fields)
@@ -588,9 +597,12 @@ class MeshManager:
         gmsh.option.setNumber("Mesh.Optimize", 1)
         gmsh.option.setNumber("Mesh.ElementOrder", self.mesh_order)
         gmsh.option.setNumber("Mesh.SecondOrderLinear", 0)
-        if self.grading:
+        if self.grading or self.size_field is not None:
             # sizes come from the fields only (see the class docstring)
             gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
+        if self.size_field is not None:
+            gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
+            gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
 
         gmsh.model.mesh.generate(2)
         if write_mesh_file:

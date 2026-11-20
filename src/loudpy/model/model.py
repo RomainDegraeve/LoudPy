@@ -275,7 +275,7 @@ class Model:
 
     # ── meshing ────────────────────────────────────────────────────────────
     def mesh(self, path=None, *, reuse: bool = True, deterministic: bool = True,
-             show: bool = False) -> Mesh:
+             show: bool = False, size_field=None) -> Mesh:
         """
         Mesh the model (only the selected domains and boundaries) and write it to `path`
         (default: next to the geometry) with its signature file.
@@ -285,13 +285,15 @@ class Model:
         deterministic : one meshing thread (default), so that the same model always gives the same mesh;
                         False: all threads (faster, the mesh may change from run to run)
         show          : open the gmsh window after meshing
+        size_field    : a gmsh size view (.pos, written by loudpy.fem.adapt / lp.Adaptive): element sizes
+                        anywhere in the geometry, the smaller of it and the regions' sizes wins
         Parameter references (lp.P) are resolved first.
         """
         with Model._Resolved(self):
-            return self._mesh(path, reuse=reuse, deterministic=deterministic, show=show)
+            return self._mesh(path, reuse=reuse, deterministic=deterministic, show=show, size_field=size_field)
 
     def _mesh(self, path=None, *, reuse: bool = True, deterministic: bool = True,
-              show: bool = False) -> Mesh:
+              show: bool = False, size_field=None) -> Mesh:
         """
         Mesh the model (only the selected domains and boundaries) and write it to `path`
         (default: next to the geometry) with its signature file.
@@ -314,7 +316,8 @@ class Model:
         pml = [PMLBase(sz, *self._pml_bases[sz.name]) for sz in sizing if sz.kind == "pml"]
         mm = MeshManager(self.source, sizing, plan, mesh_order=self.mesh_order, grading=self.grading,
                          interfaces=kept, deterministic=deterministic,
-                         groups={"domains": entries, "boundaries": kept}, pml=pml)
+                         groups={"domains": entries, "boundaries": kept}, pml=pml,
+                         size_field=None if size_field is None else str(size_field))
         ok, why = mm.can_reuse(str(path)) if reuse else (False, "")
         if ok:
             log.info("mesh reused: %s", path)

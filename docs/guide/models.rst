@@ -250,3 +250,7 @@ The meshed model is an :class:`lp.Mesh <loudpy.Mesh>` with named groups
 (``model.groups()``, ``model.selection()`` show what each item selected in the geometry). A saved
 mesh that keeps more named curve groups than the model needs is reused (they do not change the
 triangulation).
+
+``model.mesh(path, size_field="sizes.pos")`` adds a gmsh size view (element sizes anywhere in the geometry,
+written by ``loudpy.fem.adapt`` from error indicators): the smaller of the view and the regions' sizes
+wins, and the view is part of the signature (the mesh is rebuilt when it changes).
