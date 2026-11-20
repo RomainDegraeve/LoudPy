@@ -175,7 +175,7 @@ class FrequencyResponse(Study):
         for band in rule.split(freqs):
             f0 = float(band[0])
             lam = c / f0
-            band_model = self.model.copy()
+            band_model = self.model.resolved()
             for r in band_model.regions:
                 if isinstance(r, PML):
                     r.thickness = rule.pml_thickness * lam

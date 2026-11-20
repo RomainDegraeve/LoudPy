@@ -57,3 +57,30 @@ Studies on a 3D scene
 
 ``lp.FrequencyResponse(scene, drive=…)`` and ``lp.Modes(scene)`` accept an
 :class:`lp.Scene <loudpy.Scene>`; see :doc:`scenes`.
+
+Parameters and sweeps
+---------------------
+
+A model can carry named parameters (COMSOL's global parameters). ``lp.P(name)`` stands for a parameter
+in any numeric field of an item — sizes, PML settings, material overrides, damping coefficients — and
+``a * lp.P(name) + b`` is allowed. A geometry builder whose second argument is named ``p`` receives the
+parameters; their values then enter the mesh signature.
+
+.. code-block:: python
+
+    def disc(occ, p):
+        return {"plate": occ.addRectangle(0, 0, 0, 0.1, p["t"])}
+
+    model = lp.Model(disc, parameters=lp.Parameters(t=2e-3, E=2.1e11))
+    model.add(lp.Solid("plate", steel, E=lp.P("E"), mesh_size=0.5 * lp.P("t")), ...)
+    model.mesh("disc.msh")
+
+    sweep = lp.Sweep(lp.Modes(model), "t", [1.5e-3, 2e-3, 3e-3]).solve(f_max=4000)
+    sweep.values                              # the parameter values
+    sweep[2].frequencies                      # results of the third run
+    sweep.stack(lambda r: r.frequencies[:3])  # (3, 3) array
+    sweep.save("Results/sweep")               # one result file per value
+
+Each run is the study on ``model.with_parameters(t=…)``, a copy: the model itself is not changed, and
+each variant is meshed next to the model's mesh (``disc_t_0.0015.msh`` …, reused while unchanged). A
+sweep gives exactly the results of the separate runs.

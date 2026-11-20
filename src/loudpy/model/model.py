@@ -37,6 +37,7 @@ from loudpy.geometry.meshing2d import DEFAULT_MESH_GRADING, DomainSizing
 from loudpy.model.boundaries import Boundary
 from loudpy.model.materials import MaterialLibrary, load_materials
 from loudpy.model.mesh_controls import MeshSize
+from loudpy.model.parameters import Parameters, resolve
 from loudpy.model.regions import PML, Air, Region, Solid
 from loudpy.errors import MeshError, ModelError, SelectionError, StateError
 
@@ -49,15 +50,19 @@ class Model:
         model.add(lp.Solid("membrane", "Paper"), lp.Clamped("interface_constrained_rz"), lp.Clamped("interface_constrained_r", dofs="r"), lp.Coil("interface_forced"))
         model.mesh("mesh.msh")                 # gmsh, P2 triangles; reused while the inputs are unchanged"""
     def __init__(self, geometry, materials=None, *, mesh_order: int = 2,
-                 grading: float | None = DEFAULT_MESH_GRADING):
+                 grading: float | None = DEFAULT_MESH_GRADING, parameters: Parameters | None = None):
         """
         geometry  : a .geo (curve loops: every closed physical curve group is a domain; or surfaces), a
                     CAD file (.step/.stp/.iges/.igs/.brep) or a builder function builder(occ) → {label:
                     surface tags} (loudpy.geometry.sources)
         materials : material library — a MaterialLibrary, a JSON path, or None (loudpy's default)
         grading   : growth of the element size away from the structure (None: gmsh default)
+        parameters: lp.Parameters referred to by lp.P(name) in the items and by a builder(occ, p)
         """
-        self.source = GeometrySource(geometry)
+        self.parameters = parameters if parameters is not None else Parameters()
+        if not isinstance(self.parameters, Parameters):
+            raise ModelError(f"parameters must be lp.Parameters, got {type(parameters).__name__}")
+        self.source = GeometrySource(geometry, self.parameters)
         self.geometry = self.source.path if self.source.path is not None else geometry
         self.materials: MaterialLibrary = materials if isinstance(materials, MaterialLibrary) \
             else load_materials(materials)
@@ -104,11 +109,45 @@ class Model:
         import copy as _copy
         m = Model.__new__(Model)
         Model.__init__(m, self.source.path if self.source.path is not None else self.source.builder,
-                       self.materials, mesh_order=self.mesh_order, grading=self.grading)
-        m.source = self.source
+                       self.materials, mesh_order=self.mesh_order, grading=self.grading, parameters=self.parameters)
+        if not self.source.takes_parameters:
+            m.source = self.source
         m.geometry = self.geometry
         m.add([_copy.copy(it) for it in self.regions + self.boundaries], [_copy.copy(c) for c in self.mesh_controls])
         return m
+
+    def with_parameters(self, **values) -> "Model":
+        """A copy of the model (unmeshed) with other parameter values."""
+        m = self.copy()
+        m.parameters = self.parameters.with_(**values)
+        m.source = GeometrySource(self.source.path if self.source.path is not None else self.source.builder,
+                                  m.parameters)
+        return m
+
+    def resolved(self) -> "Model":
+        """A copy of the model whose items hold values instead of lp.P references."""
+        m = self.copy()                                     # its own item copies, resolved below
+        m.regions, m.boundaries, m.mesh_controls = m._resolved_items()
+        return m
+
+    def _resolved_items(self):
+        p = self.parameters
+        return ([resolve(r, p) for r in self.regions], [resolve(b, p) for b in self.boundaries],
+                [resolve(c, p) for c in self.mesh_controls])
+
+    class _Resolved:
+        """Context: the model's items replaced by their resolved copies (meshing, checks), restored after."""
+        def __init__(self, model):
+            self.model = model
+
+        def __enter__(self):
+            m = self.model
+            self.saved = (m.regions, m.boundaries, m.mesh_controls)
+            m.regions, m.boundaries, m.mesh_controls = m._resolved_items()
+
+        def __exit__(self, *exc):
+            m = self.model
+            m.regions, m.boundaries, m.mesh_controls = self.saved
 
     def __getitem__(self, name):
         """The region or boundary added with this name."""
@@ -226,6 +265,22 @@ class Model:
     # ── meshing ────────────────────────────────────────────────────────────
     def mesh(self, path=None, *, reuse: bool = True, deterministic: bool = True,
              show: bool = False) -> Mesh:
+        """
+        Mesh the model (only the selected domains and boundaries) and write it to `path`
+        (default: next to the geometry) with its signature file.
+
+        reuse         : load the saved mesh when it was built from the same geometry and settings (the
+                        thread count is recorded but does not decide: a saved file is reproducible)
+        deterministic : one meshing thread (default), so that the same model always gives the same mesh;
+                        False: all threads (faster, the mesh may change from run to run)
+        show          : open the gmsh window after meshing
+        Parameter references (lp.P) are resolved first.
+        """
+        with Model._Resolved(self):
+            return self._mesh(path, reuse=reuse, deterministic=deterministic, show=show)
+
+    def _mesh(self, path=None, *, reuse: bool = True, deterministic: bool = True,
+              show: bool = False) -> Mesh:
         """
         Mesh the model (only the selected domains and boundaries) and write it to `path`
         (default: next to the geometry) with its signature file.
@@ -401,6 +456,16 @@ class Model:
 
     # ── overview and checks ────────────────────────────────────────────────
     def check(self) -> list[str]:
+        """See _check (parameter references resolved first)."""
+        try:
+            with Model._Resolved(self):
+                return self._check()
+        except ModelError as e:
+            if "unknown parameter" in str(e) and "the model has problems" not in str(e):
+                raise ModelError(f"the model has problems:\n  - {e}") from None
+            raise
+
+    def _check(self) -> list[str]:
         """
         Check the model without meshing: every item selects something (and no domain group twice), every
         region's material is complete (rho, E, nu for a solid; rho, c for air; damping fits when the
@@ -446,7 +511,8 @@ class Model:
         sel = self._selection or (self.selection() if selections else {})
 
         def size(v):
-            return f"{v * 1e3:g} mm"
+            from loudpy.model.parameters import P
+            return repr(v) if isinstance(v, P) else f"{v * 1e3:g} mm"
 
         def what(it):
             return f"  → {', '.join(sel[it.name])}" if it.name in sel else ""
@@ -456,6 +522,8 @@ class Model:
             return m
         lines = [f"Model {self.source.name}  (2D axisymmetric, P{self.mesh_order} elements, grading {self.grading})",
                  f"├─ Geometry: {self.source.name}",
+                 *([f"├─ Parameters: {', '.join(f'{k} = {v:g}' for k, v in self.parameters.items())}"]
+                   if len(self.parameters) else []),
                  f"├─ Materials: {getattr(self.materials, 'path', None) or 'loudpy library'}"]
         lines.append(f"├─ Regions ({len(self.regions)})")
         for k, r in enumerate(self.regions):

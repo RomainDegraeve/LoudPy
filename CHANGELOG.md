@@ -9,6 +9,10 @@ The roadmap of this work is in `docs/ROADMAP.md`.
 
 ### Added
 
+- Parameters and sweeps: `lp.Parameters(…)` on the model, `lp.P(name)` in any numeric field of an item,
+  geometry builders `builder(occ, p)`, `model.with_parameters(…)`, and `lp.Sweep(study, name, values)` →
+  `SweepResults` (values, one results object per value, `stack`, `save`).
+
 - `print(model)` / `model.tree(selections=True)`: the model as a tree (geometry, materials, regions,
   boundaries, mesh controls, mesh); `model.check()` checks selections, materials and settings without
   meshing and lists every problem at once; `lp.MeshSize(on=…, size=…)`: element size by selection;

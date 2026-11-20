@@ -19,14 +19,14 @@ API reference.
 
 # ── public API ───────────────────────────────────────────────────────────────
 from .model import (
-    Model, MeshSize, Solid, Air, PML, Clamped, Coil, FluidStructure, Radiation,
+    Model, MeshSize, Parameters, P, Solid, Air, PML, Clamped, Coil, FluidStructure, Radiation,
     Rayleigh, Hysteretic, Undamped, Force, Voltage,
     Material, MaterialLibrary, air, load_materials, materials,
 )
 from .geometry import Frame, Mesh, Group, Box, Near, Interface, BoundaryOf
 from .results import (load, spl, Results, FrequencyResults, ModeResults, TimeResults, Data, Field,
                       Point, Points, Polar, Arc, Line)
-from .study import Modes, FrequencyResponse, PerWavelength, Transient
+from .study import Modes, FrequencyResponse, PerWavelength, Transient, Sweep, SweepResults
 from .scene import Driver, Profile, Scene, Cabinet
 
 from . import errors
@@ -45,13 +45,13 @@ def __getattr__(name):
 
 __all__ = [
     # model
-    "Model", "MeshSize", "Solid", "Air", "PML", "Clamped", "Coil", "FluidStructure", "Radiation",
+    "Model", "MeshSize", "Parameters", "P", "Solid", "Air", "PML", "Clamped", "Coil", "FluidStructure", "Radiation",
     "Rayleigh", "Hysteretic", "Undamped", "Force", "Voltage",
     "Material", "MaterialLibrary", "air", "load_materials", "materials",
     # geometry and selections
     "Frame", "Mesh", "Group", "Box", "Near", "Interface", "BoundaryOf",
     # studies
-    "Modes", "FrequencyResponse", "PerWavelength", "Transient",
+    "Modes", "FrequencyResponse", "PerWavelength", "Transient", "Sweep", "SweepResults",
     # 3D scenes
     "Driver", "Profile", "Scene", "Cabinet",
     # results and evaluation

@@ -40,7 +40,8 @@ CAD = CAD_UNITS | {".brep", ".brp"}
 class GeometrySource:
     """A .geo, a CAD file (.step/.stp/.iges/.igs/.brep) or a builder function (module docstring)."""
 
-    def __init__(self, geometry):
+    def __init__(self, geometry, parameters=None):
+        self.parameters = parameters
         if callable(geometry) and not isinstance(geometry, (str, os.PathLike)):
             self.builder, self.path = geometry, None
             self.name = f"{getattr(geometry, '__name__', 'builder')}()"
@@ -57,7 +58,10 @@ class GeometrySource:
     def files(self) -> dict:
         """{file: sha256} of the geometry and the files a .geo merges; for a builder its code and constants."""
         if self.builder is not None:
-            return {self.name: _builder_digest(self.builder)}
+            out = {self.name: _builder_digest(self.builder)}
+            if self.takes_parameters:
+                out["parameters"] = {k: float(v) for k, v in sorted((self.parameters or {}).items())}
+            return out
 
         def digest(path):
             with open(path, "rb") as fh:
@@ -97,8 +101,23 @@ class GeometrySource:
             named = _faces_of_sketch(gmsh, named, self.name)
         return _surfaces(gmsh, named, self.name)
 
+    @property
+    def takes_parameters(self) -> bool:
+        """A builder whose second argument is named p, params or parameters receives the model's parameters."""
+        if self.builder is None:
+            return False
+        import inspect
+        try:
+            args = list(inspect.signature(self.builder).parameters)
+        except (TypeError, ValueError):
+            return False
+        return len(args) >= 2 and args[1] in ("p", "params", "parameters")
+
     def _run_builder(self, gmsh) -> dict:
-        out = self.builder(gmsh.model.occ)
+        if self.takes_parameters:
+            out = self.builder(gmsh.model.occ, self.parameters if self.parameters is not None else {})
+        else:
+            out = self.builder(gmsh.model.occ)
         gmsh.model.occ.synchronize()
         named = {}
         for label, items in (out or {}).items():

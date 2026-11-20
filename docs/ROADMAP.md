@@ -496,3 +496,13 @@ form raises an error; the 2D frequency study still ignores lp.Radiation, as befo
   (it used to change the regions' sizes and restore them). Gate items covered: identical meshes twice
   (speaker meshed twice from scratch: same nodes, coordinates and cells), no user object mutated
   (remeshed sweep test). 6 tests (`tests/test_model_tree.py`); 296 tests pass with `--slow`.
+- **F2 (done)**: `lp.Parameters` (immutable, `with_`), `lp.P(name)` references (scale and offset:
+  `0.5 * lp.P("h") + 1e-3`) in any numeric field of an item, nested dataclasses included (damping, material),
+  resolved and validated when the model is meshed or checked (`model.resolved()`, `model.with_parameters()`);
+  builders `builder(occ, p)` (second argument named p / params) receive the parameters, whose values enter the
+  mesh signature; `lp.Sweep(study, name, values).solve(…)` runs the study on copies of the model, meshed next
+  to the model's mesh → `SweepResults` (values, results, `stack`, `save`). Gate item "a parametric sweep
+  equals the separate runs": Young's modulus of the plate and the thickness of a builder disc swept, every
+  run **bit-identical** to the model built with that value; the user's model unchanged. Found while doing
+  it: `resolved()` must resolve the copy's items, or the remeshing study changes the user's model again
+  (caught by the F1 test). 5 tests (`tests/test_parameters.py`); 301 tests pass with `--slow`.
