@@ -267,7 +267,13 @@ def read_p2_mesh(msh_path, surfaces):
     used = np.unique(tets)
     remap = -np.ones(len(tags), np.int64)
     remap[used] = np.arange(len(used))
-    return xyz[used], remap[tets], {k: remap[v] for k, v in faces.items()}
+    from loudpy.fem.tet10 import untangle_p2
+    nodes, n_moved = untangle_p2(xyz[used], remap[tets])         # folded curved cells straightened
+    if n_moved:
+        import logging
+        logging.getLogger("loudpy").info("  %s: %d mid-edge nodes moved back to straight edges (folded curved "
+                                         "cells)", Path(msh_path).name, n_moved)
+    return nodes, remap[tets], {k: remap[v] for k, v in faces.items()}
 
 
 def add_driver_front(segments, center, z_low):

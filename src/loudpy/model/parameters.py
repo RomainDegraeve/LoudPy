@@ -108,6 +108,8 @@ def has_references(obj) -> bool:
     """True if a P appears in the fields of an item (nested dataclasses included)."""
     if isinstance(obj, P):
         return True
+    if isinstance(obj, (tuple, list)):
+        return any(has_references(x) for x in obj)
     if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
         return any(has_references(getattr(obj, f.name)) for f in dataclasses.fields(obj))
     return False
@@ -118,6 +120,8 @@ def resolve(obj, params):
     itself when it holds no reference. The copy is validated again by its own checks."""
     if isinstance(obj, P):
         return obj.value(params)
+    if isinstance(obj, (tuple, list)):
+        return type(obj)(resolve(x, params) for x in obj) if has_references(obj) else obj
     if not (dataclasses.is_dataclass(obj) and not isinstance(obj, type)) or not has_references(obj):
         return obj
     changes = {f.name: resolve(getattr(obj, f.name), params) for f in dataclasses.fields(obj)

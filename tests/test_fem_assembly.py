@@ -297,3 +297,23 @@ def test_tet10_toolkit_curved():
     np.testing.assert_allclose(M.sum(), V_straight, rtol=1e-13)
     np.testing.assert_allclose(Mc.sum(), V_curved, rtol=1e-13)
     np.testing.assert_allclose(K @ np.ones(len(X)), 0.0, atol=1e-12)
+
+
+def test_untangle_folded_p2_cells():
+    """A mid-edge node pushed through the cell folds it; untangle_p2 moves it back toward its edge midpoint
+    until no cell is folded, and leaves a valid mesh unchanged."""
+    from loudpy.fem import tet10
+    X, tets, _ = fem_meshes.ball(0.5)
+    same, n = tet10.untangle_p2(X, tets)
+    assert n == 0 and same is X or np.array_equal(same, X)
+    bad = X.copy()
+    e = 0
+    mid = tets[e, 4]                                        # node on edge 0–1
+    bad[mid] = X[tets[e, 2]] + 1.5 * (X[tets[e, 2]] - X[mid])   # far through the cell
+    assert e in tet10.folded_cells(bad, tets)
+    fixed, n = tet10.untangle_p2(bad, tets)
+    assert n >= 1 and len(tet10.folded_cells(fixed, tets)) == 0
+    target = 0.5 * (X[tets[e, 0]] + X[tets[e, 1]])
+    assert np.linalg.norm(fixed[mid] - target) < 0.5 * np.linalg.norm(bad[mid] - target)
+    with pytest.raises(Exception, match="folded"):
+        tet10.assemble_p2(bad, tets)

@@ -119,3 +119,30 @@ The scene layer is built on :mod:`loudpy.physics.modal` (``DriverModes``, ``Mult
 ``ExteriorFE``, ``coupled_sweep``, ``port_block``), with the meshing helpers of
 :mod:`loudpy.geometry.meshing3d`. Models outside the three configurations — e.g. the hybrid vented
 box of ``Driver_in_cavity`` (modal inside + 1D port + exterior FE) — use them directly.
+
+The model pattern in 3D
+-----------------------
+
+A scene follows the pattern of :class:`lp.Model <loudpy.Model>`: ``lp.Model(cabinet, dim=3, drivers=[…])``
+builds it, ``print(scene)`` shows its tree (parameters, air, drivers, cavity / exterior / merged settings,
+meshes), ``scene.check()`` checks it without meshing, ``scene.copy()`` and ``scene.with_parameters(…)`` give
+unmeshed copies. Its settings take ``lp.P(name)`` references, and a cabinet builder whose second argument
+is named ``p`` receives the parameters, which then enter the mesh signatures:
+
+.. code-block:: python
+
+    def box(occ, p):
+        inner = occ.addBox(0, 0, -p["depth"], 0.26, 0.20, p["depth"])
+        return lp.Cabinet(inner=inner)
+
+    scene = lp.Model(box, dim=3, drivers=[hp.place("main", at=(0.13, 0.10))],
+                     parameters=lp.Parameters(depth=0.15, h=0.012))
+    scene.cavity(mesh_size=(0.004, lp.P("h")), f_max=3000)
+    scene.mesh("Results/box")
+    sweep = lp.Sweep(lp.Modes(scene), "depth", [0.12, 0.15, 0.20]).solve(f_max=1000)
+
+Each value is meshed in ``<folder>/<name>_<value>/``. The 3D meshes are built on one thread
+(reproducible) with the P2 mid-edge nodes on the CAD surfaces; the few cells a coarse mesh folds near a
+strongly curved surface (det J changing sign inside) get their mid-edge nodes moved back to the straight
+edges when the mesh is read. The signatures record the node placement: meshes saved before (straight
+edges) are rebuilt once.

@@ -11,7 +11,7 @@ Parametric sweeps: one study run for each value of a parameter, on copies of the
 
 Each run uses model.with_parameters(name=value): the user's model is not changed. Every variant is meshed
 next to the model's mesh (<mesh stem>_<name>_<value>.msh, reused while unchanged); a parameter that changes no
-mesh input gives the same mesh as the model.
+mesh input gives the same mesh as the model. A scene (3D) is meshed in <scene folder>/<name>_<value>/.
 """
 from __future__ import annotations
 
@@ -67,8 +67,6 @@ class Sweep:
 
     def __init__(self, study, parameter: str, values, mesh_folder=None):
         model = study.model
-        if getattr(study, "is_scene", False):
-            raise NotImplementedError("lp.Sweep takes a study of an lp.Model (scenes: phase F3)")
         if parameter not in model.parameters:
             raise ModelError(f"the model has no parameter {parameter!r}; parameters: {sorted(model.parameters)}")
         if len(np.atleast_1d(values)) == 0:
@@ -78,6 +76,11 @@ class Sweep:
         self.mesh_folder = Path(mesh_folder) if mesh_folder is not None else None
 
     def _mesh_path(self, value) -> Path:
+        if getattr(self.study, "is_scene", False):                       # a scene: one folder per value
+            if self.study.model.folder is None and self.mesh_folder is None:
+                raise StateError("mesh the scene first (scene.mesh(folder)) or give lp.Sweep(…, mesh_folder=)")
+            folder = self.mesh_folder or self.study.model.folder
+            return folder / f"{self.parameter}_{value:g}"
         base = self.study.model._mesh_path
         if base is None and self.mesh_folder is None:
             raise StateError("mesh the model first (model.mesh(path)) or give lp.Sweep(…, mesh_folder=)")

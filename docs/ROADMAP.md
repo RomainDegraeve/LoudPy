@@ -506,3 +506,24 @@ form raises an error; the 2D frequency study still ignores lp.Radiation, as befo
   run **bit-identical** to the model built with that value; the user's model unchanged. Found while doing
   it: `resolved()` must resolve the copy's items, or the remeshing study changes the user's model again
   (caught by the F1 test). 5 tests (`tests/test_parameters.py`); 301 tests pass with `--slow`.
+- **F3 (done)**: one model pattern for 2D and 3D. `lp.Model(cabinet, dim=3, drivers=[…], air=…,
+  parameters=…)` returns an `lp.Scene`; scenes have `tree()` / `print`, `check()` (configuration, drivers,
+  parameters, bands; notes), `copy()`, `with_parameters()`, `lp.P` in their settings (the given settings are
+  kept, resolved copies are used by meshing and solving), cabinet builders `cabinet(occ, p)`, and
+  `lp.Sweep` runs on scenes (one mesh folder per value). One remeshing rule: the 3D signatures record the
+  mid-edge node placement (`p2_nodes: curved`) and the parameters of a cabinet taking them; 3D meshing uses
+  one thread. The committed scene meshes (straight edges) are now read with reuse="always" in
+  `test_scene._small` (fixed test inputs). **Found**: meshing a cavity from scratch with the curved
+  mid-edge nodes of D4b gave 126 folded tetrahedra around the driver cut-out (the D4b check raised); gmsh's
+  high-order optimiser aborts in this build (HighOrderOptimize 1 and 2), so `fem.tet10.untangle_p2` moves the
+  mid-edge nodes of folded cells back to their edge midpoints (globally, conforming) when a P2 mesh is read;
+  committed meshes unchanged. Gate items: a scene sweep (cabinet depth 0.15 / 0.20 m, coupled cavity modes)
+  bit-identical to the separate runs; one model pattern. 2 tests (scene pattern + sweep, untangle);
+  `docs/guide/scenes.rst` "The model pattern in 3D".
+  Repair criterion (both the reader and the `assemble_p2` check): det J changing sign inside a cell **or of
+  the other sign than the straight cell** (a cell inverted as a whole by a curved face, which |det J|
+  silently accepted). The repair moves the cell's mid-edge nodes half-way to the edge midpoints per round
+  (all the way after 30 rounds) to keep the curvature. Hemisphere at h = 3.5 cm: one inverted cell; the
+  D4b numbers (0.011 % / 0.054 %) were computed with it, the repaired mesh gives 0.040 % / 0.081 % (200 Hz /
+  1 kHz; h = 5 cm unchanged 0.033 % / 0.19 %). The verification test keeps the 0.1 % bound and compares the
+  worst error over the two frequencies (the 200 Hz error no longer falls between 5 and 3.5 cm).

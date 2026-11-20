@@ -19,7 +19,7 @@ from loudpy.fem.kernels import (_boundary_load_kernel, _laplace_kernel, _mass_ke
 from loudpy.fem.quadrature import QuadratureRule, quadrature
 from loudpy.fem.reference import lagrange
 
-__all__ = ["assemble_p2", "surface_quadrature", "CURVED", "straight_cells"]
+__all__ = ["assemble_p2", "surface_quadrature", "CURVED", "straight_cells", "folded_cells", "untangle_p2"]
 
 CURVED = True          # default geometry of the 3D toolkit cells
 
@@ -41,6 +41,46 @@ def straight_cells(element, ec) -> np.ndarray:
     return ec
 
 
+def _invalid(ec, dN) -> np.ndarray:
+    """Cells (coordinates (n_e, 10, 3)) whose det J changes sign inside or differs from the straight cell's."""
+    det = np.linalg.det(np.einsum("eai,qaj->eqij", ec, dN))
+    ref = np.sign(np.linalg.det(np.transpose(ec[:, 1:4] - ec[:, :1], (0, 2, 1))))
+    return np.flatnonzero((np.sign(det) != ref[:, None]).any(axis=1))
+
+
+def folded_cells(nodes, tets) -> np.ndarray:
+    """Indices of the P2 tetrahedra whose det J changes sign inside (curved cells folded by their mid nodes)."""
+    _, dN = lagrange("tetrahedron", 2).tabulate(quadrature("tetrahedron", 4).points)
+    return _invalid(np.asarray(nodes, float)[np.asarray(tets)], dN)
+
+
+def untangle_p2(nodes, tets, max_rounds: int = 30):
+    """
+    Nodes with the mid-edge nodes of folded or inverted P2 tetrahedra (det J changing sign inside, or of the
+    other sign than the straight cell) moved toward their edge midpoints, half of the way per round, until no
+    cell is invalid (after max_rounds: all the way). The moves are global, so neighbouring cells stay
+    conforming, and small, so that the curved surfaces are kept as far as possible. gmsh puts the mid-edge
+    nodes on curved surfaces; on a coarse mesh near a strongly curved surface a few cells fold.
+    Returns (nodes, number of mid-edge nodes moved); the nodes are unchanged when no cell is invalid.
+    """
+    nodes = np.asarray(nodes, float)
+    tets = np.asarray(tets, np.int64)
+    edges = lagrange("tetrahedron", 2).cell.edges
+    moved = set()
+    for k in range(max_rounds + 1):
+        bad = folded_cells(nodes, tets)
+        if not len(bad):
+            break
+        step = 0.5 if k < max_rounds else 1.0
+        nodes = nodes.copy()
+        for j, (a, b) in enumerate(edges):
+            mid = tets[bad, 4 + j]
+            target = 0.5 * (nodes[tets[bad, a]] + nodes[tets[bad, b]])
+            nodes[mid] += step * (target - nodes[mid])
+            moved.update(mid.tolist())
+    return nodes, len(moved)
+
+
 def assemble_p2(nodes, tets, curved: bool | None = None):
     """Stiffness ∫∇N·∇N, mass ∫N N (sparse csc over all nodes) and the volume of P2 tetrahedra."""
     curved = CURVED if curved is None else curved
@@ -52,11 +92,10 @@ def assemble_p2(nodes, tets, curved: bool | None = None):
         ec = straight_cells(elem, ec)
     N, dN, w = tabulate(elem, quadrature("tetrahedron", 4))     # exact for straight cells
     if curved:
-        det = np.linalg.det(np.einsum("eai,qaj->eqij", ec, dN))
-        bad = np.flatnonzero((np.sign(det) != np.sign(det[:, :1])).any(axis=1))
+        bad = _invalid(ec, dN)
         if len(bad):
             from loudpy.errors import MeshError
-            raise MeshError(f"{len(bad)} curved P2 tetrahedra are folded (det J changes sign inside, "
+            raise MeshError(f"{len(bad)} curved P2 tetrahedra are folded or inverted (det J changes sign, "
                             f"e.g. cell {bad[0]}): refine the mesh near curved surfaces, or use "
                             f"curved=False")
     one = np.ones((len(ec), len(w)))

@@ -101,7 +101,9 @@ def _small(kind, driver, mesh_dir):
     else:
         scene.merged(bands=[(20.0, 700.0)], driver_size=0.004, max_size=0.07, margin=0.04,
                      file="scene_c_air.msh")                  # 4 mm: the 1 mm front wall needs it
-    scene.mesh(mesh_dir, reuse=True)
+    # committed meshes are fixed test inputs: used as they are (they predate the curved mid-edge nodes of
+    # phase D4b, which the signature now records, so reuse=True would rebuild them)
+    scene.mesh(mesh_dir, reuse="always")
     return scene
 
 
@@ -148,3 +150,42 @@ def test_open_scene_matches_toolkit(driver, mesh_dir, tmp_path, kind, reference)
     arc = res.spl(at=lp.Arc(2.0, [0, 45, 90], center=(W / 2, H / 2, 0.0), axis="z", toward="x"))
     assert arc.dims == ("f", "angle") and arc.shape == (2, 3)
     assert set(res.driver_surfaces(400.0)) == set(res.drivers)
+
+
+# ── F3: the scene follows the model pattern ─────────────────────────────────
+def deep_box(occ, p):
+    """The test box with a parameterised depth p["D"] (cabinet builder taking the parameters)."""
+    inner = occ.addBox(0.0, 0.0, api.Z_B - p["D"], W, H, p["D"])
+    outer = occ.addBox(0.0, 0.0, api.Z_B - p["D"], W, H, p["D"] + (api.Z_F - api.Z_B))
+    return lp.Cabinet(inner=inner, outer=outer)
+
+
+def test_scene_follows_the_model_pattern(driver, tmp_path):
+    scene = lp.Model(deep_box, dim=3, drivers=[driver.place("main", at=(W / 2, H / 2))],
+                     parameters=lp.Parameters(D=D, h=0.03))
+    assert isinstance(scene, lp.Scene)
+    with pytest.raises(lp.errors.ModelError, match="configure the scene"):
+        scene.check()
+    scene.cavity(f_max=1500.0, eta=0.02, mesh_size=(0.012, lp.P("h")), cache_modes=False)
+    assert scene.check() == ["cavity only: the driver fronts radiate in vacuo"]
+    tree = str(scene)
+    assert "configuration cavity" in tree and "Parameters: D = " in tree and "'main'" in tree
+    twin = scene.with_parameters(D=0.20)
+    assert twin.parameters["D"] == 0.20 and scene.parameters["D"] == D and twin.folder is None
+
+    scene.mesh(tmp_path / "base")
+    sig = __import__("json").loads((tmp_path / "base" / "cavity.msh.json").read_text())
+    assert sig["p2_nodes"] == "curved" and sig["parameters"] == {"D": D, "h": 0.03}
+    assert sig["settings"]["cavity"]["mesh_size"] == [0.012, 0.03]          # lp.P resolved
+
+    values = [D, 0.20]                                                     # D = 0.15 m
+    sweep = lp.Sweep(lp.Modes(scene), "D", values).solve(f_max=600.0)
+    for v, res in zip(values, sweep):
+        alone = scene.with_parameters(D=v)
+        alone.mesh(tmp_path / f"alone_{v:g}")
+        ref = lp.Modes(alone).solve(f_max=600.0)
+        np.testing.assert_array_equal(res.extra("s"), ref.extra("s"))
+    s0, s1 = sweep[0].extra("s"), sweep[1].extra("s")
+    assert len(s0) != len(s1) or not np.allclose(s0, s1, rtol=1e-6)      # the depth changes the coupled modes
+    assert (tmp_path / "base" / "D_0.2" / "cavity.msh").exists()
+    assert scene.parameters["D"] == D

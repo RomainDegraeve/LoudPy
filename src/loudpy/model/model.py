@@ -45,12 +45,23 @@ log = logging.getLogger("loudpy.model")
 
 class Model:
     """An axisymmetric loudspeaker model: a geometry (.geo), regions, boundaries and materials.
+    lp.Model(cabinet, dim=3, drivers=[…]) gives the 3D model of drivers in a cabinet (an lp.Scene), which
+    has the same pattern: parameters, print / tree(), check(), copy(), with_parameters(), mesh(), studies.
 
         model = lp.Model("speaker.geo")
         model.add(lp.Solid("membrane", "Paper"), lp.Clamped("interface_constrained_rz"), lp.Clamped("interface_constrained_r", dofs="r"), lp.Coil("interface_forced"))
         model.mesh("mesh.msh")                 # gmsh, P2 triangles; reused while the inputs are unchanged"""
+    def __new__(cls, geometry=None, *args, dim: int = 2, **kwargs):
+        """lp.Model(cabinet, dim=3, drivers=[…], air=…, parameters=…) builds a 3D model: an lp.Scene."""
+        if dim == 3:
+            from loudpy.scene.scene import Scene
+            return Scene(geometry, *args, **kwargs)
+        if dim != 2:
+            raise ModelError(f"dim must be 2 (axisymmetric) or 3 (scene), got {dim!r}")
+        return super().__new__(cls)
+
     def __init__(self, geometry, materials=None, *, mesh_order: int = 2,
-                 grading: float | None = DEFAULT_MESH_GRADING, parameters: Parameters | None = None):
+                 grading: float | None = DEFAULT_MESH_GRADING, parameters: Parameters | None = None, dim: int = 2):
         """
         geometry  : a .geo (curve loops: every closed physical curve group is a domain; or surfaces), a
                     CAD file (.step/.stp/.iges/.igs/.brep) or a builder function builder(occ) → {label:

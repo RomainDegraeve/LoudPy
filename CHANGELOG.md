@@ -9,6 +9,10 @@ The roadmap of this work is in `docs/ROADMAP.md`.
 
 ### Added
 
+- One model pattern in 2D and 3D: `lp.Model(cabinet, dim=3, drivers=[…])` builds a scene; scenes have
+  `print` / `tree()`, `check()`, `copy()`, parameters (`lp.P` in their settings, `cabinet(occ, p)`),
+  `with_parameters()`, and run in `lp.Sweep`.
+
 - Parameters and sweeps: `lp.Parameters(…)` on the model, `lp.P(name)` in any numeric field of an item,
   geometry builders `builder(occ, p)`, `model.with_parameters(…)`, and `lp.Sweep(study, name, values)` →
   `SweepResults` (values, one results object per value, `stack`, `save`).
@@ -110,6 +114,11 @@ The roadmap of this work is in `docs/ROADMAP.md`.
   `loudpy[plot]`, `loudpy[3d]`, `loudpy[all]`; minimum dependency versions relaxed.
 
 ### Fixed
+
+- 3D meshes with curved mid-edge nodes could contain folded cells near strongly curved surfaces (a driver
+  cut-out on a coarse cavity mesh): their mid-edge nodes are moved back to straight edges when the mesh is
+  read (`fem.tet10.untangle_p2`). The 3D mesh signatures record the node placement (old straight meshes are
+  rebuilt once) and 3D meshing uses one thread.
 - **2D fluid–structure coupling** (all coupled results change): (1) the coupling sign was set per
   boundary group while the edge normals follow the drawing direction of each curve, so the curves
   drawn the other way coupled with the wrong sign (HPNEW speaker: 38 % of the rear edges, 5 % of the

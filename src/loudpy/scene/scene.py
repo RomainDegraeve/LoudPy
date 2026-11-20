@@ -97,9 +97,13 @@ class Scene:
         scene = lp.Scene(cabinet, [hp.place("main", at=(x0, y0))])
         scene.cavity(...) / scene.exterior(...) / scene.merged(...)
         scene.mesh(folder)"""
-    def __init__(self, cabinet, drivers, air: "str | Material" = "Air"):
-        """cabinet: callable(occ) → Cabinet;  drivers: PlacedDriver list (Driver.place);
-        air: a fluid of the material library or an lp.Material (lp.air(temperature=…, humidity=…))."""
+    def __init__(self, cabinet, drivers, air: "str | Material" = "Air", parameters=None):
+        """cabinet: callable(occ) → Cabinet, or cabinet(occ, p) receiving the parameters;
+        drivers: PlacedDriver list (Driver.place);
+        air: a fluid of the material library or an lp.Material (lp.air(temperature=…, humidity=…));
+        parameters: lp.Parameters referred to by lp.P(name) in the settings and by cabinet(occ, p)."""
+        from loudpy.model.parameters import Parameters
+        self.parameters = parameters if parameters is not None else Parameters()
         air = air if isinstance(air, Material) else materials[air]
         if air.kind != "fluid":
             raise ModelError(f"Scene air: {air.name!r} is a {air.kind}, not a fluid")
@@ -110,8 +114,10 @@ class Scene:
         names = [d.name for d in self.drivers]
         if len(set(names)) != len(names):
             raise ModelError(f"driver names must be unique: {names}")
-        self._cavity: _Cavity | None = None
+        self._cavity: _Cavity | None = None              # settings as resolved for the last meshing
         self._open: _OpenAir | None = None
+        self._cavity_spec: _Cavity | None = None         # settings as given (may hold lp.P references)
+        self._open_spec: _OpenAir | None = None
         self.folder: Path | None = None
         self.cavity_mesh: Path | None = None
         self.band_meshes: list[dict] = []
@@ -133,15 +139,16 @@ class Scene:
         """The cabinet air as rigid-wall cavity modes (configurations A and B)."""
         if self._open is not None and self._open.kind == "merged":
             raise ModelError("a merged air domain already contains the cabinet air")
-        self._cavity = _Cavity(tuple(mesh_size), tuple(near), f_max, eta, file, cache_modes)
+        self._cavity = self._cavity_spec = _Cavity(tuple(mesh_size), tuple(near), f_max, eta, file, cache_modes)
         return self
 
     def exterior(self, ground="y", level=0.0, margin=0.05, bands=((20.0, 1000.0),), points_per_wavelength=4.0,
                  max_size=0.06, driver_size=0.003, near=(0.004, 0.08), plug_from=0.0,
                  file="exterior_{f_hi:.0f}Hz.msh"):
         """The air outside the cabinet: P2 FE + exact half-space DtN, one mesh per band (configuration B)."""
-        self._open = _OpenAir("exterior", ground, level, margin, [tuple(b) for b in bands], points_per_wavelength,
-                              max_size, driver_size, tuple(near), plug_from, file)
+        self._open = self._open_spec = _OpenAir("exterior", ground, level, margin, [tuple(b) for b in bands],
+                                                points_per_wavelength, max_size, driver_size, tuple(near),
+                                                plug_from, file)
         return self
 
     def merged(self, ground="y", level=0.0, margin=0.05, bands=((20.0, 1000.0),), points_per_wavelength=4.0,
@@ -150,8 +157,9 @@ class Scene:
         """One air domain: inside + openings + outside (configuration C)."""
         if self._cavity is not None:
             raise ModelError("a merged air domain replaces the cavity modes: remove cavity()")
-        self._open = _OpenAir("merged", ground, level, margin, [tuple(b) for b in bands], points_per_wavelength,
-                              max_size, driver_size, tuple(near), plug_from, file)
+        self._open = self._open_spec = _OpenAir("merged", ground, level, margin, [tuple(b) for b in bands],
+                                                points_per_wavelength, max_size, driver_size, tuple(near),
+                                                plug_from, file)
         return self
 
     @property
@@ -173,9 +181,12 @@ class Scene:
         (cabinet builder, drivers, settings) is unchanged; "always": an existing file is used as
         it is; False: rebuild.
         """
+        from loudpy.model.parameters import resolve
         self.folder = Path(folder)
         self.folder.mkdir(parents=True, exist_ok=True)
         config = self.configuration
+        self._cavity = resolve(self._cavity_spec, self.parameters)          # lp.P → values
+        self._open = resolve(self._open_spec, self.parameters)
         if self._cavity is not None:
             self.cavity_mesh = self._build("cavity", self.folder / self._cavity.file, reuse, self._mesh_cavity)
         if self._open is not None:
@@ -211,8 +222,19 @@ class Scene:
         kind = "cavity" if what == "cavity" else "open"             # a mesh depends on its own settings only
         v = self._cavity if kind == "cavity" else self._open
         settings = {kind: {n: getattr(v, n) for n in mesh_keys[kind]}}
-        return json.loads(json.dumps(dict(what=what, cabinet=hashlib.sha256(src.encode()).hexdigest()[:16],
-                                          drivers=drivers, settings=settings, extra=extra), default=str))
+        sig = dict(what=what, cabinet=hashlib.sha256(src.encode()).hexdigest()[:16], drivers=drivers,
+                   settings=settings, extra=extra, p2_nodes="curved")           # mid-edge nodes on the surfaces
+        if self._cabinet_takes_parameters:
+            sig["parameters"] = {k: float(v) for k, v in sorted(self.parameters.items())}
+        return json.loads(json.dumps(sig, default=str))
+
+    @property
+    def _cabinet_takes_parameters(self) -> bool:
+        try:
+            args = list(inspect.signature(self.cabinet).parameters)
+        except (TypeError, ValueError):
+            return False
+        return len(args) >= 2 and args[1] in ("p", "params", "parameters")
 
     def _build(self, what, path, reuse, builder, extra=None):
         sig_path = Path(str(path) + ".json")
@@ -229,7 +251,9 @@ class Scene:
         g = gmsh_module()
         g.clear()
         g.model.add(name)
-        return g, g.model.occ, self.cabinet(g.model.occ)
+        g.option.setNumber("General.NumThreads", 1)                      # deterministic meshes
+        occ = g.model.occ
+        return g, occ, self.cabinet(occ, self.parameters) if self._cabinet_takes_parameters else self.cabinet(occ)
 
     @staticmethod
     def _keep_only(occ, keep):
@@ -366,6 +390,74 @@ class Scene:
                 refine["openings"] = (cab.opening_size, o.near[0], o.near[1])
             mesh_volume(path, vols[0], classify, refine, h_far)
         g.clear()
+
+    # ── the model pattern (as lp.Model) ────────────────────────────────────
+    def copy(self) -> "Scene":
+        """A new, unmeshed scene with the same cabinet, drivers, air, parameters and settings."""
+        import copy as _copy
+        s = Scene(self.cabinet, self.drivers, self.air, self.parameters)
+        s._cavity = s._cavity_spec = _copy.copy(self._cavity_spec)
+        s._open = s._open_spec = _copy.copy(self._open_spec)
+        return s
+
+    def with_parameters(self, **values) -> "Scene":
+        """A copy of the scene (unmeshed) with other parameter values."""
+        s = self.copy()
+        s.parameters = self.parameters.with_(**values)
+        return s
+
+    def check(self) -> list[str]:
+        """Check the scene without meshing: configuration, drivers, air, parameters. Raises ModelError
+        listing every problem; returns notes."""
+        from loudpy.model.parameters import resolve
+        problems, notes = [], []
+        try:
+            self.configuration
+        except StateError as e:
+            problems.append(str(e))
+        if not self.drivers:
+            problems.append("no driver (Driver.place)")
+        for spec in (self._cavity_spec, self._open_spec):
+            try:
+                resolve(spec, self.parameters)
+            except ModelError as e:
+                problems.append(str(e))
+        if self._open_spec is not None and not self._open_spec.bands:
+            problems.append("no frequency band for the FE air")
+        if problems:
+            raise ModelError("the scene has problems:\n  - " + "\n  - ".join(problems))
+        if self._cavity_spec is not None and self._open_spec is None:
+            notes.append("cavity only: the driver fronts radiate in vacuo")
+        return notes
+
+    def tree(self) -> str:
+        """The scene as a tree (as print(model) for a 2D model)."""
+        try:
+            cfg = self.configuration
+        except StateError:
+            cfg = "not configured"
+        name = getattr(self.cabinet, "__name__", "cabinet")
+        lines = [f"Scene {name}()  (3D, configuration {cfg}, P2 tetrahedra, curved)"]
+        if len(self.parameters):
+            lines.append(f"├─ Parameters: {', '.join(f'{k} = {v:g}' for k, v in self.parameters.items())}")
+        lines.append(f"├─ Air: {self.air.name} (rho {self.air.rho:g} kg/m³, c {self.air.c:g} m/s)")
+        lines.append(f"├─ Drivers ({len(self.drivers)})")
+        for k, d in enumerate(self.drivers):
+            lines.append(f"│  {'└' if k == len(self.drivers) - 1 else '├'}─ {d.name!r}: {d.driver.name}, at "
+                         f"{np.round(d.frame.origin, 4).tolist()}")
+        if self._cavity_spec is not None:
+            c = self._cavity_spec
+            lines.append(f"├─ Cavity: modes to {c.f_max} Hz, loss factor {c.eta}, mesh {c.mesh_size}")
+        if self._open_spec is not None:
+            o = self._open_spec
+            lines.append(f"├─ {o.kind.capitalize()} air: bands {o.bands}, ground {o.ground}, "
+                         f"{o.points_per_wavelength} points per wavelength")
+        meshes = ([self.cavity_mesh.name] if self.cavity_mesh else []) + [b["path"].name for b in self.band_meshes]
+        lines.append(f"└─ Meshes: {', '.join(meshes) if meshes else 'not meshed'}")
+        return "\n".join(lines)
+
+    def __str__(self):
+        return self.tree()
 
     def __repr__(self):
         try:
