@@ -8,6 +8,8 @@ versions follow [Semantic Versioning](https://semver.org/) (0.x: the API may sti
 The roadmap of this work is in `docs/ROADMAP.md`.
 
 ### Added
+- `loudpy.fem.estimate`: a-posteriori error estimation — polynomial-preserving gradient recovery, recovery
+  indicators (scalar, axisymmetric elastic energy) and an explicit residual indicator.
 - Derived values: `res.volume_velocity(on=…)`, `res.radiated_power(on=… | radius=…)`, `res.thiele_small(on=…)`
   (voltage drive); ParaView series `res.export("x.pvd")`.
 - Derived fields: `res.field("strain" | "stress" | "von_mises" | "v" | "a" | "particle_velocity" |

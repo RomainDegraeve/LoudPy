@@ -31,7 +31,7 @@ Cost unit: one *session* ≈ one long working block (3–5 h). Status: ✅ done 
 | E | Physics interfaces and couplings: one contribution protocol, generic system builder, electrical circuit as physics, 3D on the same protocol (the sign convention was fixed in C) | 4 | ✅ |
 | F | One model for 2D and 3D: `lp.Model(dim=…)`, COMSOL-like tree (print, `check()`, mesh controls by selection, study steps), parameters and parametric sweeps, selectors and geometry sources in 3D scenes, typed mesh and solver settings, one remeshing rule, immutable model during solves, deterministic meshing by default, examples rewritten | 4 | ✅ |
 | G | Results format 3: one results family, self-contained files (with the model description and parameters), public arrays, derived fields (stress, strain, velocity, intensity) and values (power, volume velocity, impedance, SPL, Thiele–Small parameters), interpolation in tetrahedra, ParaView series | 3 | ✅ |
-| H | Error estimation and adaptivity: recovery and residual indicators, `lp.Adaptive`, `lp.convergence` | 3 | ○ |
+| H | Error estimation and adaptivity: recovery and residual indicators, `lp.Adaptive`, `lp.convergence` | 3 | ◐ |
 | I | Shells: MITC3/MITC4 Reissner–Mindlin, direct coupling to the 3D air, wall-mode study, elastic-wall enclosure example | 4 | ○ |
 | J | Plotting: scoped style everywhere, selections in 3D views, interactive HTML viewer, image-comparison tests | 1.5 | ○ |
 | K | Verification and validation pipeline: manufactured solutions, analytical benchmarks, COMSOL harness, generated verification report | 3 (spread) | ◐ |
@@ -620,3 +620,18 @@ Not done in G, proposed for later: probes of the derived names over all entries 
 `res.field(…).at(…)` works per entry), stress for the azimuthal orders m ≥ 1, the far field of 3D results
 other than the scenes. Found on the way (recorded in G2): the coarse test model's PML (0.1 m, tuned to
 1 kHz) leaves a reflected part of ~26 % at 100 Hz — relevant for low-frequency SPL in phase M.
+
+## Phase H — in progress
+
+- **H1 (done)**: estimators (`fem/estimate.py`). Gradient recovery by **polynomial-preserving recovery**
+  (least-squares fit of degree p + 1 — 2p on quadrilaterals — to the nodal values of a vertex patch around
+  each node; chosen after measuring: plain nodal averaging gave effectivity 0.43–0.52 for P2). Recovery
+  indicators: scalar ∫|G*u_h − ∇u_h|² (axisymmetric 2πr) and elastic energy ∫(ε* − ε_h)ᵀD(ε* − ε_h)2πr;
+  explicit residual indicator for −Δu − k²u = f (interior residual with straight-cell Hessians, normal-
+  derivative jumps on interior edges). Gate item "effectivity 0.8–1.5", manufactured solution (Poisson), n = 16
+  (n = 8): triangles P1 1.034 (1.086), P2 1.007 (1.045), P3 1.293 (1.719); quadrilaterals Q1 1.012, Q2 1.005;
+  curved unstructured P1 1.028, P2 1.004, P3 1.194 (1.586); axisymmetric P1 1.08, P2 1.01, P3 1.02; elastic
+  energy of interpolated smooth displacements P1 1.003, P2 1.001, a quadratic P2 field exactly 0. The
+  residual indicator keeps a constant ratio to the error (≈ 5, 10, 18 for P1–P3: the error's rate, constant
+  not calibrated) except on curved P3 cells (the straight-cell Hessians: ratio 140 → 333), noted as a limit.
+  12 tests (`tests/test_estimate.py`).
