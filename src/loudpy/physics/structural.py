@@ -14,9 +14,10 @@ import numpy as np
 from scipy.sparse import issparse
 
 from loudpy.fem.assembly import ElementAssembler
-from loudpy.fem.batch import _batch_K, _batch_M, _batch_TL
 from loudpy.fem.dofs import DirichletElimination
+from loudpy.fem.kernels import _mass_kernel, coefficient, expand_components
 from loudpy.fem.shape import material_matrix_D
+from loudpy.fem.solid import axisymmetric_kernel, fourier_kernel, material_matrix_D6, total_lagrangian_kernel
 from loudpy.physics.registry import select
 from loudpy.errors import ModelError, StateError
 
@@ -36,6 +37,15 @@ class _Structural(DirichletElimination, ElementAssembler):
         return select(objects, "clamped")
 
 
+def _mass_blocks(asm, ec, coef, components):
+    """Consistent mass blocks ∫ coef N_a N_b 2πr dA on every component, (n_e, (c·n)²)."""
+    N, dN, w = asm.tabulation
+    n = N.shape[1]
+    Ms = np.empty((len(ec), n * n))
+    _mass_kernel(ec, N, dN, w, coefficient(coef, ec, N), True, Ms)
+    return expand_components(Ms, components)
+
+
 class MecaAssembler(_Structural):
     def assemble(self):
         Kv = np.zeros(self.V_size, dtype=np.complex128)
@@ -43,10 +53,10 @@ class MecaAssembler(_Structural):
         Cv = np.zeros(self.V_size, dtype=np.float64)
 
         for sd, ec, gdofs, s0, s1, n_e in self.prep:
+            N, dN, w = self.tabulation
             Ke = np.empty((n_e, self.block))
-            Me = np.empty((n_e, self.block))
-            _batch_K(ec, material_matrix_D(sd.E, sd.nu), Ke)
-            _batch_M(ec, sd.rho, Me)
+            axisymmetric_kernel(ec, N, dN, w, material_matrix_D(sd.E, sd.nu), Ke)
+            Me = _mass_blocks(self, ec, float(sd.rho), 2)
 
             eta = getattr(sd, "eta", 0.0)
             alpha = getattr(sd, "alpha_ray", 0.0)
@@ -97,7 +107,9 @@ class MecaAssemblerNL(_Structural):
             Ce_out = np.empty((n_e, self.block), dtype=np.float64)
             Fe_out = np.empty((n_e, self.ndof_e), dtype=np.float64)
 
-            _batch_TL(ec, u_e_all, D, rho, alpha, beta, Ke_out, Me_out, Ce_out, Fe_out)
+            N, dN, w = self.tabulation
+            total_lagrangian_kernel(ec, np.ascontiguousarray(u_e_all, dtype=np.float64), N, dN, w, D,
+                                    rho, alpha, beta, Ke_out, Me_out, Ce_out, Fe_out)
 
             Kv[s0:s1] = Ke_out.ravel()
             Mv[s0:s1] = Me_out.ravel()
@@ -151,16 +163,15 @@ class MecaAssemblerFourier(ElementAssembler):
         self.T = None
 
     def assemble(self):
-        from loudpy.fem.batch import _batch_K_fourier, _batch_M_fourier
-        from loudpy.fem.elements.tri6_axi.fourier import material_matrix_D6
         Kv = np.zeros(self.V_size, dtype=np.complex128)
         Mv = np.zeros(self.V_size, dtype=np.float64)
         Cv = np.zeros(self.V_size, dtype=np.float64)
         for sd, ec, gdofs, s0, s1, n_e in self.prep:
+            N, dN, w = self.tabulation
             Ke = np.empty((n_e, self.block))
-            Me = np.empty((n_e, self.block))
-            _batch_K_fourier(ec, material_matrix_D6(sd.E, sd.nu), self.m, Ke)
-            _batch_M_fourier(ec, sd.rho, self.m, Me)
+            fourier_kernel(ec, N, dN, w, material_matrix_D6(sd.E, sd.nu), self.m, Ke)
+            # ∫ r dθ = 2π r for m = 0, π r for m ≥ 1: the axisymmetric mass, halved
+            Me = _mass_blocks(self, ec, float(sd.rho) * (1.0 if self.m == 0 else 0.5), 3)
             eta = getattr(sd, "eta", 0.0)
             alpha = getattr(sd, "alpha_ray", 0.0)
             beta = getattr(sd, "beta_ray", 0.0)

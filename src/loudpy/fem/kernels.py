@@ -28,7 +28,7 @@ from loudpy.fem.sparse import _SparseAssemblerBase
 from loudpy.fem.sparse_kernels import _scatter_add
 
 __all__ = ["Assembler", "mass", "laplace", "load", "boundary_mass", "boundary_load", "quadrature_points",
-           "coefficient"]
+           "coefficient", "tabulate", "expand_components"]
 
 TWO_PI = 2.0 * np.pi
 
@@ -37,15 +37,13 @@ TWO_PI = 2.0 * np.pi
 
 @njit(cache=True, fastmath=False, inline="always")
 def _jacobian(ec_e, dNq, J):
-    """J[i, j] = Σ_a x_a[i] ∂N_a/∂ξ_j."""
-    n, gdim = ec_e.shape
+    """J[i, j] = Σ_a x_a[i] ∂N_a/∂ξ_j, by np.dot (the summation order of the former kernels: on flat
+    cells det J cancels, and a plain loop differs from them by up to 2e-11 relative)."""
+    gdim = ec_e.shape[1]
     tdim = dNq.shape[1]
     for i in range(gdim):
         for j in range(tdim):
-            s = 0.0
-            for a in range(n):
-                s += ec_e[a, i] * dNq[a, j]
-            J[i, j] = s
+            J[i, j] = np.dot(dNq[:, j], ec_e[:, i])
 
 
 @njit(cache=True, fastmath=False, inline="always")
@@ -76,6 +74,25 @@ def _det_inv(J, Ji):
         Ji[1, 2] = (J[0, 2] * J[1, 0] - J[0, 0] * J[1, 2]) / det
         Ji[2, 2] = (J[0, 0] * J[1, 1] - J[0, 1] * J[1, 0]) / det
     return det
+
+
+@njit(cache=True, fastmath=False, inline="always")
+def _gradients(dNq, J, Ji, det, G):
+    """Physical gradients G[a, i] = ∂N_a/∂x_i = Σ_j ∂N_a/∂ξ_j (J⁻¹)[j, i]. In 2D the cofactor form
+    (J₁₁ ∂_ξ N − J₁₀ ∂_η N) / det of the former kernels (same rounding on flat, ill-conditioned cells)."""
+    n, d = G.shape
+    if d == 2:
+        inv = 1.0 / det
+        for a in range(n):
+            G[a, 0] = (J[1, 1] * dNq[a, 0] - J[1, 0] * dNq[a, 1]) * inv
+            G[a, 1] = (-J[0, 1] * dNq[a, 0] + J[0, 0] * dNq[a, 1]) * inv
+    else:
+        for a in range(n):
+            for i in range(d):
+                s = 0.0
+                for j in range(d):
+                    s += dNq[a, j] * Ji[j, i]
+                G[a, i] = s
 
 
 @njit(cache=True, fastmath=False, inline="always")
@@ -136,15 +153,11 @@ def _laplace_kernel(ec, N, dN, w, coef, axisym, out):
         Ke = np.zeros((n, n), dtype=out.dtype)
         for q in range(n_q):
             _jacobian(ec[e], dN[q], J)
-            dx = w[q] * abs(_det_inv(J, Ji))
+            det = _det_inv(J, Ji)
+            dx = w[q] * abs(det)
             if axisym:
                 dx *= TWO_PI * _radius(ec[e], N[q])
-            for a in range(n):                              # physical gradients: ∇N = J⁻ᵀ ∇̂N
-                for i in range(gdim):
-                    s = 0.0
-                    for j in range(gdim):
-                        s += dN[q, a, j] * Ji[j, i]
-                    G[a, i] = s
+            _gradients(dN[q], J, Ji, det, G)                # ∇N = J⁻ᵀ ∇̂N
             c = coef[e, q] * dx
             for a in range(n):
                 for b in range(n):
@@ -152,6 +165,32 @@ def _laplace_kernel(ec, N, dN, w, coef, axisym, out):
                     for i in range(gdim):
                         s += G[a, i] * G[b, i]
                     Ke[a, b] += c * s
+        out[e] = Ke.ravel()
+
+
+@njit(parallel=True, cache=True, fastmath=False)
+def _diffusion_diag_kernel(ec, N, dN, w, coef, axisym, out):
+    """Blocks ∫ Σ_i coef_i ∂_i N_a ∂_i N_b dx, coef (n_e, n_q, gdim): a diagonal (e.g. PML) tensor."""
+    n_e, n, gdim = ec.shape
+    n_q = N.shape[0]
+    for e in prange(n_e):
+        J = np.empty((gdim, gdim))
+        Ji = np.empty((gdim, gdim))
+        G = np.empty((n, gdim))
+        Ke = np.zeros((n, n), dtype=out.dtype)
+        for q in range(n_q):
+            _jacobian(ec[e], dN[q], J)
+            det = _det_inv(J, Ji)
+            dx = w[q] * abs(det)
+            if axisym:
+                dx *= TWO_PI * _radius(ec[e], N[q])
+            _gradients(dN[q], J, Ji, det, G)                # ∇N = J⁻ᵀ ∇̂N
+            for i in range(gdim):
+                c = coef[e, q, i] * dx
+                for a in range(n):
+                    ca = c * G[a, i]
+                    for b in range(n):
+                        Ke[a, b] += ca * G[b, i]
         out[e] = Ke.ravel()
 
 
@@ -214,6 +253,26 @@ def _boundary_load_kernel(ec, N, dN, w, coef, axisym, out):
 
 # ------------------------------------------------------------------------------------- Python wrappers
 
+def tabulate(element, rule):
+    """(N, dN, w) of `element` at the points of `rule`, contiguous, for the kernels."""
+    N, dN = element.tabulate(rule.points)
+    return np.ascontiguousarray(N), np.ascontiguousarray(dN), np.ascontiguousarray(rule.weights, dtype=float)
+
+
+def expand_components(blocks, components: int) -> np.ndarray:
+    """Scalar blocks (n_e, n²) → blocks (n_e, (c·n)²) with the same block on every component,
+    DOFs interleaved per node (c·a + i)."""
+    b = np.asarray(blocks)
+    n_e = b.shape[0]
+    n = int(round(np.sqrt(b.shape[1])))
+    c = int(components)
+    out = np.zeros((n_e, n, c, n, c), dtype=b.dtype)
+    s = b.reshape(n_e, n, n)
+    for i in range(c):
+        out[:, :, i, :, i] = s
+    return out.reshape(n_e, (c * n) ** 2)
+
+
 def quadrature_points(ec, N) -> np.ndarray:
     """Physical coordinates of the quadrature points, (n_e, n_q, gdim)."""
     return np.einsum("qa,ead->eqd", N, ec)
@@ -266,6 +325,23 @@ def laplace(space, rule, coef=1.0, axisymmetric=False) -> np.ndarray:
     """Blocks ∫ coef ∇N_a · ∇N_b (2π r) dx, (n_cells, n²)."""
     _check_volume(space)
     return _blocks(_laplace_kernel, space, rule, coef, axisymmetric, True)
+
+
+def diffusion(space, rule, coef, axisymmetric=False) -> np.ndarray:
+    """Blocks ∫ Σ_i coef_i ∂_i N_a ∂_i N_b (2π r) dx with a diagonal tensor coef (n_e, n_q, gdim) per group
+    (one array, or a list of arrays: one per group)."""
+    _check_volume(space)
+    N, dN, w = tabulate(space.element, rule)
+    coefs = coef if isinstance(coef, (list, tuple)) else [coef]
+    n = space.element.n_nodes
+    out_all = []
+    for ec, c in zip(space.cell_coords, coefs):
+        c = np.ascontiguousarray(c)
+        out = np.empty((len(ec), n * n), dtype=c.dtype)
+        if len(ec):
+            _diffusion_diag_kernel(ec, N, dN, w, c, bool(axisymmetric), out)
+        out_all.append(out)
+    return np.concatenate(out_all)
 
 
 def load(space, rule, f, axisymmetric=False) -> np.ndarray:

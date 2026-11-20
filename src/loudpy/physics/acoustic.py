@@ -9,8 +9,39 @@ from __future__ import annotations
 import numpy as np
 
 from loudpy.fem.assembly import ElementAssembler
-from loudpy.fem.batch import _batch_H, _batch_Q, _batch_H_pml, _batch_Q_pml
+from loudpy.fem.kernels import (_diffusion_diag_kernel, _laplace_kernel, _mass_kernel, coefficient,
+                                quadrature_points)
 from loudpy.physics.registry import select
+
+
+def _stretch(x, x0, t, sign, alpha, n, lambda0):
+    """PML complex stretching along one coordinate (COMSOL style): s(x) and the stretched x̃."""
+    xi = sign * (x - x0) / t
+    inside = xi > 0.0
+    xi = np.clip(xi, 0.0, 1.0)
+    xi_nm1 = np.where(inside, xi ** (n - 1), 0.0)
+    xi_n = xi_nm1 * xi
+    s = np.where(inside, 1.0 - 1j * alpha * lambda0 * (n / t) * xi_nm1, 1.0 + 0j)
+    x_tilde = np.where(inside, x - 1j * alpha * lambda0 * xi_n * sign, x + 0j)
+    return s, x_tilde
+
+
+def pml_coefficients(layer, x, alpha, n, omega, c):
+    """
+    s_r, s_z and r̃ at points x (…, 2) of a PML layer (geometry.naming.PMLLayer). The stretched
+    Helmholtz operator is ∫ (s_z/s_r ∂_r p ∂_r q + s_r/s_z ∂_z p ∂_z q) 2π r̃ dA and the mass
+    ∫ p q s_r s_z 2π r̃ / c² dA (s never takes the sign: Im s < 0).
+    """
+    lambda0 = 2.0 * np.pi * c / omega
+    r, z = x[..., 0], x[..., 1]
+    sr = np.ones(r.shape, complex)
+    sz = np.ones(r.shape, complex)
+    r_t = r + 0j
+    if layer.use_r:
+        sr, r_t = _stretch(r, layer.r0, layer.tr, layer.sgn_r, alpha, n, lambda0)
+    if layer.use_z:
+        sz, _ = _stretch(z, layer.z0, layer.tz, layer.sgn_z, alpha, n, lambda0)
+    return sr, sz, r_t
 
 
 class AcouAssembler(ElementAssembler):
@@ -30,19 +61,19 @@ class AcouAssembler(ElementAssembler):
         for sd, ec, gdofs, s0, s1, n_e in self.prep:
             He = np.empty((n_e, self.block), dtype=dtype)
             Qe = np.empty((n_e, self.block), dtype=dtype)
-            sign_val = 1.0                      # same formulation in every air region
-
+            N, dN, w = self.tabulation
             if sd.role == "pml":
-                L = sd.layer
-                sigma_max = float(getattr(sd, "alpha", 1.0))
-                p_order = int(getattr(sd, "n", 2))
-                _batch_H_pml(ec, L.use_r, L.r0, L.tr, L.sgn_r, L.use_z, L.z0, L.tz, L.sgn_z,
-                             sigma_max, p_order, sd.omega_pml, sd.c, sign_val, He)
-                _batch_Q_pml(ec, sd.c, L.use_r, L.r0, L.tr, L.sgn_r, L.use_z, L.z0, L.tz, L.sgn_z,
-                             sigma_max, p_order, sd.omega_pml, sign_val, Qe)
+                sr, sz, r_t = pml_coefficients(sd.layer, quadrature_points(ec, N),
+                                               float(getattr(sd, "alpha", 1.0)), int(getattr(sd, "n", 2)),
+                                               sd.omega_pml, sd.c)
+                two_pi_rt = 2.0 * np.pi * r_t
+                _diffusion_diag_kernel(ec, N, dN, w, np.ascontiguousarray(
+                    np.stack([two_pi_rt * (sz / sr), two_pi_rt * (sr / sz)], axis=-1)), False, He)
+                _mass_kernel(ec, N, dN, w, np.ascontiguousarray(two_pi_rt * sr * sz / (sd.c * sd.c)),
+                             False, Qe)
             else:
-                _batch_H(ec, sign_val, He)
-                _batch_Q(ec, sd.c, sign_val, Qe)
+                _laplace_kernel(ec, N, dN, w, coefficient(1.0, ec, N).astype(dtype), True, He)
+                _mass_kernel(ec, N, dN, w, coefficient(1.0 / (sd.c * sd.c), ec, N).astype(dtype), True, Qe)
                 rho = sd.rho
 
             Hv[s0:s1] = He.ravel()

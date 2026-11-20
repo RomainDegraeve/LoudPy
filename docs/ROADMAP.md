@@ -344,3 +344,22 @@ The plan holds; adjustments, decided with the user:
   of 4 on curved domains (ln r: 3.42 / 3.82 / 3.54); re-placing it by x₉ = ¼ Σ edge nodes − ⅙ Σ corners
   (`fem.reference.tri10_interior_nodes`) gives 3.89 / 4.12 / 4.01 and a 4× smaller error. To be applied
   when P3 meshes are read (D4). 257 tests pass with `--slow`.
+- **D3 (done)**: `fem/solid.py` (generic axisymmetric elasticity, Fourier order m, total-Lagrangian
+  kernels for any 2D Lagrange element), `kernels.diffusion` (diagonal tensor: PML), shared physical
+  gradients (cofactor form in 2D) and Jacobian (`np.dot`, the former summation order). `MecaAssembler`,
+  `MecaAssemblerFourier`, `MecaAssemblerNL` and `AcouAssembler` now call the generic kernels with the
+  TRI6 basis at the former 7-point rule (`ElementAssembler.tabulation`); PML stretching vectorised in
+  `physics.acoustic.pml_coefficients`. Former code in a worktree (`3f010fd`), same machine, full CSR
+  matrices of the committed speaker mesh, max |A − B| / max |A|: M, M_m1, M_nl ≤ 1.3e-14; H 6.9e-15,
+  Q 6.2e-15 (with PML); F_int 2.9e-14; Cam, F 0 (not switched yet); **K, C, K_m1, C_m1, KT, C_nl
+  1.2e-11**. The 1.2e-11 is not a formula difference: on the worst cell, both kernels evaluated in plain
+  IEEE Python agree to 4e-19; the JIT-compiled former kernel is 1.3e-11 from its own IEEE value (the new
+  one 1.7e-12), amplified by one nearly inverted spider cell (element 236 of `submeca_spider`: curved P2
+  edge, det J at one quadrature point 1.6e-10 vs 2.5e-8 … 1.3e-7 at the others). Every other region
+  agrees per element at ≤ 1.1e-13. Committed references unchanged (1e-10). Assembly time, compiled,
+  former → new: structure 3.5 → 2.8 ms, air with PML 12.5 → 5.2 ms, Fourier 5.3 → 4.5 ms, TL 2.8 → 2.2 ms
+  (0.41–0.85×). 14 new tests (`tests/test_fem_solid.py`, P1–P3, Q1–Q2): rigid translation, uniform-strain
+  patch with exact strain energy (1e-11), Fourier rigid modes (m = 1 translation and tilt, m = 0
+  rotation), order 0 = axisymmetric, TL at u = 0 = linear element and K_T = ∂F_int/∂u (central
+  differences, 1e-6), PML coefficients. 271 tests pass with `--slow`.
+  **To check with the user**: the committed spider mesh has a nearly inverted P2 cell (see above).

@@ -1,5 +1,6 @@
 """
-Square element-by-element assembly over T6 regions (no physics here).
+Square element-by-element assembly over T6 regions (no physics here); the element blocks come from
+the generic kernels (`loudpy.fem.kernels`, `loudpy.fem.solid`) through `tabulation`.
 
 An ElementAssembler numbers the nodes of its regions (sorted unique tags, `dofs_per_node`
 interleaved DOFs per node), builds the CSR pattern of all its element blocks once, and keeps per
@@ -11,12 +12,22 @@ from __future__ import annotations
 import numpy as np
 
 from loudpy.fem.indexing import _fill_ij_square
+from loudpy.fem.kernels import tabulate
+from loudpy.fem.quadrature import legacy_triangle7
+from loudpy.fem.reference import lagrange
 from loudpy.fem.sparse import _SparseAssemblerBase, _local_coords
 
 
 class ElementAssembler(_SparseAssemblerBase):
     PTS_PER_TRI = 6
     dofs_per_node = 1
+
+    @property
+    def tabulation(self):
+        """(N, dN, w) of the cells' element (TRI6) at the quadrature rule of the former kernels."""
+        if not hasattr(self, "_tabulation"):
+            self._tabulation = tabulate(lagrange("triangle", 2), legacy_triangle7())
+        return self._tabulation
 
     def _setup(self, subdomains):
         """Node numbering and pattern for `subdomains` (objects with node_tags, node_coords, tri)."""
