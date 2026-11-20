@@ -1,21 +1,25 @@
 """
 Driver: an axisymmetric loudspeaker described by its modes, ready to be placed in a 3D scene.
 
+    solids = lp.Group("membranne", "dustcap", "surround")
     hp = lp.Driver.from_modes("eigen_fourier.h5", orders=[0, 1, 2, 3], f_max=10000,
                               geometry="HPNEW-Sketch.geo",
-                              rear=lp.Profile([14, 7, 8, 33, 32], start=(0.05435, 0.031)),
-                              front=lp.Profile([5, 4, 3, 2, 1, 113, 22, 21, 20], start=(0.05735, 0.032)))
+                              rear=lp.Profile(lp.BoundaryOf("subacou_rear"), start=(0.05435, 0.031),
+                                              end=(0.00633, 0.0052)),
+                              front=lp.Profile(lp.Interface(solids, "subacou_front")))
     top = hp.place("top", at=(0.07, 0.58))                  # axis +z through (x, y)
     side = hp.place("side", at=(0.0, 0.2, 0.1), axis=(-1, 0, 0))
 
 The modes come from an eigen result file (lp.Modes with orders=…, format 2 or 1). The coil is the
 boundary named `coil` in that file (where the force acts). The wet profiles are polylines in the
-meridian plane, sampled from the driver's 2D geometry: they shape the cut-outs of the driver in
-the 3D air and select the wet edges of the meridian mesh.
+meridian plane, sampled from the driver's 2D geometry (a path, a builder, or the lp.Model of the
+driver: then its region names can be used): they shape the cut-outs of the driver in the 3D air and
+select the wet edges of the meridian mesh.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 
@@ -23,19 +27,161 @@ from loudpy.geometry.frame import Frame, as_frame
 from loudpy.errors import ModelError
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False)
 class Profile:
-    """Wet profile: chained curves of the 2D geometry, from `start` (on the baffle) to the axis."""
-    curves: tuple
-    start: tuple
+    """
+    Wet profile of a driver: a chain of curves of its 2D geometry, from `start` (on the baffle) towards the
+    axis, selected like a boundary (loudpy.geometry.selectors, evaluated on the curves of the geometry):
 
-    def __init__(self, curves, start):
-        object.__setattr__(self, "curves", tuple(int(c) for c in curves))
-        object.__setattr__(self, "start", tuple(float(v) for v in start))
+        lp.Profile(lp.Interface(solids, "subacou_front"))       the selected curves, which form one chain;
+                                                               start: its end farthest from the axis
+        lp.Profile(lp.BoundaryOf("subacou_rear"), start=(0.05435, 0.031), end=(0.00633, 0.0052))
+                                                               the shortest way along the selected curves
+                                                               from start to end
+        lp.Profile([14, 7, 8, 33, 32], start=(0.05435, 0.031))  gmsh curve tags, chained from start
+
+    start / end are snapped to the nearest end point of a selected curve (the given start stays the first
+    point of the profile).
+    """
+    on: object
+    start: tuple | None
+    end: tuple | None
+
+    def __init__(self, on, start=None, end=None):
+        from loudpy.geometry.selectors import Selector, as_selector
+        if not isinstance(on, (Selector, str)) and np.ndim(on) == 1 and all(np.ndim(c) == 0 for c in on):
+            on = tuple(int(c) for c in on)                       # curve tags
+            if start is None:
+                raise ModelError("lp.Profile with curve tags needs start=")
+        else:
+            on = as_selector(on)
+        object.__setattr__(self, "on", on)
+        object.__setattr__(self, "start", None if start is None else tuple(float(v) for v in start))
+        object.__setattr__(self, "end", None if end is None else tuple(float(v) for v in end))
+
+    @property
+    def curves(self) -> tuple | None:
+        """The gmsh curve tags given (former form), else None."""
+        return self.on if isinstance(self.on, tuple) else None
+
+    def resolve(self, geometry) -> tuple[list[int], tuple]:
+        """(curve tags in chain order, start point) on `geometry` (a path, a builder or an lp.Model)."""
+        if self.curves is not None:
+            return list(self.curves), self.start
+        from loudpy.geometry.selectors import Curves
+        from loudpy.geometry.sources import GeometryIndex
+        source, regions = _geometry(geometry)
+        index = GeometryIndex(source)
+        ctx = Curves(index, list(index.domains), regions)
+        try:
+            tags = self.on.edges(ctx)
+        except Exception as e:
+            raise ModelError(f"lp.Profile({self.on!r}): {e}") from None
+        if not tags:
+            raise ModelError(f"lp.Profile({self.on!r}) selects no curve of {index.name}")
+        return _chain(index, sorted(tags), self.start, self.end, ctx.scale, repr(self.on))
 
     def sample(self, geometry, n_per_curve: int = 40) -> list[np.ndarray]:
+        """The profile as chained (n, 2) polylines, one per curve (n_per_curve points each)."""
         from loudpy.geometry.meshing3d import sample_profile
-        return sample_profile(str(geometry), list(self.curves), self.start, n_per_curve)
+        curves, start = self.resolve(geometry)
+        if self.curves is not None and isinstance(geometry, (str, Path)):
+            where = str(geometry)                   # tags given by hand: the curves of the file as it is
+        else:
+            where = _geometry(geometry)[0]          # tags from a selection: the geometry loaded for it
+        return sample_profile(where, curves, start, n_per_curve)
+
+    def __repr__(self):
+        return f"Profile({self.on!r}, start={self.start}, end={self.end})"
+
+
+def _geometry(geometry):
+    """(GeometrySource, {region: domain groups}) of a path, a builder or an lp.Model."""
+    from loudpy.geometry.sources import GeometrySource
+    if hasattr(geometry, "source") and hasattr(geometry, "selection"):        # an lp.Model
+        from loudpy.model.regions import PML
+        sel = geometry.selection()
+        return geometry.source, {r.name: sel[r.name] for r in geometry.regions if not isinstance(r, PML)}
+    return (geometry if isinstance(geometry, GeometrySource) else GeometrySource(geometry)), {}
+
+
+def _chain(index, tags, start, end, scale, what) -> tuple[list[int], tuple]:
+    """Order curves into a chain from `start` (shortest way to `end` when given; else the curves must form one
+    chain, started at its end farthest from the axis when start is None)."""
+    import heapq
+    tol = 1e-9 * max(scale, 1e-12)
+    ends = {t: (index.curves[t][0], index.curves[t][-1]) for t in tags}
+    points: list[np.ndarray] = []
+
+    def vertex(p):
+        for i, q in enumerate(points):
+            if np.linalg.norm(q - p) <= tol:
+                return i
+        points.append(np.asarray(p, float))
+        return len(points) - 1
+
+    link = {t: (vertex(a), vertex(b)) for t, (a, b) in ends.items()}
+    length = {t: float(np.linalg.norm(np.diff(index.curves[t], axis=0), axis=1).sum()) for t in tags}
+    at = {}
+    for t, (a, b) in link.items():
+        at.setdefault(a, []).append(t)
+        at.setdefault(b, []).append(t)
+    P = np.array(points)
+
+    def snap(p, name):
+        d = np.linalg.norm(P - np.asarray(p, float)[:2], axis=1)
+        i = int(np.argmin(d))
+        if d[i] > 1e-3 * max(scale, 1e-12):
+            raise ModelError(f"lp.Profile({what}): {name} {tuple(p)} is not an end point of a selected curve "
+                             f"(nearest {tuple(np.round(P[i], 6))}, {d[i]:.2e} m away)")
+        return i
+
+    if start is None:
+        free = [v for v, ts in at.items() if len(ts) == 1]
+        if len(free) != 2:
+            raise ModelError(f"lp.Profile({what}): the selected curves do not form one open chain: give start= "
+                             f"(and end=)")
+        s = max(free, key=lambda v: abs(P[v][0]))
+        start = tuple(float(x) for x in P[s])
+    else:
+        s = snap(start, "start")
+    if end is not None:                                   # shortest way (Dijkstra) from s to e
+        e = snap(end, "end")
+        dist, prev, heap = {s: 0.0}, {}, [(0.0, s)]
+        while heap:
+            d, v = heapq.heappop(heap)
+            if v == e:
+                break
+            if d > dist.get(v, np.inf):
+                continue
+            for t in at.get(v, []):
+                w = link[t][1] if link[t][0] == v else link[t][0]
+                if d + length[t] < dist.get(w, np.inf):
+                    dist[w], prev[w] = d + length[t], (v, t)
+                    heapq.heappush(heap, (d + length[t], w))
+        if e not in dist:
+            raise ModelError(f"lp.Profile({what}): no way from start to end along the selected curves")
+        order, v = [], e
+        while v != s:
+            v, t = prev[v]
+            order.append(t)
+        return order[::-1], start
+    order, used, v = [], set(), s                           # walk the chain
+    while True:
+        nxt = [t for t in at.get(v, []) if t not in used]
+        if not nxt:
+            break
+        if len(nxt) > 1:
+            raise ModelError(f"lp.Profile({what}): the selected curves branch at {tuple(np.round(P[v], 6))}: "
+                             f"give end=")
+        t = nxt[0]
+        order.append(t)
+        used.add(t)
+        v = link[t][1] if link[t][0] == v else link[t][0]
+    if len(used) != len(tags):
+        raise ModelError(f"lp.Profile({what}): {len(tags) - len(used)} selected curve(s) are not on the chain "
+                         f"from start")
+    return order, start
 
 
 class Driver:

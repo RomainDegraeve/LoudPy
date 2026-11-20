@@ -16,8 +16,7 @@ from support.reference import ReferenceStore
 
 pytestmark = pytest.mark.slow
 FREQS = np.array([60.0, 120.0, 300.0, 900.0, 1500.0])
-REAR = lp.Profile(api.REAR_CURVES, api.REAR_START)
-FRONT = lp.Profile(api.FRONT_CURVES, api.FRONT_START)
+REAR, FRONT = api.REAR_PROFILE, api.FRONT_PROFILE
 W, H, D = api.BOX
 
 

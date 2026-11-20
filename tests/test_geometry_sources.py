@@ -176,3 +176,34 @@ def test_speaker_from_the_step_sketch(tmp_path, mesh_dir):
     got = sorted((p.layer for p in model.parts if p.role == "pml"), key=key)
     exp = sorted((PMLLayer(**kw) for kw in LEGACY_LAYERS.values()), key=key)
     assert len(got) == 6 and all(same_layer(a, b) for a, b in zip(got, exp))
+
+
+# ── driver wet profiles: curves selected on the geometry ─────────────────────
+def test_profiles_from_selectors():
+    """The wet profiles of the 3D scenes, selected instead of listed by gmsh curve tags: the same curves in
+    the same order, hence the same sampled polylines (bit for bit)."""
+    for prof, curves, start in [(api.REAR_PROFILE, api.REAR_CURVES, api.REAR_START),
+                                (api.FRONT_PROFILE, api.FRONT_CURVES, api.FRONT_START)]:
+        assert prof.resolve(api.SPEAKER_GEO) == (curves, start)
+        old = lp.Profile(curves, start).sample(api.SPEAKER_GEO)
+        new = prof.sample(api.SPEAKER_GEO)
+        assert len(old) == len(new) and all(np.array_equal(a, b) for a, b in zip(old, new))
+    # without start: the end of the chain farthest from the axis, exactly
+    order, start = lp.Profile(api.FRONT_PROFILE.on).resolve(api.SPEAKER_GEO)
+    assert order == api.FRONT_CURVES and start == pytest.approx(api.FRONT_START, abs=2e-7) and start[0] != 0.05735
+
+
+def test_profile_errors_and_model_names(mesh_dir):
+    rear_air = lp.BoundaryOf("subacou_rear")
+    with pytest.raises(ModelError, match="do not form one open chain"):
+        lp.Profile(rear_air).resolve(api.SPEAKER_GEO)
+    with pytest.raises(ModelError, match="branch"):
+        lp.Profile(rear_air, start=api.REAR_START).resolve(api.SPEAKER_GEO)
+    with pytest.raises(ModelError, match="not an end point"):
+        lp.Profile(rear_air, start=(0.1, 0.1), end=api.CONE_FOOT).resolve(api.SPEAKER_GEO)
+    with pytest.raises(ModelError, match="needs start"):
+        lp.Profile([14, 7])
+    # an lp.Model as the geometry: its region names select
+    model = lp.Model(api.SPEAKER_GEO).add(lp.Solid("cone", "Paper", on="membranne"),
+                                          lp.Air("front_air", on="subacou_front"))
+    assert lp.Profile(lp.Interface("cone", "front_air")).resolve(model)[0] == [113]

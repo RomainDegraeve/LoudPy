@@ -27,12 +27,17 @@ if TYPE_CHECKING:                                        # annotations only (phy
 
 def sample_profile(geo_path, curves, start, n_per_curve=40):
     """
-    Chained polylines (r, z) of the curves of a 2D (meridian) geometry, from the point `start`.
+    Chained polylines (r, z) of the curves of a 2D (meridian) geometry (a file path, or a
+    geometry.sources.GeometrySource loaded as for meshing), from the point `start`.
     Returns one (n, 2) array per curve, each starting where the previous one ends.
     """
+    from loudpy.geometry.sources import GeometrySource
     gmsh = _gmsh()
     gmsh.clear()
-    gmsh.open(str(geo_path))
+    if isinstance(geo_path, GeometrySource):
+        geo_path.load(gmsh)
+    else:
+        gmsh.open(str(geo_path))
     segs = []
     for t in curves:
         a, b = gmsh.model.getParametrizationBounds(1, t)

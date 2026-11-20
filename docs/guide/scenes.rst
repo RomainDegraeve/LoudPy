@@ -11,10 +11,12 @@ The pieces
 
 .. code-block:: python
 
+   cone = lp.Group("membranne", "dustcap", "surround")
    hp = lp.Driver.from_modes("eigen_fourier.h5", orders=[0, 1, 2, 3], f_max=10000,
                              geometry="HPNEW-Sketch.geo",
-                             rear=lp.Profile([14, 7, 8, 33, 32], start=(0.05435, 0.031)),
-                             front=lp.Profile([5, 4, 3, 2, 1, 113, 22, 21, 20], start=(0.05735, 0.032)))
+                             rear=lp.Profile(lp.BoundaryOf("subacou_rear"), start=(0.05435, 0.031),
+                                             end=(0.00633, 0.0052)),
+                             front=lp.Profile(lp.Interface(cone, "subacou_front")))
 
    def cabinet(occ):                     # gmsh OCC; called each time a mesh is built
        inner = occ.addBox(0, 0, -0.25, 0.2, 0.3, 0.281)
@@ -29,8 +31,13 @@ other conditions with ``lp.Scene(cabinet, drivers, air=lp.air(temperature=…, h
 
 * :class:`lp.Driver <loudpy.Driver>` — the modes, the coil (the ``interface_forced`` boundary of
   the modal file) and the wet **profiles** (:class:`lp.Profile <loudpy.Profile>`: chained curves
-  of the 2D geometry, from the baffle to the axis), which shape the cut-outs of the driver in the
-  3D air.
+  of the 2D geometry, from the baffle towards the axis), which shape the cut-outs of the driver in
+  the 3D air. A profile is selected like a boundary (see :doc:`models`), on the curves of the
+  geometry: ``lp.Profile(selector)`` when the selected curves form one chain (it starts at the end
+  farthest from the axis), ``lp.Profile(selector, start=…, end=…)`` for the shortest way along them
+  between two points (e.g. the rear air's boundary from the baffle to the cone foot). ``geometry=``
+  is a path, a builder or the driver's ``lp.Model`` (then its region names can be used). gmsh curve
+  tags (``lp.Profile([14, 7, 8, 33, 32], start=…)``) are still accepted.
 * :meth:`Driver.place(name, at, axis=None) <loudpy.Driver.place>` — one placed copy (axis +z
   through ``at`` by default; any axis for slanted baffles). Several placements of the same driver
   share its modal basis.

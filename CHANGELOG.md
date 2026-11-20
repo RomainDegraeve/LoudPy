@@ -42,6 +42,9 @@ The roadmap of this work is in `docs/ROADMAP.md`.
   or the closed regions of a sketch) or a builder function `builder(occ) → {label: surfaces}`. Surfaces
   are fragmented together (conforming mesh); unnamed surfaces are selected by position and take the
   region's name in the mesh. The HPNEW speaker can be built from its STEP sketch directly.
+- `lp.Profile(selector, start=None, end=None)`: driver wet profiles selected on the curves of the 2D
+  geometry (one chain, or the shortest way between two points) instead of gmsh curve tags (still
+  accepted); `lp.Driver.from_modes(geometry=…)` also takes a builder or the driver's `lp.Model`.
 - Regions and boundaries combine with `|`, `&`, `-` like selectors; a string naming a region of the model
   stands for that region in `lp.Interface` / `lp.BoundaryOf`.
 - `lp.PML(…, on=selector)`: the base curves of the layers, selected on the curves of the geometry (no

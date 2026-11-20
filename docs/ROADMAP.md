@@ -18,7 +18,7 @@ Cost unit: one *session* ≈ one long working block (3–5 h). Status: ✅ done 
 |---|---|---|---|
 | A | Foundations: no import side effects, OpenMP, exceptions, SI checks, packaging, CI, verification tests | 1 | ✅ |
 | B | Materials and air: library v2 (units, temperature, provenance), damping separate, air from (T, p, RH), one air for 2D and 3D | 1 | ✅ |
-| C | Selections and geometry: selection objects, three geometry sources, nothing read from names, PML by selection, driver profiles from selections | 3 | ◐ |
+| C | Selections and geometry: selection objects, three geometry sources, nothing read from names, PML by selection, driver profiles from selections | 3 | ✅ |
 | D | Own generic FE core: Lagrange P1–P3 on lines / triangles / quads / tetrahedra, quadrature, spaces, generic kernels and assembly, curved (isoparametric) elements; old kernels removed | 5 | ○ |
 | E | Physics interfaces and couplings: one contribution protocol, generic system builder, electrical circuit as physics, 3D on the same protocol (the sign convention was fixed in C) | 4 | ○ |
 | F | One model for 2D and 3D: `lp.Model(dim=…)`, typed mesh and solver settings, one remeshing rule, immutable model during solves, deterministic meshing by default, examples rewritten | 3 | ○ |
@@ -116,7 +116,7 @@ Gates (each phase is committed and pushed only when its gate passes):
   damping-dependent references changed (C operators, damped modes and responses; K, M unchanged).
   Rubber and PhenolicCloth fits do not match their own η either (to be reviewed with the author).
 
-## Phase C — in progress
+## Phase C — done
 
 ### C1: names carry no physics; coupling normals from the mesh (done)
 
@@ -224,6 +224,35 @@ Gates (each phase is committed and pushed only when its gate passes):
 - gmsh traps found: `removePhysicalGroups([])` removes every group; a group dropped by a boolean
   operation keeps its name, which then blocks a new group of that name (names removed explicitly).
 
-### Still to do in C
+### C5: driver wet profiles by selection (done)
 
-- Driver wet profiles from the solid–air interface of the 2D driver model (no curve IDs).
+- `lp.Profile(selector, start=None, end=None)` selects curves of the driver's 2D geometry (the `Curves`
+  context of C3, all domains as sides): one chain (start: its end farthest from the axis) or, with `end`,
+  the shortest way along the selected curves (Dijkstra over curve lengths); start / end snap to curve end
+  points (the given start stays the first point, as before). `geometry=` of `lp.Driver.from_modes` may be
+  a path, a builder or the driver's `lp.Model` (region names). Curve tags still accepted.
+- The test scenes now use `lp.Profile(lp.BoundaryOf("subacou_rear"), start=…, end=cone foot)` and
+  `lp.Profile(lp.Interface(solids, "subacou_front"), start=…)`: the same curves in the same order as the
+  former tags, sampled bit for bit identically, so every 3D reference passes unchanged; the coil of the
+  3D coupling tests is `lp.Interface("coil", "former")` (no curve tag left in the tests).
+- The examples (`LoudPy_exemples/Coupling_3D`) still use curve tags: rewritten in phase F.
+
+### Gate C (passed)
+
+- **Same parts and PML layers on the existing models.** Models written with names reuse the committed
+  meshes and build the same parts (one per named group); the committed FSI mesh gives the same six PML
+  layers; a fresh deterministic mesh of the speaker is node for node the one of the former mesher (H, Q to
+  4e-14, the rounding of r0 in the former names).
+- **Regressions.** The only references regenerated in phase C are those of the coupling fix (C1, explained
+  there: energy balance to 1e-10, swept volume to 1e-9, front / rear in antiphase). From C2 to C5 no
+  reference changed: 134 tests pass with `--slow`, including every 3D scene with the selector profiles.
+- **Nothing read from names.** Clamped components and the coil direction are parameters, coupling normals
+  and PML directions come from the geometry / mesh, the PML layer geometry is stored with the mesh, curve
+  loops are the closed curve groups (no `sub` prefix), driver profiles are selected (no curve tags in the
+  tests). Names only label and select (`naming.matches`); the former PML names are still read for old meshes.
+- **New, verified:** a speaker whose boundaries are all selectors gives the named model's response to
+  7e-14; the plate from loops, a Physical Surface and a builder gives bit-identical meshes and modes; the
+  speaker straight from its STEP sketch matches the `.geo` (areas, boundaries, PML; in-vacuo modes converge
+  together with the mesh).
+- Documentation: `docs/guide/models.rst` (geometry sources, selections, PML layers), `conventions.rst`,
+  `scenes.rst`; CHANGELOG.

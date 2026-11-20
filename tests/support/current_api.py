@@ -228,9 +228,15 @@ def speaker_transient(mesh_dir: Path, n_steps=200, fs=48_000.0, f0=200.0, amplit
 #  3D coupling (physics.modal, physics.exterior)
 # ════════════════════════════════════════════════════════════════════════════
 Z_B, Z_F = 0.031, 0.032                                 # rear baffle plane, front face [m]
-REAR_CURVES, REAR_START = [14, 7, 8, 33, 32], (0.05435, Z_B)
-FRONT_CURVES, FRONT_START = [5, 4, 3, 2, 1, 113, 22, 21, 20], (0.05735, Z_F)
-COIL_CURVE = 37
+REAR_START, FRONT_START, CONE_FOOT = (0.05435, Z_B), (0.05735, Z_F), (0.00633, 0.0052)
+# wet profiles selected on the geometry: the rear air's boundary from the baffle to the cone foot, the
+# structure–front air interface (the starts are the points the reference results were computed with)
+REAR_PROFILE = lp.Profile(lp.BoundaryOf("subacou_rear"), start=REAR_START, end=CONE_FOOT)
+FRONT_PROFILE = lp.Profile(lp.Interface(lp.Group(*[n for n, _ in SPEAKER_PARTS]), "subacou_front"),
+                           start=FRONT_START)
+COIL = lp.Interface("coil", "former")
+# the former form (gmsh curve tags of HPNEW-Sketch.geo), kept to check that both give the same profiles
+REAR_CURVES, FRONT_CURVES = [14, 7, 8, 33, 32], [5, 4, 3, 2, 1, 113, 22, 21, 20]
 BOX = (0.26, 0.20, 0.15)                                # inner box W × H × D [m] (front at z = Z_B)
 
 
@@ -319,20 +325,13 @@ def driver_modes(mesh_dir: Path, cache_dir: Path, orders=(0, 1, 2), f_max=5000.0
 
 
 def driver_profiles():
-    from loudpy.geometry.meshing3d import sample_profile
-    rear = sample_profile(SPEAKER_GEO, REAR_CURVES, REAR_START)
-    front = sample_profile(SPEAKER_GEO, FRONT_CURVES, FRONT_START)
-    return rear, front
+    return REAR_PROFILE.sample(SPEAKER_GEO), FRONT_PROFILE.sample(SPEAKER_GEO)
 
 
 def coil_nodes(drv):
-    from loudpy.geometry.gmsh_session import gmsh_module as _gmsh
-    g = _gmsh()
-    g.clear()
-    g.open(SPEAKER_GEO)
-    a, b = g.model.getParametrizationBounds(1, COIL_CURVE)
-    ends = np.array(g.model.getValue(1, COIL_CURVE, [a[0], b[0]])).reshape(2, 3)[:, :2]
-    g.clear()
+    """Rows of the meridian mesh on the coil (the coil–former interface of the geometry, a straight line)."""
+    (seg,) = lp.Profile(COIL).sample(SPEAKER_GEO, n_per_curve=2)
+    ends = seg[[0, -1]]
     t = np.clip(((drv.xy - ends[0]) @ (ends[1] - ends[0])) / np.sum((ends[1] - ends[0]) ** 2), 0, 1)
     d = np.linalg.norm(drv.xy - (ends[0] + t[:, None] * (ends[1] - ends[0])), axis=1)
     return np.where(d < 1e-6)[0]
