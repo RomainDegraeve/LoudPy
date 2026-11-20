@@ -16,7 +16,7 @@ import numpy as np
 
 from loudpy.geometry.mesh import Mesh, MeshGroup
 from loudpy.model.drives import Force
-from loudpy.errors import SelectionError, StateError
+from loudpy.errors import ModelError, SelectionError, StateError
 
 
 def multidriver(scene):
@@ -60,11 +60,39 @@ def cavity_modes(scene):
     return cav
 
 
+def scene_walls(scene, cav):
+    """The scene's elastic walls (physics.shell.WallModes) on the "walls" faces of its cavity mesh, or None."""
+    w = scene._walls
+    if w is None:
+        return None
+    if scene.configuration != "cavity":
+        raise ModelError("elastic walls are coupled to the cavity only (configuration cavity), not "
+                         f"{scene.configuration!r}")
+    from loudpy.geometry.meshing3d import read_p2_mesh
+    from loudpy.physics.shell import cavity_walls
+    nodes, tets, faces = read_p2_mesh(scene.cavity_mesh, ["walls"])
+    if len(nodes) != len(cav.nodes) or not np.allclose(nodes, cav.nodes):
+        raise StateError(f"the cavity modes do not belong to {scene.cavity_mesh}: remesh the scene")
+    if not len(faces["walls"]):
+        raise SelectionError(f"{scene.cavity_mesh} has no 'walls' faces")
+    return cavity_walls(nodes, tets, faces["walls"], w.material, w.thickness, w.damping, w.fixed,
+                        w.f_max or scene._cavity.f_max, w.angle)
+
+
 def cavity_coupling(scene, drivers, cav):
     from loudpy.physics.modal import DriverCavityCoupling
     patch = ["interface_driver"] if len(scene.drivers) == 1 else None
     return DriverCavityCoupling(cav, drivers, [d.driver.rear for d in scene.drivers], rho=scene.rho, c=scene.c,
-                                eta_air=scene._cavity.eta, patch=patch)
+                                eta_air=scene._cavity.eta, patch=patch, walls=scene_walls(scene, cav))
+
+
+def _wall_attachment(walls, offset):
+    """What the results keep of the walls: shell mesh, modal basis (translations), offset in q."""
+    return dict(nodes=walls.walls.nodes, cells=walls.walls.cells, rows=walls.walls.rows, freq=walls.freq,
+                zeta=walls.zeta, U=walls.translations().astype(np.float32),
+                U_n=walls.normal().astype(np.float32), volume_disp=walls.volume_disp,
+                meta=dict(offset=int(offset), material=walls.shell.material.name,
+                          thickness=float(np.mean(walls.shell.thickness))))
 
 
 def _attachments(scene, drivers, extra=None):
@@ -110,6 +138,8 @@ def solve(study, freqs, store=None, chunk_hz=50.0, rtol=1e-7, log=None):
     drivers = multidriver(scene)
     F = coil_force(scene, drivers, study.drive)
     config = scene.configuration
+    if scene._walls is not None and config != "cavity":
+        raise ModelError(f"elastic walls are coupled to the cavity only (configuration cavity), not {config!r}")
     meta = dict(study="FrequencyResponse", scene=True, configuration=config, drive=repr(study.drive))
     t0 = time.time()
 
@@ -127,6 +157,11 @@ def solve(study, freqs, store=None, chunk_hz=50.0, rtol=1e-7, log=None):
     if cav is not None:
         attachments["cavity"] = dict(nodes=cav.nodes, tets=cav.tets, psi=cav.psi.astype(np.float32), kappa2=cav.kappa2,
                                      meta=dict(f_max=scene._cavity.f_max, volume=float(cav.volume)))
+        attachments["cavity"]["volume_disp"] = np.asarray(cpl.volume_disp)        # ∫ φ·n dS per coordinate
+        if cpl.walls is not None:
+            attachments["walls"] = _wall_attachment(cpl.walls, len(drivers))
+            log(f"  walls: {len(cpl.walls.walls.nodes)} shell nodes, {len(cpl.walls)} modes up to "
+                f"{cpl.walls.freq[-1] if len(cpl.walls) else 0:.0f} Hz")
 
     if config == "cavity":                                          # A: no FE air
         q, P = cpl.forced(freqs, F)
@@ -218,4 +253,23 @@ def coupled_modes(study, f_max=None):
     block = Block({}, f, {}, {"zeta": zeta, "s": s, "q": Xq.T, "P": XP.T}, {"configuration": "cavity"}, "coupled")
     res = ModeResults([block], dict(study="Modes", scene=True), {})
     res.attachments = _attachments(scene, drivers)
+    if cpl.walls is not None:
+        res.attachments["walls"] = _wall_attachment(cpl.walls, len(drivers))
     return res
+
+
+def wall_modes(study, f_max=None):
+    """In-vacuo modes of the scene's elastic walls: ModeResults with the normal displacement "u_n" and the
+    translations "u" on the shell mesh (group "walls", TRI3)."""
+    from loudpy.results.results import Block, ModeResults
+    scene = study.model
+    if scene._walls is None:
+        raise ModelError("the scene has no elastic walls: call scene.walls(…)")
+    cav = cavity_modes(scene)
+    w = scene_walls(scene, cav)
+    keep = w.freq <= (f_max if f_max is not None else np.inf)
+    mesh = Mesh(np.arange(len(w.walls.nodes)), w.walls.nodes, {"walls": MeshGroup("walls", 2, "tri3", w.walls.cells)})
+    U = w.translations()[keep]
+    block = Block({"walls": mesh}, w.freq[keep], {"u": U, "u_n": w.normal()[keep]},
+                  {"zeta": w.zeta[keep], "volume_disp": w.volume_disp[keep]}, {"physics": "walls"}, "walls")
+    return ModeResults([block], dict(study="Modes", scene=True, physics="walls"), {})

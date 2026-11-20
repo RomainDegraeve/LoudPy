@@ -496,6 +496,26 @@ def couple_drivers(nodes, face_sets, drivers: MultiDriver, profiles, map_tol=5e-
     return sn, B, areas, wet
 
 
+def static_correction(cav: CavityModes, rows, B, S=None):
+    """
+    R = Bᵀ K⁺ B − Σ_{n≥1} S_n S_nᵀ / κ_n² for surface coupling columns B (on the cavity nodes `rows`), S = Bᵀ ψ:
+    the static (added-mass) part of the cavity modes left out by the truncation.
+    """
+    n = len(cav.nodes)
+    k = B.shape[1]
+    if S is None:
+        S = B.T @ cav.psi[rows]
+    R = np.zeros((k, k))
+    Bfull = sp.csr_matrix((B.ravel(), (np.repeat(rows, k), np.tile(np.arange(k), len(rows)))), shape=(n, k))
+    for s0 in range(0, k, 64):
+        cols = slice(s0, min(s0 + 64, k))
+        X = cav.static_inverse(Bfull[:, cols].toarray())
+        R[:, cols] = B.T @ X[rows]
+    S1, k1 = S[:, 1:], cav.kappa2[1:]
+    R -= (S1 / k1) @ S1.T
+    return 0.5 * (R + R.T)
+
+
 class DriverCavityCoupling:
     """
     Modal coupling of a cavity (CavityModes) and an axisymmetric driver (DriverModes), or
@@ -504,14 +524,16 @@ class DriverCavityCoupling:
 
     def __init__(self, cavity: CavityModes, driver: DriverModes | MultiDriver, profile,
                  center=(0.0, 0.0), rho=RHO_AIR, c=None, eta_air=0.0, map_tol=5e-4,
-                 static_correction=True, pistons=(), patch=None):
+                 static_correction=True, pistons=(), patch=None, walls=None):
         """
         driver, profile, center: one DriverModes, its wet profile and its center or Frame;
             or a MultiDriver (frames inside, center ignored) and a list with one wet profile per
             driver.
         patch: wet patch name(s) in the cavity. Default: the whole wet surface for one driver,
             "interface_driver_<j>" for driver j of a MultiDriver.
-        pistons: extra generalised coordinates appended after the driver modes, each a uniform
+        walls: elastic walls (physics.shell.WallModes): their in-vacuo modes are appended after the driver modes
+            (same modal form: unit modal mass, ω, ζ) and couple through the cavity modes like the drivers.
+        pistons: extra generalised coordinates appended after the driver (and wall) modes, each a uniform
             normal displacement of a cavity surface: (TRI6 faces, displacement into the air per
             unit coordinate), or None for a coordinate that does not touch the cavity.
         """
@@ -526,12 +548,19 @@ class DriverCavityCoupling:
             names = patch or [f"interface_driver_{j}" for j in range(self.drivers.n_drivers)]
             faces = [cavity.face_set(nm) for nm in names]
         self._build_Bc(faces, profiles, map_tol)
+        self.walls = walls
+        self.w_s = 2 * np.pi * self.drivers.freq
+        self.zeta = np.asarray(self.drivers.zeta, float)
+        if walls is not None and len(walls):
+            self.patch_nodes, self.Bc = stack_columns([(self.patch_nodes, self.Bc), (walls.rows, walls.B)])
+            self.w_s = np.concatenate([self.w_s, 2 * np.pi * walls.freq])
+            self.zeta = np.concatenate([self.zeta, walls.zeta])
+            self.volume_disp = self.Bc.sum(axis=0)
         if pistons:
             self.patch_nodes, self.Bc = add_pistons(cavity.nodes, self.patch_nodes, self.Bc, pistons)
             self.volume_disp = self.Bc.sum(axis=0)
         self.S = self.Bc.T @ cavity.psi[self.patch_nodes]                     # (n_y, n_a)
         self.R = self._static_correction() if static_correction else np.zeros((self.Bc.shape[1],) * 2)
-        self.w_s = 2 * np.pi * self.drivers.freq
         self.w_a = self.c * np.sqrt(np.maximum(cavity.kappa2, 0.0))
 
     # ── Bc = ∫_S N_i (φ_k·n) dS on the cavity side ─────────────────────────
@@ -543,19 +572,7 @@ class DriverCavityCoupling:
         self.volume_disp = self.Bc.sum(axis=0)                                          # ∫ φ·n dS
 
     def _static_correction(self):
-        cav = self.cav
-        n = len(cav.nodes)
-        R = np.zeros((self.Bc.shape[1],) * 2)
-        Bfull = sp.csr_matrix((self.Bc.ravel(), (np.repeat(self.patch_nodes, self.Bc.shape[1]),
-                                                 np.tile(np.arange(self.Bc.shape[1]), len(self.patch_nodes)))),
-                              shape=(n, self.Bc.shape[1]))
-        for s0 in range(0, self.Bc.shape[1], 64):
-            cols = slice(s0, min(s0 + 64, self.Bc.shape[1]))
-            X = cav.static_inverse(Bfull[:, cols].toarray())
-            R[:, cols] = self.Bc.T @ X[self.patch_nodes]
-        S1, k1 = self.S[:, 1:], cav.kappa2[1:]
-        R -= (S1 / k1) @ S1.T
-        return 0.5 * (R + R.T)
+        return static_correction(self.cav, self.patch_nodes, self.Bc, self.S)
 
     # ── forced response ────────────────────────────────────────────────────
     def coil_force(self, coil_nodes, total=1.0, driver=0):
@@ -574,19 +591,22 @@ class DriverCavityCoupling:
         Modal amplitudes q (n_f, n_s) and cavity modal pressures P (n_f, n_a); with F of shape
         (n_s, n_rhs) (e.g. coil_forces), one response per column: the transfer matrix.
         """
-        return solve_forced(freqs, F, self.w_s, self.drivers.zeta, self.S if loaded else None,
+        F = np.asarray(F)
+        if F.shape[0] < len(self.w_s):                               # driver forces: zero on the wall modes
+            F = np.concatenate([F, np.zeros((len(self.w_s) - F.shape[0],) + F.shape[1:], F.dtype)])
+        return solve_forced(freqs, F, self.w_s, self.zeta, self.S if loaded else None,
                             self.R, self.cav.kappa2, self.rho, self.c, self.eta_air)
 
     # ── coupled modes ──────────────────────────────────────────────────────
     def coupled_modes(self, f_max=None):
         """Coupled eigenvalues s = −ζω + iω_d and right vectors x = (q, P)."""
         from loudpy.physics.builder import Field, SystemBuilder, Term
-        ns, na = len(self.drivers), len(self.w_a)
+        ns, na = len(self.w_s), len(self.w_a)
         b = SystemBuilder()                    # fields q (driver modes), a (cavity modes): polynomial form
         b.add_field(Field("q", ns))
         b.add_field(Field("a", na))
         b.add(Term("q", "q", np.diag(self.w_s ** 2)), Term("q", "a", self.S), Term("a", "a", np.diag(self.w_a ** 2)),
-              Term("q", "q", np.diag(2 * self.drivers.zeta * self.w_s), power=1),
+              Term("q", "q", np.diag(2 * self.zeta * self.w_s), power=1),
               Term("a", "a", np.diag(self.eta_air * self.w_a), power=1),
               Term("q", "q", np.eye(ns) + self.rho * self.R, power=2),
               Term("a", "q", -self.rho * self.c ** 2 * self.S.T, power=2), Term("a", "a", np.eye(na), power=2))

@@ -77,6 +77,16 @@ class _Cavity:
 
 
 @dataclass
+class _Walls:
+    material: object = "MDF"               # library name or lp.Material (solid)
+    thickness: float = 0.018               # [m]
+    damping: object = None                 # lp.Rayleigh() (None), lp.Hysteretic(), lp.Undamped()
+    fixed: object = "edges"                # "edges" (panel edges and the driver cut-out rims), or f(points) → bool
+    f_max: float | None = None             # wall modes kept [Hz] (None: the cavity's f_max)
+    angle: float = 30.0                    # a fold sharper than this is a panel edge [deg]
+
+
+@dataclass
 class _OpenAir:
     kind: str                              # "exterior" or "merged"
     ground: str = "y"
@@ -116,6 +126,8 @@ class Scene:
             raise ModelError(f"driver names must be unique: {names}")
         self._cavity: _Cavity | None = None              # settings as resolved for the last meshing
         self._open: _OpenAir | None = None
+        self._walls: _Walls | None = None
+        self._walls_spec: _Walls | None = None
         self._cavity_spec: _Cavity | None = None         # settings as given (may hold lp.P references)
         self._open_spec: _OpenAir | None = None
         self.folder: Path | None = None
@@ -140,6 +152,18 @@ class Scene:
         if self._open is not None and self._open.kind == "merged":
             raise ModelError("a merged air domain already contains the cabinet air")
         self._cavity = self._cavity_spec = _Cavity(tuple(mesh_size), tuple(near), f_max, eta, file, cache_modes)
+        return self
+
+    def walls(self, material="MDF", thickness=0.018, damping=None, fixed="edges", f_max=None, angle=30.0):
+        """
+        Elastic cabinet walls: shells (MITC3) on the walls of the cavity mesh, coupled to the cavity air through
+        their in-vacuo modes (configuration cavity). material: library name or lp.Material; thickness [m] (or
+        lp.P); damping: lp.Rayleigh() (default), lp.Hysteretic(), lp.Undamped(); fixed: "edges" (the panel edges
+        — folds sharper than `angle` — and the rims of the driver cut-outs are clamped) or a function of the
+        node coordinates (n, 3) returning a mask of clamped nodes; f_max: wall modes kept (default: the cavity's).
+        The shells lie on the inner faces of the walls (no offset); the outside of the walls is in vacuo.
+        """
+        self._walls = self._walls_spec = _Walls(material, thickness, damping, fixed, f_max, angle)
         return self
 
     def exterior(self, ground="y", level=0.0, margin=0.05, bands=((20.0, 1000.0),), points_per_wavelength=4.0,
@@ -187,6 +211,7 @@ class Scene:
         config = self.configuration
         self._cavity = resolve(self._cavity_spec, self.parameters)          # lp.P → values
         self._open = resolve(self._open_spec, self.parameters)
+        self._walls = resolve(self._walls_spec, self.parameters)
         if self._cavity is not None:
             self.cavity_mesh = self._build("cavity", self.folder / self._cavity.file, reuse, self._mesh_cavity)
         if self._open is not None:
@@ -398,6 +423,7 @@ class Scene:
         s = Scene(self.cabinet, self.drivers, self.air, self.parameters)
         s._cavity = s._cavity_spec = _copy.copy(self._cavity_spec)
         s._open = s._open_spec = _copy.copy(self._open_spec)
+        s._walls = s._walls_spec = _copy.copy(self._walls_spec)
         return s
 
     def with_parameters(self, **values) -> "Scene":
@@ -417,7 +443,12 @@ class Scene:
             problems.append(str(e))
         if not self.drivers:
             problems.append("no driver (Driver.place)")
-        for spec in (self._cavity_spec, self._open_spec):
+        if self._walls_spec is not None and self._cavity_spec is None:
+            problems.append("elastic walls need the cavity: call cavity()")
+        if self._walls_spec is not None and self._open_spec is not None:
+            problems.append("elastic walls are coupled to the cavity only (configuration cavity): remove "
+                            "exterior() / merged()")
+        for spec in (self._cavity_spec, self._open_spec, self._walls_spec):
             try:
                 resolve(spec, self.parameters)
             except ModelError as e:
@@ -448,6 +479,11 @@ class Scene:
         if self._cavity_spec is not None:
             c = self._cavity_spec
             lines.append(f"├─ Cavity: modes to {c.f_max} Hz, loss factor {c.eta}, mesh {c.mesh_size}")
+        if self._walls_spec is not None:
+            w = self._walls_spec
+            name = getattr(w.material, "name", w.material)
+            lines.append(f"├─ Walls: {name}, {w.thickness} m shells (MITC3), fixed {w.fixed if isinstance(w.fixed, str) else 'by function'}"
+                         f", modes to {w.f_max or 'the cavity f_max'} Hz")
         if self._open_spec is not None:
             o = self._open_spec
             lines.append(f"├─ {o.kind.capitalize()} air: bands {o.bands}, ground {o.ground}, "

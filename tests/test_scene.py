@@ -91,6 +91,40 @@ def test_scene_coupled_modes(driver, mesh_dir):
     np.testing.assert_allclose(np.sort(modes.extra("s").imag), np.sort(s_ref.imag), rtol=RTOL_COUPLED_MODES)
 
 
+# ── A with elastic walls (phase I) ──────────────────────────────────────────────
+def test_cavity_elastic_walls(driver, mesh_dir, tmp_path):
+    """MDF walls (18 mm, panel edges clamped) on the committed box: wall modes as extra coordinates, the driver
+    response close to the rigid box away from the wall resonances, results saved and read back."""
+    scene = lp.Scene(box_cabinet, [driver.place("main", at=(W / 2, H / 2))])
+    scene.cavity(f_max=3000.0, eta=0.02, file="box_one_driver.msh", cache_modes=False)
+    scene.walls("MDF", thickness=0.018)
+    assert "Walls: MDF" in scene.tree()
+    scene.mesh(mesh_dir, reuse="always")
+    walls = lp.Modes(scene, physics="walls").solve(f_max=3000.0)
+    f_w = walls.frequencies
+    assert len(f_w) >= 3 and f_w[0] > 500.0
+    assert walls.blocks[0].fields["u_n"].shape[0] == len(f_w)
+    res = lp.FrequencyResponse(scene, drive=lp.Force(1.0)).solve(FREQS, store=tmp_path / "walls.h5")
+    rigid = _ref("test_driver_in_box")._get("q")
+    n_d = rigid.shape[1]
+    np.testing.assert_allclose(res.wall_frequencies, f_w, rtol=1e-12)
+    assert res.q.shape[1] == n_d + len(f_w)
+    import copy
+    hp = res.driver("main")
+    hp_rigid = copy.copy(hp)
+    hp_rigid.q = rigid
+    dev = np.abs(hp.excursion().values / hp_rigid.excursion().values - 1)
+    assert dev.max() < 5e-3, dev                     # 0.16 % at 120 Hz, ≤ 1.3e-4 elsewhere
+    Q = res.wall_volume_velocity()
+    assert Q.dims == ("f",) and np.all(np.abs(Q.values) > 0)
+    u = res.wall_field(FREQS[2])
+    assert u.values.shape == (u.mesh.n_nodes,)
+    back = lp.load(tmp_path / "walls.h5")
+    np.testing.assert_allclose(back.wall_volume_velocity().values, Q.values)
+    modes = lp.Modes(scene).solve(f_max=1500.0)
+    assert len(modes.frequencies) >= len(_ref("test_driver_in_box")._get("coupled"))
+
+
 # ── B and C: against ExteriorFE + coupled_sweep on the same meshes ─────────────
 def _small(kind, driver, mesh_dir):
     scene = lp.Scene(box_cabinet if kind != "merged" else slotted_cabinet, [driver.place("main", at=(W / 2, H / 2))])

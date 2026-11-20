@@ -17,6 +17,11 @@ expansion outside the hemisphere ("dtn") and, with cavity modes, the modal press
                                               FE field inside, cavity modes in the cavity
     res.spl(at=lp.Arc(1.0, range(-180, 181, 5), center=c, axis="z", toward="x"))   directivity
     res.cavity_pressure(at)                   pressure in the cavity (cavity modes)
+    res.wall_frequencies                      in-vacuo frequencies of the elastic walls (scene.walls)
+    res.wall_field(f=200)                     Field: normal displacement of the walls (into the cavity)
+    res.wall_mode(n)                          Field: in-vacuo wall mode n
+    res.wall_volume_velocity()                Data: volume velocity of the walls into the cavity over f
+    res.driver_volume_velocity()              Data: volume velocity of the drivers' rear surfaces into the cavity
 """
 from __future__ import annotations
 
@@ -200,6 +205,75 @@ class SceneResults(FrequencyResults):
         else:
             coords[sel.dim] = sel.coord
         return Data(P, coords, "p", meta=self._meta(at=sel.describe()))
+
+    # ── elastic walls ─────────────────────────────────────────────────────
+    def _walls(self):
+        w = self.attachments.get("walls")
+        if w is None:
+            raise ResultsError("these results have no elastic walls (scene.walls)")
+        return w
+
+    @property
+    def wall_frequencies(self) -> np.ndarray:
+        """In-vacuo frequencies of the wall modes [Hz]."""
+        return np.asarray(self._walls()["freq"])
+
+    def wall_mesh(self):
+        """The shell mesh of the walls (geometry.Mesh, TRI3 group "walls")."""
+        from loudpy.geometry.mesh import Mesh, MeshGroup
+        if "_wall_mesh" not in self.__dict__:
+            w = self._walls()
+            nodes = np.asarray(w["nodes"], float)
+            self._wall_mesh = Mesh(np.arange(len(nodes)), nodes,
+                                   {"walls": MeshGroup("walls", 2, "tri3", np.asarray(w["cells"]))})
+        return self._wall_mesh
+
+    def wall_q(self) -> np.ndarray:
+        """Modal amplitudes of the wall modes (n_f, n_wall_modes)."""
+        w = self._walls()
+        off = int(w["meta"]["offset"])
+        return self.q[:, off:off + len(w["freq"])]
+
+    def wall_field(self, f: float, component: str = "n"):
+        """Field: the wall displacement at the frequency nearest f: "n" normal (into the cavity, scalar) or
+        "xyz" (translations, (n, 3))."""
+        from loudpy.results.data import Field
+        w = self._walls()
+        i = int(np.argmin(np.abs(self.frequencies - f)))
+        q = self.wall_q()[i]
+        if component == "n":
+            v = np.asarray(w["U_n"], float).T @ q
+            name = "u_n"
+        elif component == "xyz":
+            v = np.einsum("knd,k->nd", np.asarray(w["U"], float), q)
+            name = "u"
+        else:
+            raise SelectionError(f"component 'n' or 'xyz', not {component!r}")
+        return Field(name, self.wall_mesh(), v, self.frequencies[i], "f", meta=self._meta(region="walls"))
+
+    def wall_mode(self, n: int):
+        """Field: the in-vacuo wall mode n (normal displacement, mass-normalised; coordinate = its frequency)."""
+        from loudpy.results.data import Field
+        w = self._walls()
+        return Field("u_n", self.wall_mesh(), np.asarray(w["U_n"][n], float), float(w["freq"][n]), "f",
+                     meta={"mode": n, "region": "walls"})
+
+    def wall_volume_velocity(self) -> Data:
+        """Volume velocity of the walls into the cavity, jω Σ_k q_k ∫ φ_k·n dS [m³/s]."""
+        dv = np.asarray(self._walls()["volume_disp"], float)
+        Q = 2j * np.pi * self.frequencies * (self.wall_q() @ dv)
+        return Data(Q, {"f": self.frequencies}, "Q", meta=self._meta(on="walls"))
+
+    def driver_volume_velocity(self) -> Data:
+        """Volume velocity of the drivers' wet rear surfaces into the cavity, jω Σ_k q_k ∫ φ_k·n dS [m³/s] (all
+        drivers; results written from phase I on)."""
+        cav = self.attachments.get("cavity", {})
+        if "volume_disp" not in cav:
+            raise ResultsError("no volume displacements in these results (cavity results from phase I on)")
+        dv = np.asarray(cav["volume_disp"], float)
+        n = int(self._walls()["meta"]["offset"]) if "walls" in self.attachments else len(dv)
+        Q = 2j * np.pi * self.frequencies * (self.q[:, :n] @ dv[:n])
+        return Data(Q, {"f": self.frequencies}, "Q", meta=self._meta(on="drivers"))
 
     @property
     def cavity_frequencies(self) -> np.ndarray:

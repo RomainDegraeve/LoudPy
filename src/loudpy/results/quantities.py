@@ -118,6 +118,7 @@ for _c in ("r", "z"):
     QUANTITIES[f"intensity_{_c}"] = _q(f"intensity_{_c}", f"Active intensity, {_c}", f"I_{_c}", "W/m²")
 for _f, (_what, _unit) in _VEC.items():
     QUANTITIES[_f] = _q(_f, _what.capitalize(), _f, _unit, "displacement", True)
+    QUANTITIES[f"{_f}_n"] = _q(f"{_f}_n", f"Normal {_what}", f"{_f}_n", _unit, "displacement", True)
     for _c, (_adj, _sym) in _COMP.items():
         QUANTITIES[f"{_f}_{_c}"] = _q(f"{_f}_{_c}", f"{_adj} {_what}", f"{_f}_{{{_sym}}}", _unit, "displacement", True)
 

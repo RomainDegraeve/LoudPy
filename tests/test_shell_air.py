@@ -77,3 +77,47 @@ def test_rigid_wall_limit():
         dev.append(np.abs(near / f_rigid - 1).max())
     assert 1e-3 < dev[0] < 1e-2 and dev[2] < 2e-5, dev
     assert 9 < dev[1] / dev[2] < 11, dev
+
+
+def test_wall_modes_converge_to_direct():
+    """Elastic walls by modes (in-vacuo wall modes + rigid-wall cavity modes + static correction, as in the
+    scenes) against the direct shell–air system: one MDF wall (6 mm) of a box under a uniform pressure load,
+    60–700 Hz. With the wall modes to 1.5 / 6 kHz (cavity modes to 6 kHz) the wall displacement differs by
+    ≤ 4 % / 1.1e-4 and the cavity pressure by ≤ 3.5 % / 7e-4: the wall modes' truncation dominates."""
+    from loudpy.physics.modal import CavityModes, solve_forced, static_correction
+    from loudpy.physics.shell import cavity_walls, direct_response
+    nodes, tets, faces = box_cavity(0.3, 0.25, 0.2, 0.04)
+    H, Ma, _ = assemble_p2(nodes, tets)
+    freqs = np.array([60.0, 150.0, 300.0, 450.0, 700.0])
+    probe = np.argmin(np.linalg.norm(nodes - [0.05, 0.05, 0.05], axis=1))
+    cav = CavityModes(nodes, tets, np.zeros((0, 6), np.int64))
+    cav.solve(6000.0, c=C)
+    err = []
+    for f_walls in (1500.0, 6000.0):
+        w = cavity_walls(nodes, tets, faces["z1"], "MDF", 0.006, lp.Rayleigh(), "edges", f_walls)
+        A = w.walls.coupling(len(nodes))
+        F = -np.asarray(A @ np.ones(len(nodes)))
+        k = 6 * np.argmin(np.linalg.norm(w.walls.nodes - [0.1, 0.08, 0.2], axis=1)) + 2
+        S = w.B.T @ cav.psi[w.rows]
+        q, P = solve_forced(freqs, (w.phi.T @ F)[:, None], 2 * np.pi * w.freq, w.zeta, S,
+                            static_correction(cav, w.rows, w.B, S), cav.kappa2, RHO, C)
+        d_m, p_m = (w.phi @ q[:, :, 0].T)[k], (cav.psi @ P[:, :, 0].T)[probe]
+        if not err:
+            d, p = direct_response(w.shell, A, H, Ma, RHO, C, freqs, F)
+            d_d, p_d = d[:, k], p[:, probe]
+        err.append((np.abs(d_m / d_d - 1).max(), np.abs(p_m / p_d - 1).max()))
+    assert err[1][0] < 2e-4 and err[1][1] < 1.5e-3, err
+    assert err[0][0] > 10 * err[1][0] and err[0][1] > 10 * err[1][1], err
+
+
+def test_scene_wall_settings():
+    """scene.walls needs the cavity and is refused with the exterior / merged air (check() lists it)."""
+    import pytest
+    scene = lp.Scene(lambda occ: None, []).walls("Plywood", thickness=lp.P("t"))
+    with pytest.raises(lp.errors.ModelError, match="elastic walls need the cavity"):
+        scene.check()
+    scene.cavity().exterior()
+    with pytest.raises(lp.errors.ModelError, match="coupled to the cavity only"):
+        scene.check()
+    assert "Walls: Plywood" in scene.tree()
+    assert scene.copy()._walls_spec == scene._walls_spec

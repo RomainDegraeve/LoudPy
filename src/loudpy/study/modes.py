@@ -40,7 +40,7 @@ from loudpy.errors import ModelError
 
 log = logging.getLogger("loudpy.study")
 
-PHYSICS = ("structure", "coupled", "acoustic")
+PHYSICS = ("structure", "coupled", "acoustic", "walls")
 
 
 def _damping(K, C):
@@ -52,9 +52,10 @@ def _damping(K, C):
 
 class Modes(Study):
     """Eigenmodes of a Model (physics "structure", "acoustic" or "coupled") or of an lp.Scene
-    (coupled driver + cavity modes).
+    (coupled driver + cavity [+ wall] modes; physics="walls": the in-vacuo modes of its elastic walls).
 
-        modes = lp.Modes(model).solve(f_max=20000)"""
+        modes = lp.Modes(model).solve(f_max=20000)
+        walls = lp.Modes(scene, physics="walls").solve(f_max=2000)"""
     accepts_scene = True
 
     def __init__(self, model, physics: str = "structure"):
@@ -81,8 +82,13 @@ class Modes(Study):
             raise ModelError(f"Modes.solve: f_min = {f_min:g} Hz must be below f_max = {f_max:g} Hz")
         if self.is_scene:                       # drivers + cavity modes (scene configuration "cavity")
             from loudpy.study import scene_response
-            self.results = self._finish(scene_response.coupled_modes(self, f_max=f_max))
+            if self.physics == "walls":
+                self.results = self._finish(scene_response.wall_modes(self, f_max=f_max))
+            else:
+                self.results = self._finish(scene_response.coupled_modes(self, f_max=f_max))
             return self.results
+        if self.physics == "walls":
+            raise ModelError('physics="walls": the elastic walls of an lp.Scene (scene.walls(…))')
         parts = self._parts()
         if self.physics == "structure":
             if orders is not None:
