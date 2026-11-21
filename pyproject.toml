@@ -79,7 +79,7 @@ ignore = ["E741", "B905", "UP038"]       # short math names (l, I), zip strictne
 
 [tool.ruff.lint.per-file-ignores]
 "src/loudpy/__init__.py" = ["F401", "E402"]
-"LoudPy_exemples/**" = ["E402"]
+"examples/**" = ["E402"]
 
 [tool.mypy]
 python_version = "3.13"

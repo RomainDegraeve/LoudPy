@@ -131,7 +131,7 @@ Fields on the mesh
    u.at_phase(0.3)                      # instantaneous real field Re(u e^{iφ})
    u.restrict("surround")               # the field on some regions
    u.at((0.0, 0.03)), u.at(lp.Line(...))  # values at a point / along a selection
-   coords, values = u.at_nodes(res.boundary("interface_acou_meca_front"))
+   coords, values = u.at_nodes(res.boundary("wet_front"))
 
 Modes
 -----

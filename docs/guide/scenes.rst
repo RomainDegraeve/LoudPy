@@ -11,12 +11,12 @@ The pieces
 
 .. code-block:: python
 
-   cone = lp.Group("membranne", "dustcap", "surround")
+   cone = lp.Group("cone", "dustcap", "surround")
    hp = lp.Driver.from_modes("eigen_fourier.h5", orders=[0, 1, 2, 3], f_max=10000,
                              geometry="HPNEW-Sketch.geo",
-                             rear=lp.Profile(lp.BoundaryOf("subacou_rear"), start=(0.05435, 0.031),
+                             rear=lp.Profile(lp.BoundaryOf("air_rear"), start=(0.05435, 0.031),
                                              end=(0.00633, 0.0052)),
-                             front=lp.Profile(lp.Interface(cone, "subacou_front")))
+                             front=lp.Profile(lp.Interface(cone, "air_front")))
 
    def cabinet(occ):                     # gmsh OCC; called each time a mesh is built
        inner = occ.addBox(0, 0, -0.25, 0.2, 0.3, 0.281)
@@ -29,7 +29,7 @@ The air is the library's ``Air`` (20 °C, 101.325 kPa, dry: the same air as the 
 other conditions with ``lp.Scene(cabinet, drivers, air=lp.air(temperature=…, humidity=…))``
 (see :doc:`models`). ``scene.rho`` and ``scene.c`` are its density and speed of sound.
 
-* :class:`lp.Driver <loudpy.Driver>` — the modes, the coil (the ``interface_forced`` boundary of
+* :class:`lp.Driver <loudpy.Driver>` — the modes, the coil (the ``coil_drive`` boundary of
   the modal file) and the wet **profiles** (:class:`lp.Profile <loudpy.Profile>`: chained curves
   of the 2D geometry, from the baffle towards the axis), which shape the cut-outs of the driver in
   the 3D air. A profile is selected like a boundary (see :doc:`models`), on the curves of the
@@ -148,8 +148,8 @@ Scene results
    res.field("p", f=500)                     # Field: FE pressure on the band mesh (read lazily)
    res.cavity_field(f=500), res.cavity_mode(3), res.cavity_frequencies   # cavity configurations
 
-Plots: ``lp.plot.directivity(res, f, radius, center=…)`` and ``lp.plot.scene_view`` (cut-away views
-of the SPL and the drivers, :doc:`plotting`).
+Plots: ``res.plot(f)`` (cut-away views of the SPL and the drivers, six default cameras), ``res.view(f)``
+(one view to save as HTML / glTF or turn) and ``lp.plot.directivity(res, f, radius, center=…)`` (:doc:`plotting`).
 
 Coupled modes of a cavity scene: ``lp.Modes(scene).solve(f_max=4500)`` (complex ``s``, driver and
 cavity components in ``extra("q")``, ``extra("P")``).
@@ -161,7 +161,7 @@ The scene layer is built on :mod:`loudpy.physics.modal` (``DriverModes``, ``Mult
 ``CavityModes``, ``DriverCavityCoupling``) and :mod:`loudpy.physics.exterior` (``HalfSpaceDtN``,
 ``ExteriorFE``, ``coupled_sweep``, ``port_block``), with the meshing helpers of
 :mod:`loudpy.geometry.meshing3d`. Models outside the three configurations — e.g. the hybrid vented
-box in ``LoudPy_exemples/legacy/vented_hybrid`` (modal inside + 1D port + exterior FE) — use them directly.
+box in ``examples/legacy/vented_hybrid`` (modal inside + 1D port + exterior FE) — use them directly.
 
 The model pattern in 3D
 -----------------------

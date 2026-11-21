@@ -115,7 +115,7 @@ def test_builder_mesh_is_reused_until_it_changes(tmp_path):
         lp.Model(builder).add(lp.Solid("plate", STEEL)).mesh()
 
 
-STEP = "LoudPy_exemples/Geometries/Loudspeaker/HPNEW-Sketch.step"
+STEP = "tests/data/geometries/Loudspeaker/HPNEW-Sketch.step"
 POINTS = {"membranne": (0.00894597, 0.00902379), "dustcap": (0.0089157, 0.01052703),
           "surround": (0.05242295, 0.03701458), "former": (0.00483333, 0.00108668),
           "coil": (0.00583333, -0.00432546), "glue_1": (0.00554515, -0.00106783), "spider": (0.00636, 0.0000095),

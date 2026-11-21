@@ -21,7 +21,7 @@ mesh), *what* (a quantity with its unit), *how* (a plot kind) — with the brevi
    lp.plot.mode_chart(modes, y="order")                 # f against the azimuthal order (colour ζ)
    lp.plot.coupled_modes(modes.set("fsi"), [0, 3, 7])   # pressure in the air + deformed structure
    lp.plot.directivity(res, f=[1000, 4000], radius=0.3) # polar SPL re on axis (2D or 3D results)
-   lp.plot.boundary(field, res.boundary("interface_acou_meca_front"))   # deformed boundary profile
+   lp.plot.boundary(field, res.boundary("wet_front"))   # deformed boundary profile
    lp.plot.animate(trans, "u.mp4")                      # animation (transient, or a harmonic field)
 
 Every function draws on ``ax=`` when given (a new figure otherwise) and returns the axes; labels
@@ -60,26 +60,30 @@ and colour bars of the 2D figures.
    v.add(modes.mode(5).revolve(), scalars="|u|", clim=(0, 1))     # a mode revolved in 3D
    v.view("xz", azimuth=35, elevation=25).show()
    res.field("p", f=500).plot(cut=((-1, 0, 0), (0.1, 0, 0)))      # a 3D field, cut open
-   lp.plot.scene_view(scene_res, f=100, cameras={...}, cut=(normal, origin))   # SPL + drivers
+   scene_res.plot(470)                                             # a 3D scene result: six default views
 
-``lp.plot.scene_view`` draws a scene result (lp.Scene with an FE air domain): the SPL on the
-ground, the walls and a cut plane on one colour scale, iso-SPL lines, wall edges and the deformed
-drivers at one instant and one scale, from several :class:`lp.plot.Camera <loudpy.plot.Camera>`.
-The building blocks (``view3d.tet_grid``, ``tri_surface``, ``clip``, ``isolines``, ``edges``,
-``dashed``) are in :mod:`loudpy.plot.view3d`.
+A scene result (lp.Scene with an FE air domain) plots itself: ``scene_res.plot(f)`` shows the SPL on the
+ground, the walls and a cut plane on one colour scale, iso-SPL lines, the dashed outline of the removed part
+and the deformed drivers at one instant and one scale. By default it uses six cameras around the cabinet
+(:func:`lp.plot.default_cameras <loudpy.plot.default_cameras>`: front left, front right, side, from above, rear,
+close-up on the driver) and the vertical plane through the first driver's axis as the cut; choose with
+``cameras=["from above", …]`` (default cameras by name) or ``{name: lp.plot.Camera(…)}``, and ``cut=None``
+(the whole scene) or ``cut=(normal, origin)``. ``scene_res.view(f, camera)`` is one of them as a View3D. The
+building blocks (``view3d.tet_grid``, ``tri_surface``, ``clip``, ``isolines``, ``edges``, ``dashed``) are in
+:mod:`loudpy.plot.view3d`.
 
 Saving and turning 3D views
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Any 3D view is a :class:`lp.plot.View3D <loudpy.plot.View3D>`: build it from a field
-(``field.view3d()`` or ``lp.plot.view(field, cut=…)``: a 3D field, or a 2D displacement revolved), from one camera of
-a scene result (``lp.plot.scene_view3d``), or by hand; then save it in the format the reader needs, or open it in
-a window.
+Any 3D view is a :class:`lp.plot.View3D <loudpy.plot.View3D>`. ``.plot()`` draws a result into a figure;
+``.view()`` gives the same 3D view as an object to save in the format the reader needs, or to turn in a window:
+``field.view(cut=…)`` (a 3D field, or a 2D displacement revolved) and ``scene_res.view(f, camera)``; or build
+one by hand.
 
 .. code-block:: python
 
-   v = res.field("u", f=1000).view3d(sweep=1.5 * np.pi)     # 2D result: the structure revolved, |u|
-   v = lp.plot.scene_view3d(scene_res, 500, cut=((-1, 0, 0), (0.07, 0, 0)))   # a scene result, cut open
+   v = res.field("u", f=1000).view(sweep=1.5 * np.pi)       # 2D result: the structure revolved, |u|
+   v = scene_res.view(500)                                   # a scene result, cut open (default camera)
 
    v.save("view.png")      # .png .jpg .tif .pdf .svg: the figure (image at 2 × size, colour bars, title), 300 dpi
    v.save("view.html")     # interactive viewer in one self-contained file (any browser, no server, no package)

@@ -1,8 +1,10 @@
 """
 loudpy.plot — scientific figures of loudpy results, one style for all of them.
 
-Most plots come from the evaluated results themselves (Data.plot, Field.plot); the functions
-here draw them, compose figures and add a few composite plots:
+One way to plot: every result object has .plot() — a figure in the loudpy style (lp.Data: curves, maps, polar;
+lp.Field: a map on the mesh; a 3D scene result: cut-away views) — and the 3D ones .view() — a View3D to save as
+an image, an interactive HTML page or a 3D model, or to turn in a window. The functions here compose figures
+(several curves on one axes, grids of modes) and draw the composite plots:
 
     res.spl(at=(0, 0.3)).plot()                          a curve (frequency on a log axis)
     res.spl(at=lp.Arc(0.3, range(0, 91, 2))).plot()      a frequency × angle map
@@ -19,11 +21,13 @@ here draw them, compose figures and add a few composite plots:
     lp.plot.boundary(field, res.boundary(name))          deformed boundary profile
     lp.plot.selection(model, selector)                   what a selector selects (2D model, 3D scene surfaces)
     lp.plot.html(field, "x.html")                        interactive viewer (one self-contained HTML file)
-    lp.plot.View3D(…)                                    3D scenes (pyvista) in matplotlib axes
-    lp.plot.view(field, cut=…)                           a View3D of a field (3D, or a 2D displacement revolved)
-    view.save("x.png" | ".pdf" | ".html" | ".gltf" | ".vtm"), view.interactive()   save / turn a 3D view
-    lp.plot.scene_view(res, f, cameras, cut=…)           cut-away views of a 3D scene result (SPL + drivers)
-    lp.plot.scene_view3d(res, f, camera, cut=…)          one of them as a View3D (save / interactive)
+    field.view(cut=…)                                    a 3D view (View3D) of a field (3D, or a 2D displacement revolved)
+    scene_res.plot(f)                                    cut-away views of a 3D scene result (SPL + drivers), default
+                                                         cameras, cut through the driver axis, dashed outline
+    scene_res.view(f, camera)                            one of them as a View3D
+    view.save("x.png" | ".pdf" | ".html" | ".glb" | ".vtm"), view.interactive()   save / turn a 3D view
+    lp.plot.View3D(…)                                    your own 3D scene (pyvista) in matplotlib axes
+    lp.plot.default_cameras(bounds, drivers)             the default cameras of a scene
     lp.plot.animate(trans, "u.mp4")                      animations
     lp.plot.save(fig, "Results/Figures/x.pdf")           folders created, safe on synced folders
 
@@ -45,10 +49,10 @@ from loudpy.plot import style
 from loudpy.plot.animate import animate
 from loudpy.plot.curves import data, line, map, polar
 from loudpy.plot.fields import boundary, coupled_modes, field, mode_chart, modes
-from loudpy.plot.scene3d import Camera, default_cameras, scene_view, scene_view3d
+from loudpy.plot.scene3d import Camera, default_cameras
 from loudpy.plot.selection import selection
 from loudpy.plot.html import html
-from loudpy.plot.view3d import View3D, view
+from loudpy.plot.view3d import View3D
 
 figure = style.figure
 save = style.save
@@ -75,5 +79,5 @@ def directivity(res, f, radius: float, angles=None, center=None, axis="z", towar
 
 
 __all__ = ["selection", "html", "style", "figure", "save", "pdf_pages", "label_panels", "data", "line", "map",
-           "polar", "field", "boundary", "modes", "coupled_modes", "mode_chart", "directivity", "View3D", "view",
-           "Camera", "default_cameras", "scene_view", "scene_view3d", "animate"]
+           "polar", "field", "boundary", "modes", "coupled_modes", "mode_chart", "directivity", "View3D",
+           "Camera", "default_cameras", "animate"]

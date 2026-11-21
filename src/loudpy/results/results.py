@@ -154,7 +154,7 @@ class Results:
         return boundaries_of(self, block)
 
     def boundary(self, name: str) -> np.ndarray:
-        """Node tags of the boundaries selected by `name` (e.g. "interface_acou_meca_front")."""
+        """Node tags of the boundaries selected by `name` (e.g. "wet_front")."""
         from loudpy.geometry.naming import matches
         sel = [b for n, b in self.boundaries.items() if n == name or matches(name, n)]
         if not sel:

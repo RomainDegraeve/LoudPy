@@ -10,14 +10,14 @@ and a material library. Everything is declared with small value objects passed t
 
    model = lp.Model("speaker.geo")                     # materials: loudpy's library by default
    model.add(
-       lp.Solid("membranne", "Paper", mesh_size=5e-4),
+       lp.Solid("cone", "Paper", mesh_size=5e-4),
        lp.Solid("surround", "Rubber", damping=lp.Hysteretic(eta=0.1)),            # … one item per solid region
-       lp.Air("subacou", mesh_size=5e-3),
+       lp.Air("air", mesh_size=5e-3),
        lp.PML("PML", thickness=0.1, tuned_to=1000.0, order=2, strength=1.5),
-       lp.Clamped("interface_constrained_rz"), lp.Clamped("interface_constrained_r", dofs="r"),
-       lp.Coil("interface_forced"),
-       lp.FluidStructure("interface_acou_meca_front"),
-       lp.FluidStructure("interface_acou_meca_rear"),
+       lp.Clamped("rims", on=lp.Group("surround_rim", "spider_rim")), lp.Clamped("axis", dofs="r"),
+       lp.Coil("coil_drive"),
+       lp.FluidStructure("wet_front"),
+       lp.FluidStructure("wet_rear"),
    )
    model.mesh("Results/Files/mesh.msh")
 
@@ -68,8 +68,8 @@ Regions
 ========================================= ==================================================
 
 The first argument is the region's **name**, its label in the results. By default it also selects
-the physical groups (see :doc:`conventions`): ``"glue"`` selects ``submeca_glue_1`` and
-``submeca_glue_2``, ``"coil"`` selects ``submeca_coil`` but not ``submeca_coil_former``, and a glob
+the physical groups (see :doc:`conventions`): ``"glue"`` selects ``glue_1`` and
+``glue_2``, ``"coil"`` selects ``coil`` but not ``coil_former``, and a glob
 (``"glue_*"``) is allowed. ``on=`` selects them otherwise (see `Selections`_ below). Material
 properties can be overridden on the region (``lp.Solid("cone", "Paper", E=3e9)``).
 
@@ -92,7 +92,7 @@ Selections
 Every region and boundary takes a selector as ``on=``:
 
 ========================================================= =================================================
-:class:`lp.Group("membranne", "dustcap") <loudpy.Group>`   named groups, by label (naming rules, globs)
+:class:`lp.Group("cone", "dustcap") <loudpy.Group>`        named groups, by label (naming rules, globs)
 :class:`lp.Box(r=(0, 0.01), z=0.032) <loudpy.Box>`         what lies entirely inside a box; a number is a
                                                            line (``lp.Box(r=0)``: on the axis)
 :class:`lp.Near((r, z)) <loudpy.Near>`                     the domain containing the point, or the
@@ -108,15 +108,15 @@ items combine like selectors (``lp.Interface(cone | dustcap, front_air)``). Pyth
 
 .. code-block:: python
 
-   solids = lp.Group("membranne", "dustcap", "surround", "spider", "former", "coil", "glue")
+   solids = lp.Group("cone", "dustcap", "surround", "spider", "former", "coil", "glue")
    model.add(
-       lp.Solid("cone", "Paper", on=lp.Group("membranne") | "dustcap"),
+       lp.Solid("cone", "Paper", on=lp.Group("cone") | "dustcap"),
        lp.Clamped("spider_rim", on=lp.Near((0.0447, -0.00075))),
        lp.Clamped("surround_rim", on=lp.Box(z=0.032) & lp.BoundaryOf("surround")),
        lp.Clamped("axis", on=lp.BoundaryOf("dustcap") & lp.Box(r=0), dofs="r"),
        lp.Coil("drive", on=lp.Interface("coil", "former")),
-       lp.FluidStructure("front", on=lp.Interface(solids, "subacou_front")),
-       lp.FluidStructure("rear", on=lp.Interface(solids, "subacou_rear")),
+       lp.FluidStructure("front", on=lp.Interface(solids, "air_front")),
+       lp.FluidStructure("rear", on=lp.Interface(solids, "air_rear")),
    )
 
 **Where they are evaluated.** A region covers whole domain groups: its selector is evaluated
@@ -148,9 +148,9 @@ across the layer (along r, z, or both in a corner).
 
 The geometry of every layer (start, thickness, direction) is stored with the mesh
 (``<mesh>.msh.json``, ``pml_layers``), not in the names of its surfaces. Layers built from named
-curve groups are named after them (``PML_r+_1_front``, ``PML_r+_1_front_Corner``), the others after the
+curve groups are named after them (``PML_front_r``, ``PML_front_r_Corner``), the others after the
 region (``absorber_1``, ``absorber_1_Corner`` …). Meshes written by earlier versions held the layer
-geometry in their surface names (``PML_r+_1_front__r0=…__t=…``): they are still read.
+geometry in their surface names (``PML_front_r__r0=…__t=…``): they are still read.
 
 Materials and damping
 ---------------------
@@ -201,7 +201,7 @@ The library's ``Air`` is computed by :func:`lp.air <loudpy.air>` at 20 °C, 101.
 .. code-block:: python
 
    warm = lp.air(temperature=308.15, humidity=0.8)     # 35 °C, 80 % RH: ρ = 1.126, c = 354.45
-   model.add(lp.Air("subacou", material=warm), lp.PML("PML", thickness=0.1, tuned_to=1000.0, material=warm))
+   model.add(lp.Air("air", material=warm), lp.PML("PML", thickness=0.1, tuned_to=1000.0, material=warm))
    scene = lp.Scene(cabinet, drivers, air=warm)
 
 ``lp.air`` treats air as an ideal-gas mixture of dry air and water vapour (saturation pressure

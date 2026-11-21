@@ -226,11 +226,11 @@ __marimo__/
 
 # Generated results of the new examples (rebuilt by their run.py / plot.py)
 *.npz
-LoudPy_exemples/legacy/Benchmarks/Results/
-LoudPy_exemples/legacy/vented_hybrid/Results/
-LoudPy_exemples/legacy/box_results_before_M/
-LoudPy_exemples/02_azimuthal_modes/Results/
-LoudPy_exemples/1[0-5]_*/Results/
+examples/legacy/Benchmarks/Results/
+examples/legacy/vented_hybrid/Results/
+examples/legacy/box_results_before_M/
+examples/02_azimuthal_modes/Results/
+examples/1[0-5]_*/Results/
 
 # Claude Code local session data
 **/.claude/
@@ -243,4 +243,4 @@ LoudPy_exemples/1[0-5]_*/Results/
 
 # generated: Sphinx API stubs, example data files (results, meshes, exports)
 docs/api/generated/
-LoudPy_exemples/**/Results/Files/
+examples/**/Results/Files/

@@ -180,12 +180,12 @@ def _can_render() -> bool:
         return False
 
 
-def test_view3d_saves(tmp_path):
+def test_field_view_saves(tmp_path):
     """A 3D view of a 2D displacement (revolved) saved as a self-contained HTML viewer (the colours of each
     dataset baked per vertex) and as a ParaView multiblock with its values; a 2D pressure has no 3D view."""
     pv = pytest.importorskip("pyvista")
     u = lp.load(_legacy("freq_meca.h5")).field("u", f=100.0)
-    v = u.view3d(sweep=np.pi)
+    v = u.view(sweep=np.pi)
     text, data, dec = _viewer_data(v.save(tmp_path / "u.html", title="u at 100 Hz"))
     assert "<script src" not in text and data["title"] == "u at 100 Hz" and not data["nobar"]
     tri, rgb = dec(data["tri"], np.uint32).reshape(-1, 3), dec(data["rgb"], np.uint8).reshape(-1, 3)
@@ -198,12 +198,12 @@ def test_view3d_saves(tmp_path):
     from loudpy.errors import ResultsError
     p2d = lp.Field("p", u.mesh, np.ones(u.mesh.n_nodes, complex), 100.0, "f")
     with pytest.raises(ResultsError, match="revolves a displacement"):
-        p2d.view3d()
+        p2d.view()
     with pytest.raises(ValueError, match="unknown extension"):
         v.save(tmp_path / "u.xyz")
 
 
-def test_view3d_cut_and_render(tmp_path):
+def test_field_view_cut_and_render(tmp_path):
     """A 3D field cut by a plane: only the kept side is drawn; rendered images (PNG figure, glTF binary model)."""
     pytest.importorskip("pyvista")
     from loudpy.geometry.mesh import Mesh, MeshGroup
@@ -211,7 +211,7 @@ def test_view3d_cut_and_render(tmp_path):
     nodes, tets, _ = box_cavity(0.3, 0.2, 0.1, 0.08)
     mesh = Mesh(np.arange(len(nodes)), nodes, {"air": MeshGroup("air", 3, "tet10", tets)})
     p = lp.Field("p", mesh, np.cos(np.pi * nodes[:, 0] / 0.3) + 0j, 500.0, "f")
-    v = lp.plot.view(p, show="real", cut=((1, 0, 0), (0.15, 0, 0)))
+    v = p.view(show="real", cut=((1, 0, 0), (0.15, 0, 0)))
     pts = v.items[0][0].points
     assert pts[:, 0].max() <= 0.15 + 1e-9 or pts[:, 0].min() >= 0.15 - 1e-9          # one side of the plane
     assert v.bars[0][1][0] == pytest.approx(-v.bars[0][1][1])                         # symmetric range (real part)

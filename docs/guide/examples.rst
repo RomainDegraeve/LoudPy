@@ -1,7 +1,7 @@
 Examples
 ========
 
-``LoudPy_exemples/`` holds one folder per example, numbered in reading order, each with the same layout:
+``examples/`` holds one folder per example, numbered in reading order, each with the same layout:
 ``README.md`` (what it shows, how to run it, the key results), ``run.py`` (builds the model, solves, writes
 ``Results/Files/``), ``plot.py`` (reads the results with ``lp.load``, writes ``Results/Figures/`` and the key curves as
 CSV or netCDF) and, where there are 3D views, ``plot_3d.py``. Paths are relative to each script, so they run from
@@ -36,5 +36,5 @@ The plotting scripts are short: they only use the result objects (``res.spl(at=â
 
 The box of examples 10â€“13 is defined once in ``shared/enclosure.py`` (dimensions, cabinet builders, the driver and
 the configured scenes); the geometry of 14 and 15 lives in their own module (``labyrinth.py``, ``column.py``).
-``LoudPy_exemples/README.md`` lists the run times; ``legacy/`` keeps former scripts (solver benchmarks, the low-level
+``examples/README.md`` lists the run times; ``legacy/`` keeps former scripts (solver benchmarks, the low-level
 hybrid model of the vented box).

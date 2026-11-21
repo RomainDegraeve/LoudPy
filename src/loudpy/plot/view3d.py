@@ -10,12 +10,12 @@ matplotlib colour bars (so 3D figures share fonts, sizes and labels with the 2D 
 
     v.save("view.png")                                 # .png .jpg .pdf .svg: the figure (image + colour bars)
     v.save("view.html")                                # interactive, self-contained (no server, no package)
-    v.save("view.gltf")                                # 3D model with its colours (Blender, PowerPoint, web)
+    v.save("view.glb")                                 # 3D model with its colours (Blender, PowerPoint, web; .gltf)
     v.save("view.vtm")                                 # the datasets with their values (ParaView)
     v.interactive()                                    # a window to turn the scene (or inline in Jupyter)
 
-    lp.plot.view(res.field("p", f=500), cut=((1, 0, 0), (0, 0, 0)))    a View3D of a Field (3D, or a 2D
-                                                                         displacement revolved)
+    res.field("p", f=500).view(cut=((1, 0, 0), (0, 0, 0)))  a View3D of a Field (3D, or a 2D displacement revolved)
+    scene_res.view(500)                                       one view of a scene result
 
 Datasets:
     tet_grid(mesh, values)        P2 tetrahedra as linear sub-tetrahedra through the mid-edge nodes
@@ -322,7 +322,7 @@ def colorbars_for(fig, axes, bars, **kwargs):
         fig.colorbar(ScalarMappable(Normalize(*clim), cmap), ax=axes, label=label, **kwargs)
 
 
-def view(f, show=None, cut=None, cmap=None, vmin=None, vmax=None, colorbar=True, camera=None, size=(900, 700),
+def field_view(f, show=None, cut=None, cmap=None, vmin=None, vmax=None, colorbar=True, camera=None, size=(900, 700),
          range_db: float | None = 50.0, sweep: float = 2 * np.pi, deformation: float = 0.10, **kwargs) -> View3D:
     """
     A View3D of a Field, to show, save (.png .pdf .html .gltf .vtm) or turn (interactive()):
@@ -366,5 +366,5 @@ def field3d(f, show=None, ax=None, cmap=None, vmin=None, vmax=None, title=None, 
             cut=None, size=(900, 700), range_db: float | None = 50.0, **kwargs):
     """A 3D Field drawn into matplotlib axes (see view)."""
     from loudpy.plot.fields import field_title
-    v = view(f, show, cut, cmap, vmin, vmax, colorbar, camera, size, range_db, **kwargs)
+    v = field_view(f, show, cut, cmap, vmin, vmax, colorbar, camera, size, range_db, **kwargs)
     return v.show(ax, title=field_title(f) if title is None else title)

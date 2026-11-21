@@ -426,8 +426,8 @@ what → how) with the brevity of xarray / pandas.
   `displacement`), `in_vacuo()` a DriverResponse, `driver_surfaces`, `cavity_field`, `cavity_mode`.
 - **`loudpy.plot`**: `curves` (line, map, polar), `fields` (2D sections with outlines, deformed
   shapes, mirror, mode grids, mode chart, coupled modes, boundary profiles), `view3d` (pyvista
-  scenes in matplotlib axes with matplotlib colour bars), `scene3d` (`scene_view`: cut-away SPL
+  scenes in matplotlib axes with matplotlib colour bars), `scene3d` (`SceneResults.plot` / `.view`: cut-away SPL
   views of scene results), `animate`; `style` (one style; labels from the quantities).
 - **Examples**: every Loading / Plot script uses only this API (no raw matplotlib for standard
-  plots); the four 3D scene scripts share `scene_view`; each writes CSV / VTU exports next to its
+  plots); the four 3D scene scripts use `res.plot`; each writes CSV / VTU exports next to its
   figures' data. The `Plotter` package is gone.

@@ -169,6 +169,26 @@ class SceneResults(FrequencyResults):
             out[i] = dtn.pressure(pts, C[i, :n_h[i]], 2 * np.pi * f / c)
         return out
 
+    def plot(self, f: float, cameras=None, cut="driver", **kwargs):
+        """
+        Cut-away views of the scene at the frequency nearest f (needs the FE air field: exterior / merged): the SPL
+        on the ground, walls and cut plane, iso-SPL lines, the deformed drivers; one panel per camera. cameras:
+        None (six default views), names of default cameras, or {name: lp.plot.Camera}; cut: "driver" (the plane
+        through the first driver's axis), None (the whole scene) or (normal, origin). Other keywords: range_db,
+        contour_db, near_field, deformation, outline ("auto" / None / a dataset), ground, keep, cavity, title, size,
+        ncols. Returns the matplotlib figure.
+            res.plot(470); res.plot(470, cameras=["from above"], cut=None)
+        """
+        from loudpy.plot.scene3d import scene_figure
+        return scene_figure(self, f, cameras=cameras, cut=cut, **kwargs)
+
+    def view(self, f: float, camera=None, cut="driver", **kwargs):
+        """One view of plot() as an lp.plot.View3D, to save (.png .pdf .html .glb .vtm) or turn (.interactive()):
+        camera = a default camera's name (lp.plot.default_cameras) or an lp.plot.Camera.
+            res.view(470).save("box_470Hz.html")"""
+        from loudpy.plot.scene3d import scene_view_one
+        return scene_view_one(self, f, camera=camera, cut=cut, **kwargs)
+
     def driver_surfaces(self, f: float, deformation: float = 0.10, n_theta: int = 97) -> dict:
         """
         Deformed 3D surfaces (pyvista) of every driver at the frequency nearest f, at one instant and

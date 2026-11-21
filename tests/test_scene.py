@@ -237,3 +237,31 @@ def test_scene_follows_the_model_pattern(driver, tmp_path):
     assert len(s0) != len(s1) or not np.allclose(s0, s1, rtol=1e-6)      # the depth changes the coupled modes
     assert (tmp_path / "base" / "D_0.2" / "cavity.msh").exists()
     assert scene.parameters["D"] == D
+
+
+def test_scene_results_plot_and_view(driver, mesh_dir, tmp_path):
+    """One way to plot a scene result: res.plot(f) (six default cameras, cut through the driver axis, dashed
+    outline of the removed part), a subset of the default cameras without a cut, res.view(f) saved as HTML."""
+    pytest.importorskip("pyvista")
+    from loudpy.plot.scene3d import _outline, resolve_cut, scene_bounds
+    from test_plots import _can_render
+    scene = _small("merged", driver, mesh_dir)
+    res = lp.FrequencyResponse(scene, drive=lp.Force(1.0)).solve([300.0], store=tmp_path / "s.h5")
+    cut = resolve_cut(res, "driver")
+    assert cut == ((-1.0, 0.0, 0.0), (W / 2, 0.0, 0.0))
+    b = scene_bounds(res)                                   # the walls (here the 1 mm front slab) and the driver
+    mesh = res.field("p", index=0).mesh
+    walls = mesh.coords[mesh.rows_of(np.unique(mesh.groups["walls"].cells))]
+    pts = np.vstack([walls, [[W / 2, H / 2, 0.0]]])
+    np.testing.assert_allclose(b, [pts.min(axis=0), pts.max(axis=0)], atol=1e-12)
+    line = _outline(res, cut)
+    assert line is not None and line.n_points and np.all(line.points[:, 0] <= W / 2 + 1e-6)   # the removed half
+    with pytest.raises(ValueError, match="no default camera"):
+        res.plot(300.0, cameras=["nowhere"])
+    if not _can_render():
+        pytest.skip("no off-screen OpenGL here")
+    panels = lambda fig: [ax.get_title() for ax in fig.axes if ax.images and ax.get_title()]   # noqa: E731
+    assert panels(res.plot(300.0)) == list(lp.plot.default_cameras(b, [[W / 2, H / 2, 0.0]]))
+    assert panels(res.plot(300.0, cameras=["from above", "side, facing the cut"], cut=None)) == \
+        ["from above", "side, facing the cut"]
+    assert res.view(300.0).save(tmp_path / "s.html", title="scene").stat().st_size > 10_000

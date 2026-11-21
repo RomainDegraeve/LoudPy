@@ -46,12 +46,12 @@ For development installation, see the [Developer Setup](#developer-setup) sectio
 import numpy as np
 import loudpy as lp
 
-model = lp.Model("LoudPy_exemples/Geometries/Loudspeaker/HPNEW-Sketch.geo")
-model.add(lp.Solid("membranne", "Paper"), lp.Solid("coil", "Copper"), lp.Solid("surround", "Rubber"),
+model = lp.Model("examples/Geometries/Loudspeaker/HPNEW-Sketch.geo")
+model.add(lp.Solid("cone", "Paper"), lp.Solid("coil", "Copper"), lp.Solid("surround", "Rubber"),
           lp.Solid("spider", "PhenolicCloth"), lp.Solid("former", "Kapton"), lp.Solid("glue", "SolidGlue"),
           lp.Solid("dustcap", "Polypropylene"),
-          lp.Clamped("interface_constrained_rz"), lp.Clamped("interface_constrained_r", dofs="r"),
-          lp.Coil("interface_forced"))
+          lp.Clamped("rims", on=lp.Group("surround_rim", "spider_rim")), lp.Clamped("axis", dofs="r"),
+          lp.Coil("coil_drive"))
 print(model)                                          # the model tree; model.check() before meshing
 model.mesh("mesh.msh")
 
@@ -75,8 +75,8 @@ ParaView.
 
 ## Examples
 
-`LoudPy_exemples/` holds one folder per example, numbered in reading order, each with a `README.md`, a `run.py`
-(computes, writes `Results/Files/`) and a `plot.py` (figures in `Results/Figures/`); see `LoudPy_exemples/README.md`.
+`examples/` holds one folder per example, numbered in reading order, each with a `README.md`, a `run.py`
+(computes, writes `Results/Files/`) and a `plot.py` (figures in `Results/Figures/`); see `examples/README.md`.
 
 | Example | Description |
 |---|---|

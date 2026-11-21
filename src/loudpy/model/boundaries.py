@@ -2,12 +2,12 @@
 Boundaries: conditions on curve groups of the geometry. Names only select the groups; everything
 physical is a parameter or comes from the mesh.
 
-    lp.Clamped("interface_constrained_rz")             both displacement components blocked (default)
-    lp.Clamped("interface_constrained_r", dofs="r")    the radial component only
-    lp.Coil("interface_forced")                        where the drive acts (axial by default)
-    lp.FluidStructure("interface_acou_meca_front")     structure ↔ air coupling (normal from the mesh)
+    lp.Clamped("rims", on=lp.Group("surround_rim", "spider_rim"))             both displacement components blocked (default)
+    lp.Clamped("axis", dofs="r")    the radial component only
+    lp.Coil("coil_drive")                        where the drive acts (axial by default)
+    lp.FluidStructure("wet_front")     structure ↔ air coupling (normal from the mesh)
     lp.Radiation("dtn_boundary")                       exact non-reflecting (DtN) arc
-    lp.FluidStructure("cone_front", on=lp.Interface("membranne", "subacou_front"))
+    lp.FluidStructure("cone_front", on=lp.Interface("cone", "air_front"))
 
 `on` selects the edges (loudpy.geometry.selectors), evaluated on the mesh: lp.Interface, lp.BoundaryOf,
 lp.Box, lp.Near, lp.Group and their combinations. By default the name is the label that selects named

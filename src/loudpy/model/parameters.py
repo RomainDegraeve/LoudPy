@@ -3,7 +3,7 @@ Parameters: named values a model refers to, for parametric studies (COMSOL's Glo
 
     p = lp.Parameters(t_cone=0.3e-3, E_cone=3.5e9, h=1e-3)
     model = lp.Model("speaker.geo", parameters=p)
-    model.add(lp.Solid("membranne", "Paper", E=lp.P("E_cone"), mesh_size=lp.P("h")),
+    model.add(lp.Solid("cone", "Paper", E=lp.P("E_cone"), mesh_size=lp.P("h")),
               lp.Solid("surround", "Rubber", mesh_size=0.5 * lp.P("h")))
 
     def builder(occ, p):                       # a geometry builder whose 2nd argument is named p (or params)

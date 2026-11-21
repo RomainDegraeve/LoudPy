@@ -1,13 +1,13 @@
 """
 Selectors: which domains a region covers, which edges a boundary covers.
 
-    lp.Group("membranne")                       groups selected by label (naming rules, globs allowed)
-    lp.Group("membranne", "dustcap")            several labels
+    lp.Group("cone")                       groups selected by label (naming rules, globs allowed)
+    lp.Group("cone", "dustcap")            several labels
     lp.Box(r=(0.0, 0.01), z=(-0.02, 0.0))       what lies entirely inside a box; a number is a line
                                                 (lp.Box(r=0): on the axis); 3D: x=, y=, z=
     lp.Near((0.05, -0.003))                     the domain containing the point, or the boundary curve
                                                 nearest to it
-    lp.Interface("membranne", "subacou_front")  edges shared by two selections of domains
+    lp.Interface("cone", "air_front")  edges shared by two selections of domains
     lp.BoundaryOf("surround")                   edges on the boundary of a selection of domains
     a | b,  a & b,  a - b                       union, intersection, difference
 
@@ -90,7 +90,7 @@ class Selector:
 
 class Combinable:
     """Mixin of the model items (regions, boundaries): `|`, `&`, `-` combine what they cover into selectors
-    (lp.Interface(cone | dustcap, "subacou_front"))."""
+    (lp.Interface(cone | dustcap, "air_front"))."""
 
     def __or__(self, other):
         return as_selector(self) | other
@@ -125,7 +125,7 @@ def as_selector(x) -> Selector:
 
 class Group(Selector):
     """The named groups selected by each label (rules of loudpy.geometry.naming; "glue" selects
-    submeca_glue_1 and submeca_glue_2, "glue_*" is a glob). Every label must select a group. For domains, a
+    glue_1 and glue_2, "glue_*" is a glob). Every label must select a group. For domains, a
     label that is the name of a region of the model stands for that region (what it covers)."""
 
     def __init__(self, *labels: str):

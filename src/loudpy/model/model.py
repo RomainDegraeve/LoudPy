@@ -7,10 +7,10 @@ drawing with gmsh's OpenCASCADE kernel.
 
     model = lp.Model("HPNEW-Sketch.geo")
     model.add(
-        lp.Solid("membranne", "Paper", mesh_size=0.5e-3),
+        lp.Solid("cone", "Paper", mesh_size=0.5e-3),
         lp.Solid("surround", "Rubber", damping=lp.Hysteretic()),
-        lp.Clamped("interface_constrained_rz"), lp.Clamped("interface_constrained_r", dofs="r"),
-        lp.Coil("interface_forced"),
+        lp.Clamped("rims", on=lp.Group("surround_rim", "spider_rim")), lp.Clamped("axis", dofs="r"),
+        lp.Coil("coil_drive"),
     )
     mesh = model.mesh("Results/mesh.msh")          # reused when nothing changed
 
@@ -49,7 +49,7 @@ class Model:
     has the same pattern: parameters, print / tree(), check(), copy(), with_parameters(), mesh(), studies.
 
         model = lp.Model("speaker.geo")
-        model.add(lp.Solid("membrane", "Paper"), lp.Clamped("interface_constrained_rz"), lp.Clamped("interface_constrained_r", dofs="r"), lp.Coil("interface_forced"))
+        model.add(lp.Solid("membrane", "Paper"), lp.Clamped("rims", on=lp.Group("surround_rim", "spider_rim")), lp.Clamped("axis", dofs="r"), lp.Coil("coil_drive"))
         model.mesh("mesh.msh")                 # gmsh, P2 triangles; reused while the inputs are unchanged"""
     def __new__(cls, geometry=None, *args, dim: int = 2, **kwargs):
         """lp.Model(cabinet, dim=3, drivers=[…], air=…, parameters=…) builds a 3D model: an lp.Scene."""

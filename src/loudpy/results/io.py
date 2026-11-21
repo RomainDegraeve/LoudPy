@@ -6,6 +6,8 @@ lp.load: read results of any study, any format, one file or many.
     lp.load("Results/Files")                   every .h5 of a folder (e.g. one file per mesh block)
     lp.load("Results/Files/snap_*.h5")         a glob
     lp.load([path1, path2])                    an explicit list (kept in this order)
+    lp.load(path, rename={"old": "new"})       group and item names renamed on read (files written before a
+                                               geometry's groups were renamed); the file is not changed
 
 Several files are merged into one Results of the same kind: their blocks are concatenated,
 sorted by their first coordinate (frequency or time) unless an explicit list is given.
@@ -42,8 +44,42 @@ def _paths(source) -> tuple[list[Path], bool]:
     return [p], False
 
 
-def load(source):
-    """Results from a file, a folder, a glob or a list of files (see the module docstring)."""
+def rename_groups(res, mapping: dict):
+    """Rename, in place, mesh groups and item names (boundaries, regions, physical data of the groups) of results
+    read from a file: {old name: new name}; names not in the mapping are kept. Returns the results."""
+    from dataclasses import replace
+    if not mapping:
+        return res
+    if getattr(res, "is_sweep", False):
+        for r in res.results:
+            rename_groups(r, mapping)
+        return res
+
+    def ren(d):
+        return {mapping.get(k, k): v for k, v in d.items()}
+    res.boundaries = ren(res.boundaries)
+    seen = set()
+    for b in res.blocks:
+        b.boundaries = ren(b.boundaries)
+        for m in b.meshes.values():
+            if id(m) not in seen:
+                seen.add(id(m))
+                m.groups = {mapping.get(k, k): replace(g, name=mapping.get(g.name, g.name)) for k, g in m.groups.items()}
+    if res.model is not None:
+        data = res.model.data
+        data["groups"] = ren(data.get("groups", {}))
+        for key in ("regions", "boundaries"):
+            for item in data.get(key, []) or []:
+                if isinstance(item, dict) and item.get("name") in mapping:
+                    item["name"] = mapping[item["name"]]
+    return res
+
+
+def load(source, rename: dict | None = None):
+    """Results from a file, a folder, a glob or a list of files (see the module docstring); rename: {old: new}
+    group and item names (see rename_groups())."""
+    if rename:
+        return rename_groups(load(source), rename)
     paths, sort = _paths(source)
     if not paths:
         raise FileNotFoundError(f"no result file matches {source!r}")

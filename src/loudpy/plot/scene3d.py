@@ -3,10 +3,11 @@
 ground, on the walls and on a cut plane, iso-SPL lines, wall edges and the deformed drivers at one
 instant and one scale, from several cameras, in one figure.
 
-    cams = {"section": lp.plot.Camera((-1.5, .3, -.1), focus=(.07, .3, -.1), up=(0, 1, 0), parallel=0.4),
-            "front":   lp.plot.Camera((.07, .3, 2.0), focus=(.07, .3, 0), up=(0, 1, 0), parallel=0.35, cut=False)}
-    fig = lp.plot.scene_view(res, f=100, cameras=cams, cut=((-1, 0, 0), (0.07, 0, 0)))
-    v = lp.plot.scene_view3d(res, f=100, camera=cams["section"], cut=…)   one view: v.save("x.html"), v.interactive()
+    fig = res.plot(100)                          six default views (cut through the driver axis, dashed outline)
+    fig = res.plot(100, cameras=["from above", "side, facing the cut"], cut=None)
+    v = res.view(100)                            one view as a View3D: v.save("x.html" | ".glb"), v.interactive()
+    cams = {"section": lp.plot.Camera((-1.5, .3, -.1), focus=(.07, .3, -.1), up=(0, 1, 0), parallel=0.4)}
+    fig = res.plot(100, cameras=cams, cut=((-1, 0, 0), (0.07, 0, 0)))      your own cameras and cut
 
 The colour scale is common to every surface: `range_db` below the maximum SPL farther than
 `near_field` from the drivers (the near field saturates). keep(points) → bool can trim the cut
@@ -23,7 +24,7 @@ from loudpy.plot import style, view3d
 
 @dataclass
 class Camera:
-    """A camera of scene_view: position, focus, view up, perspective view angle [°] or parallel
+    """A camera of a scene view (SceneResults.plot / view, View3D.camera): position, focus, view up, perspective view angle [°] or parallel
     projection (half visible height [m]); cut=False shows the whole scene (no cut plane)."""
     position: tuple
     focus: tuple = (0.0, 0.0, 0.0)
@@ -55,7 +56,7 @@ def default_cameras(bounds, drivers=(), view_angle: float = 25.0) -> dict:
             "rear right (back and side walls)": cam((0.62, 0.38, -0.70))}
     drv = np.asarray(drivers, float).reshape(-1, 3)
     if len(drv):
-        cams["close-up on the driver (cut side)"] = cam((-0.80, 0.32, 0.56), f=drv[0], d=0.55 * dist, angle=30.0)
+        cams["close-up on the driver (cut side)"] = cam((-0.80, 0.32, 0.56), f=drv[0], d=0.38 * dist, angle=30.0)
     return cams
 
 
@@ -81,7 +82,7 @@ def _dashes(points, dash):
     return [(pts[i], pts[i + 1]) for i in range(0, len(pts) - 1, 2)]
 
 
-def outline(res, cut, dash: float = 0.008, angle: float = 35.0):
+def _outline(res, cut, dash: float = 0.008, angle: float = 35.0):
     """The dashed outline of the part of the cabinet removed by the cut plane (normal, origin): the wall
     corners (folds sharper than `angle`) on the side the normal points to, as one pyvista line set."""
     import pyvista as pv
@@ -103,7 +104,7 @@ def outline(res, cut, dash: float = 0.008, angle: float = 35.0):
         n = cells[k]
         ids = cells[k + 1:k + 1 + n]
         k += n + 1
-        parts += [view3d.dashed(a, b, dash) for a, b in _dashes(lines.points[ids], 2 * dash)]
+        parts += [pv.Line(a, b) for a, b in _dashes(lines.points[ids], dash)]
     return pv.merge(parts) if parts else None
 
 
@@ -153,7 +154,7 @@ def scene_surfaces(res, f, cut=None, keep=None, near_field: float = 0.08, groups
 
 
 def _panel(sc, drivers, cam, clim, levels, ground, outline, size) -> view3d.View3D:
-    """The View3D of one camera of scene_view."""
+    """The View3D of one camera of scene_figure."""
     parts = sc["cut"] if (cam.cut and "cut" in sc) else sc["full"]
     v = view3d.View3D(size)
     if ground is not None:
@@ -176,44 +177,73 @@ def _panel(sc, drivers, cam, clim, levels, ground, outline, size) -> view3d.View
     return v
 
 
-def scene_view3d(res, f, camera: Camera | None = None, cut=None, keep=None, range_db: float = 50.0,
-                 contour_db: float | None = 3.0, near_field: float = 0.08, deformation: float = 0.10, outline=None,
-                 ground=None, size=(900, 760), cavity=None) -> view3d.View3D:
+def resolve_cut(res, cut):
+    """The cut plane (normal, origin) of a scene view: "driver" = the vertical plane x = x of the first driver,
+    the half x < that removed (seen from −x); None: no cut; or (normal, origin) as given."""
+    if isinstance(cut, str):
+        if cut != "driver":
+            raise ValueError(f"cut must be 'driver', None or (normal, origin), got {cut!r}")
+        c = _driver_centres(res)
+        x0 = float(c[0, 0]) if len(c) else float(np.mean(scene_bounds(res)[:, 0]))
+        return ((-1.0, 0.0, 0.0), (x0, 0.0, 0.0))
+    return cut
+
+
+def resolve_cameras(res, cameras, cut):
+    """{name: Camera}: the default cameras (None), a subset of them by name (a list), or the given dict; every
+    camera shows the whole scene when there is no cut."""
+    from dataclasses import replace
+    defaults = default_cameras(scene_bounds(res), _driver_centres(res))
+    if cameras is None:
+        cams = defaults
+    elif isinstance(cameras, Camera):
+        cams = {"view": cameras}
+    elif isinstance(cameras, dict):
+        cams = dict(cameras)
+    else:
+        names = [cameras] if isinstance(cameras, str) else list(cameras)
+        unknown = [n for n in names if n not in defaults]
+        if unknown:
+            raise ValueError(f"no default camera {unknown}; default cameras: {list(defaults)}")
+        cams = {n: defaults[n] for n in names}
+    return cams if cut is not None else {k: replace(c, cut=False) for k, c in cams.items()}
+
+
+def scene_view_one(res, f, camera=None, cut="driver", keep=None, range_db: float = 50.0,
+                   contour_db: float | None = 3.0, near_field: float = 0.08, deformation: float = 0.10,
+                   outline="auto", ground=None, size=(900, 760), cavity=None) -> view3d.View3D:
     """
-    One view of scene_view as a View3D, to save (.png .pdf .html .gltf .vtm) or turn (.interactive()):
-        v = lp.plot.scene_view3d(res, 500, cut=((-1, 0, 0), (0.07, 0, 0)))
-        v.save("box_500Hz.html"); v.interactive()
-    camera: an lp.plot.Camera (cut=True on it shows the cut); default: facing the cut plane from the removed
-    side, a little from above and aside (without a cut: the scene from the front, +z, above, aside; y is up).
+    One view of a scene result as a View3D (SceneResults.view): camera = a default camera's name (default:
+    "front left (cut side)", or the front without a cut) or an lp.plot.Camera; other arguments as scene_figure.
     """
+    cut = resolve_cut(res, cut)
+    if camera is None or isinstance(camera, str):
+        name = camera or ("front left (cut side)" if cut is not None else "front right (outer walls)")
+        camera = resolve_cameras(res, [name], cut)[name]
+    if isinstance(outline, str) and outline == "auto":
+        outline = _outline(res, cut) if cut is not None else None
     sc = scene_surfaces(res, f, cut, keep, near_field, cavity=cavity)
     clim = (sc["top"] - range_db, sc["top"])
     levels = np.arange(np.ceil(clim[0] / contour_db) * contour_db, clim[1] + 1e-9, contour_db) if contour_db else None
-    cam = camera if camera is not None else Camera((0, 0, 0), cut=cut is not None)
-    v = _panel(sc, res.driver_surfaces(sc["f"], deformation), cam, clim, levels, ground, outline, size)
-    if camera is None:
-        import pyvista as pv
-        b = np.asarray(pv.MultiBlock(sc["cut"] if cut is not None else sc["full"]).bounds).reshape(3, 2)
-        focus = b.mean(axis=1)
-        up = np.array([0.0, 1.0, 0.0])
-        n = np.asarray(cut[0], float) / np.linalg.norm(cut[0]) if cut is not None else np.array([0.0, 0.0, 1.0])
-        side = np.cross(n, up)
-        d = n + 0.45 * up + 0.45 * side
-        v.camera(focus + 3.0 * np.ptp(b, axis=1).max() * d / np.linalg.norm(d), focus, up, view_angle=30, zoom=1.15)
-    return v
+    return _panel(sc, res.driver_surfaces(sc["f"], deformation), camera, clim, levels, ground, outline, size)
 
 
 @style.styled
-def scene_view(res, f, cameras: dict, cut=None, keep=None, range_db: float = 50.0, contour_db: float | None = 3.0,
-               near_field: float = 0.08, deformation: float = 0.10, outline=None, ground=None, size=(900, 760),
-               ncols: int | None = None, title: str | None = None, cavity=None):
+def scene_figure(res, f, cameras=None, cut="driver", keep=None, range_db: float = 50.0,
+                 contour_db: float | None = 3.0, near_field: float = 0.08, deformation: float = 0.10, outline="auto",
+                 ground=None, size=(900, 760), ncols: int | None = None, title: str | None = None, cavity=None):
     """
-    One figure, one panel per camera ({name: Camera}), of the SPL surfaces and deformed drivers of a
-    scene result at the frequency nearest f. cut=(normal, origin): the cut plane (cameras with
-    cut=True show the cut-away scene); outline: a pyvista dataset drawn black on the cut views (e.g.
-    the dashed outline of the removed part, view3d.dashed); ground: a dataset drawn grey under it all;
-    cavity: also the pressure inside the enclosure (see scene_surfaces), on the same scale.
+    One figure, one panel per camera, of the SPL surfaces and deformed drivers of a scene result at the frequency
+    nearest f (SceneResults.plot). cameras: None (the six default cameras), names of default cameras, or
+    {name: lp.plot.Camera}; cut: "driver" (the vertical plane through the first driver's axis), None (the whole
+    scene) or (normal, origin); outline: "auto" (the dashed corners of the removed part), None, or a pyvista
+    dataset; ground: a dataset drawn grey under it all; keep(points) → bool trims the cut plane; cavity: also the
+    pressure inside the enclosure (scene_surfaces), on the same scale.
     """
+    cut = resolve_cut(res, cut)
+    cameras = resolve_cameras(res, cameras, cut)
+    if isinstance(outline, str) and outline == "auto":
+        outline = _outline(res, cut) if cut is not None else None
     sc = scene_surfaces(res, f, cut, keep, near_field, cavity=cavity)
     clim = (sc["top"] - range_db, sc["top"])
     levels = np.arange(np.ceil(clim[0] / contour_db) * contour_db, clim[1] + 1e-9, contour_db) if contour_db else None

@@ -16,8 +16,8 @@ import numpy as np
 
 import loudpy as lp
 
-SPEAKER_GEO = "LoudPy_exemples/Geometries/Loudspeaker/HPNEW-Sketch.geo"
-PLATE_GEO = "LoudPy_exemples/Geometries/Plate/clamped_plate.geo"
+SPEAKER_GEO = "tests/data/geometries/Loudspeaker/HPNEW-Sketch.geo"
+PLATE_GEO = "tests/data/geometries/Plate/clamped_plate.geo"
 MATERIALS = "src/loudpy/data/materials.json"
 SPEAKER_PARTS = [("membranne", "Paper"), ("coil", "Copper"), ("surround", "Rubber"),
                  ("spider", "PhenolicCloth"), ("former", "Kapton"), ("glue", "SolidGlue"),
@@ -445,7 +445,7 @@ def assembled_operators(mesh_dir: Path):
     return out
 
 
-DTN_GEO = "LoudPy_exemples/Geometries/Loudspeaker/HPNEW-Sketch_front_rear_dtn.geo"
+DTN_GEO = "tests/data/geometries/Loudspeaker/HPNEW-Sketch_front_rear_dtn.geo"
 
 
 def _dtn_model_system(mesh_dir: Path, f_max=3000.0, n_max=8):

@@ -1,12 +1,12 @@
 """
 Driver: an axisymmetric loudspeaker described by its modes, ready to be placed in a 3D scene.
 
-    solids = lp.Group("membranne", "dustcap", "surround")
+    solids = lp.Group("cone", "dustcap", "surround")
     hp = lp.Driver.from_modes("eigen_fourier.h5", orders=[0, 1, 2, 3], f_max=10000,
                               geometry="HPNEW-Sketch.geo",
-                              rear=lp.Profile(lp.BoundaryOf("subacou_rear"), start=(0.05435, 0.031),
+                              rear=lp.Profile(lp.BoundaryOf("air_rear"), start=(0.05435, 0.031),
                                               end=(0.00633, 0.0052)),
-                              front=lp.Profile(lp.Interface(solids, "subacou_front")))
+                              front=lp.Profile(lp.Interface(solids, "air_front")))
     top = hp.place("top", at=(0.07, 0.58))                  # axis +z through (x, y)
     side = hp.place("side", at=(0.0, 0.2, 0.1), axis=(-1, 0, 0))
 
@@ -35,9 +35,9 @@ class Profile:
     Wet profile of a driver: a chain of curves of its 2D geometry, from `start` (on the baffle) towards the
     axis, selected like a boundary (loudpy.geometry.selectors, evaluated on the curves of the geometry):
 
-        lp.Profile(lp.Interface(solids, "subacou_front"))       the selected curves, which form one chain;
+        lp.Profile(lp.Interface(solids, "air_front"))       the selected curves, which form one chain;
                                                                start: its end farthest from the axis
-        lp.Profile(lp.BoundaryOf("subacou_rear"), start=(0.05435, 0.031), end=(0.00633, 0.0052))
+        lp.Profile(lp.BoundaryOf("air_rear"), start=(0.05435, 0.031), end=(0.00633, 0.0052))
                                                                the shortest way along the selected curves
                                                                from start to end
         lp.Profile([14, 7, 8, 33, 32], start=(0.05435, 0.031))  gmsh curve tags, chained from start
@@ -200,14 +200,23 @@ class Driver:
 
     @classmethod
     def from_modes(cls, path, orders, f_max=None, *, geometry, rear: Profile, front: Profile | None = None,
-                   coil: str = "interface_forced", name: str | None = None) -> "Driver":
+                   coil: str | None = None, name: str | None = None) -> "Driver":
         """A driver from an eigen result file of its axisymmetric model: the modes of the azimuthal orders
-        `orders` (up to f_max), the coil nodes (boundary `coil`) and the wet profiles `rear` / `front` selected
-        on its 2D geometry (a path, a builder or its lp.Model)."""
+        `orders` (up to f_max), the coil nodes (the boundary of the model's lp.Coil item, or the boundary named
+        `coil`) and the wet profiles `rear` / `front` selected on its 2D geometry (a path, a builder or its
+        lp.Model)."""
         from loudpy.physics.modal import DriverModes
         from loudpy.results import load
         modes = DriverModes.from_eigen_h5(path, list(orders), f_max=f_max)
-        tags = load(path).boundary(coil)
+        res = load(path)
+        if coil is None:
+            items = (res.model.get("boundaries") or []) if res.model is not None else []
+            coils = [b["name"] for b in items if b.get("type") == "Coil"]
+            if len(coils) != 1:
+                raise ModelError(f"{path}: {len(coils)} lp.Coil item(s) in its model description; name the coil "
+                                 f"boundary with coil= (boundaries: {list(res.boundaries)})")
+            coil = coils[0]
+        tags = res.boundary(coil)
         tagset = {int(t) for t in tags}
         coil_nodes = np.array([i for i, t in enumerate(modes.node_tags) if int(t) in tagset], dtype=np.int64)
         if not len(coil_nodes):

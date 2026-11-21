@@ -540,11 +540,15 @@ class Field:
         m = self.meta.get("order", 0) if order is None else order
         return revolve(self, m, **kwargs)
 
-    def view3d(self, **kwargs):
-        """A 3D view (lp.plot.View3D) of the field: .show(), .save("x.png" | ".html" | ".gltf" | ".vtm"),
-        .interactive(). See lp.plot.view (cut=, show=, camera= …)."""
-        from loudpy.plot.view3d import view
-        return view(self, **kwargs)
+    def view(self, show: str | None = None, cut=None, camera=None, **kwargs):
+        """
+        A 3D view (lp.plot.View3D) of the field, to save (.png .pdf .html .glb .gltf .vtm) or turn (.interactive()):
+        a 3D field: its domain surface coloured (SPL for a pressure), cut by a plane cut=(normal, origin);
+        a 2D axisymmetric displacement: the structure revolved (sweep= [rad], deformation=) and deformed, |u|.
+        camera: (position, focus, up[, view angle]). Field.plot() draws the same into matplotlib axes.
+        """
+        from loudpy.plot.view3d import field_view
+        return field_view(self, show=show, cut=cut, camera=camera, **kwargs)
 
     # ── export ─────────────────────────────────────────────────────────────
     def _arrays(self) -> dict:

@@ -5,7 +5,24 @@ versions follow [Semantic Versioning](https://semver.org/) (0.x: the API may sti
 
 ## [Unreleased]
 
+### Changed (breaking)
+- The examples folder is `examples/` (was `LoudPy_exemples/`).
+- Readable group names in the example geometries: `cone` (was `submeca_membranne`), `dustcap`, `surround`, `former`,
+  `coil`, `glue_1/2`, `spider`, `air_front` / `air_rear` (`subacou_*`), `wet_front` / `wet_rear`
+  (`interface_acou_meca_*`), `axis`, `surround_rim`, `spider_rim` (`interface_constrained_*`), `coil_drive`
+  (`interface_forced_z_1`), `PML_front_r` / `_z`, `PML_rear_r` / `_z`, `dtn_front` / `dtn_rear`; the plate:
+  `plate`, `rim`, `axis`. Same meshes and results (checked bit for bit). Results stored before:
+  `lp.load(path, rename={old: new})` (the examples' table: `examples/shared/names.py`). The tests use frozen copies
+  of the original geometries (`tests/data/geometries`).
+- One way to plot: `.plot()` on every result object, `.view()` for a 3D View3D. Removed: `lp.plot.scene_view`,
+  `lp.plot.scene_view3d` (now `scene_res.plot(f)` / `scene_res.view(f)`, with six default cameras, the cut through
+  the driver axis and the dashed outline of the removed part by default), `lp.plot.view` and `Field.view3d` (now
+  `Field.view`).
+- `lp.Driver.from_modes(…, coil=None)`: the coil is the model's `lp.Coil` item (from the file's model description),
+  not a boundary named "interface_forced".
+
 ### Added
+- `lp.load(path, rename={old: new})` / `loudpy.results.io.rename_groups`: group and item names renamed on read.
 - `lp.cabinets`: `Box` (parametric: inner sizes, slanted back, walls, braces, ports), `Step` (your CAD file: the
   inside air found and checked, driver holes closed, port bores named), `Port` (with its Helmholtz tuning),
   `Brace`, `volume()`; ready-made scenes `lp.Scene.sealed_box(…, radiating=)` and `lp.Scene.vented_box(…)`

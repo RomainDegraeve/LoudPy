@@ -134,7 +134,7 @@ Plotting
    plot.animate
    plot.View3D
    plot.Camera
-   plot.scene_view
+   plot.default_cameras
 
 .. automodule:: loudpy.plot.view3d
    :members: tet_grid, tri_surface, clip, isolines, edges, dashed, colorbars_for

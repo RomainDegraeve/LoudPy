@@ -24,7 +24,7 @@ A first model: the modes of a driver
 
 The geometry is a gmsh ``.geo`` file of the meridian half-plane (``r ≥ 0``, ``z`` along the
 axis) whose physical groups follow the :doc:`naming convention <guide/conventions>`
-(``submeca_membranne``, ``interface_constrained_rz_1``, ``subacou``…). Regions and boundaries
+(``cone``, ``spider_rim``, ``air_front``…). Regions and boundaries
 pick groups by name:
 
 .. code-block:: python
@@ -33,17 +33,17 @@ pick groups by name:
 
    lp.set_verbosity("info")                        # progress messages (loudpy is silent by default)
 
-   model = lp.Model("LoudPy_exemples/Geometries/Loudspeaker/HPNEW-Sketch.geo")
+   model = lp.Model("examples/Geometries/Loudspeaker/HPNEW-Sketch.geo")
    model.add(
-       lp.Solid("membranne", "Paper", mesh_size=0.0005),
+       lp.Solid("cone", "Paper", mesh_size=0.0005),
        lp.Solid("coil", "Copper"),
        lp.Solid("surround", "Rubber"),
        lp.Solid("spider", "PhenolicCloth"),
        lp.Solid("former", "Kapton"),
        lp.Solid("glue", "SolidGlue"),
        lp.Solid("dustcap", "Polypropylene"),
-       lp.Clamped("interface_constrained_rz"), lp.Clamped("interface_constrained_r", dofs="r"),
-       lp.Coil("interface_forced"),
+       lp.Clamped("rims", on=lp.Group("surround_rim", "spider_rim")), lp.Clamped("axis", dofs="r"),
+       lp.Coil("coil_drive"),
    )
    model.mesh("Results/Files/mesh.msh")            # reused while the inputs are unchanged
 
