@@ -70,7 +70,7 @@ def animate(source, path, *, name: str = "u", deformed: bool = True, scale: floa
         for fr in frames:
             ax.clear()
             if vec:
-                mag = fr._scalar(np.linalg.norm(np.real(fr.values), axis=1), fr.quantity.part("abs"))
+                mag = fr.with_values(np.linalg.norm(np.real(fr.values), axis=1), fr.quantity.part("abs"))
                 draw(mag, ax=ax, deformed=fr if deformed else None, factor=factor, vmin=0, vmax=peak,
                      colorbar=cbar is None, **kwargs)
             else:

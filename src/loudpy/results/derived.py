@@ -135,7 +135,7 @@ def von_mises(stress_field):
         vm = np.sqrt(np.maximum(0.5 * (qa + qb) + np.sqrt((0.5 * (qa - qb)) ** 2 + bab ** 2), 0.0))
     else:
         vm = np.sqrt(np.maximum(_vm2(s), 0.0))
-    return stress_field._scalar(vm, "von_mises")
+    return stress_field.with_values(vm, "von_mises")
 
 
 def particle_velocity(field, groups: dict):

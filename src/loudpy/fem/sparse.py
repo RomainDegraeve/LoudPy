@@ -1,13 +1,13 @@
 """Sparse assembly: COO element blocks → CSR with a precomputed scatter map (pattern built once)."""
 import numpy as np
 from scipy.sparse import csr_matrix, coo_matrix
-from loudpy.fem.sparse_kernels import _build_mapping, _sum_duplicates
+from loudpy.fem.sparse_kernels import build_mapping, sum_duplicates_coo
 
 def _build_csr_mapping(I, J, V_size, shape):
     """Build CSR sparsity pattern + scatter mapping for COO→CSR accumulation."""
     dummy = coo_matrix((np.ones(V_size, np.int8), (I, J)), shape=shape).tocsr()
     mapping = np.empty(V_size, dtype=np.int32)
-    _build_mapping(I, J, dummy.indptr, dummy.indices, mapping)
+    build_mapping(I, J, dummy.indptr, dummy.indices, mapping)
     return dummy.indptr, dummy.indices, dummy.nnz, mapping
 
 
@@ -16,15 +16,15 @@ def _accumulate_csr(V, mapping, indptr, indices, nnz, shape):
     is_complex = np.iscomplexobj(V)
     data = np.zeros(nnz, dtype=V.dtype)
     if is_complex:
-        _sum_duplicates(V.real, mapping, data.real)
-        _sum_duplicates(V.imag, mapping, data.imag)
+        sum_duplicates_coo(V.real, mapping, data.real)
+        sum_duplicates_coo(V.imag, mapping, data.imag)
     else:
-        _sum_duplicates(V, mapping, data)
+        sum_duplicates_coo(V, mapping, data)
     return csr_matrix((data, indices, indptr), shape=shape)
 
 
 
-def _local_coords(node_tags, node_coords, flat_tags, n_e, n_pts, dim=None):
+def local_coords(node_tags, node_coords, flat_tags, n_e, n_pts, dim=None):
     """Map global tags → local coordinates, reshape to (n_e, n_pts, dim)."""
     tags = np.asarray(node_tags)
     coords = np.asarray(node_coords)
@@ -36,7 +36,7 @@ def _local_coords(node_tags, node_coords, flat_tags, n_e, n_pts, dim=None):
     return np.ascontiguousarray(ec)
 
 
-class _SparseAssemblerBase:
+class SparseAssemblerBase:
     """
     Base class providing CSR pattern/mapping construction utilities
     for any global FE matrix assembled from element COO triplets.

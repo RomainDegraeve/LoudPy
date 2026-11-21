@@ -57,7 +57,7 @@ class ShellStructure:
         from loudpy.model.damping import Hysteretic, Rayleigh, Undamped
         from loudpy.model.materials import Material, materials
         self.nodes = np.asarray(nodes, float)
-        self.cells = fe._cell_sets(cells)
+        self.cells = fe.cell_sets(cells)
         mat = material if isinstance(material, Material) else materials[material]
         if mat.kind != "solid":
             raise ModelError(f"shell material {mat.name!r} is a {mat.kind}, not a solid")

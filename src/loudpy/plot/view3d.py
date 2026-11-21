@@ -209,8 +209,8 @@ def field3d(f, show=None, ax=None, cmap=None, vmin=None, vmax=None, title=None, 
     A 3D Field: its domain surface coloured (SPL for a pressure), optionally cut by a plane
     cut=(normal, origin) to show the inside. camera: (position, focus, up[, view angle]).
     """
-    from loudpy.plot.fields import _scalar
-    vals, q, cm, symmetric = _scalar(f, show)
+    from loudpy.plot.fields import scalar_values
+    vals, q, cm, symmetric = scalar_values(f, show)
     if symmetric and vmin is None and vmax is None:
         vmax = float(np.nanmax(np.abs(vals))) or 1.0
         vmin = -vmax
@@ -225,5 +225,5 @@ def field3d(f, show=None, ax=None, cmap=None, vmin=None, vmax=None, title=None, 
           **kwargs)
     if camera is not None:
         v.camera(*camera)
-    from loudpy.plot.fields import _title
-    return v.show(ax, title=_title(f) if title is None else title)
+    from loudpy.plot.fields import field_title
+    return v.show(ax, title=field_title(f) if title is None else title)

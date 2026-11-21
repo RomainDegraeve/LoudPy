@@ -35,7 +35,7 @@ from math import factorial
 
 import numpy as np
 from loudpy.errors import MeshError
-from loudpy.fem.kernels import _boundary_load_kernel, quadrature_points, tabulate
+from loudpy.fem.kernels import boundary_load_kernel, quadrature_points, tabulate
 from loudpy.fem.quadrature import quadrature
 from loudpy.fem.reference import element_for_cells
 
@@ -124,7 +124,7 @@ def dtn_boundary_vectors(edges: np.ndarray, node_tags: np.ndarray,
     B = np.zeros((len(orders), n_dof))
     be = np.empty((len(ec), n_p))
     for j, n in enumerate(orders):                    # b_n,i = ∮ P_n(cos θ) N_i 2πr ds
-        _boundary_load_kernel(ec, N, dN, w, np.ascontiguousarray(P[n]), True, be)
+        boundary_load_kernel(ec, N, dN, w, np.ascontiguousarray(P[n]), True, be)
         np.add.at(B[j], loc, be)
     return B, R
 

@@ -58,7 +58,7 @@ def _coord_label(dim, value) -> str:
     return f"${q.symbol}$ = {v}{unit}" if q.symbol else f"{v}{unit}"
 
 
-def _x_axis(ax, dim, x, logx):
+def x_axis(ax, dim, x, logx):
     if logx is None:
         logx = dim == "f" and np.all(x > 0) and x.max() / max(x.min(), 1e-30) > 8
     if logx and dim == "f":
@@ -100,7 +100,7 @@ def line(d, ax=None, label=None, logx=None, logy=None, title=None, legend=None, 
             ax.plot(x, s.values[:, j], label=lab, **kwargs)
     else:
         raise ValueError("line() takes 1D or 2D data")
-    _x_axis(ax, dims[0], x, logx)
+    x_axis(ax, dims[0], x, logx)
     if logy if logy is not None else _auto_logy(s):
         ax.set_yscale("log")
     ax.set_ylabel(s.quantity.axis_label())
@@ -140,7 +140,7 @@ def map(d, ax=None, levels=None, vmin=None, vmax=None, cmap=None, logx=None, col
     if contours is not None:
         cl = ax.contour(x, y, Z, levels=contours, colors="k", linewidths=0.6, linestyles="solid")
         ax.clabel(cl, fmt="%g dB" if s.quantity.unit.startswith("dB") else "%g", fontsize=6.5)
-    _x_axis(ax, dims[0], x, logx)
+    x_axis(ax, dims[0], x, logx)
     ax.set_ylabel(quantity(dims[1]).axis_label())
     ax.grid(False, which="both")
     if colorbar:

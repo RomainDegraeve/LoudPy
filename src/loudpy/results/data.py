@@ -37,12 +37,12 @@ def spl(p, rms: bool = True) -> np.ndarray:
     return 20.0 * np.log10(np.maximum(a, 1e-300) / P_REF)
 
 
-def _mat_name(s: str) -> str:
+def mat_name(s: str) -> str:
     s = re.sub(r"\W+", "_", s).strip("_") or "x"
     return s if s[0].isalpha() else "x_" + s
 
 
-def _write_atomic(path: Path, write):
+def write_atomic(path: Path, write):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.stem + ".tmp" + path.suffix)
@@ -355,22 +355,22 @@ class Data:
         def write(tmp):
             np.savetxt(tmp, np.column_stack([x, vals]), delimiter=",", fmt="%.10g",
                        header=head + "\n" + ",".join(names), comments="# ")
-        return _write_atomic(path, write)
+        return write_atomic(path, write)
 
     def to_mat(self, path):
         """MATLAB / Octave .mat file: the values (complex kept), one variable per coordinate, the units."""
         from scipy.io import savemat
-        d = {_mat_name(self.quantity.name): self.values}
+        d = {mat_name(self.quantity.name): self.values}
         for k, c in self.coords.items():
-            d[_mat_name(k)] = c if c.dtype.kind in "fiuc" else c.astype(str)
+            d[mat_name(k)] = c if c.dtype.kind in "fiuc" else c.astype(str)
         d["info"] = self._header() | {"dims": ",".join(self.dims)}
-        return _write_atomic(path, lambda tmp: savemat(tmp, d))
+        return write_atomic(path, lambda tmp: savemat(tmp, d))
 
     def to_npz(self, path):
         """NumPy .npz: values, one array per coordinate, header (JSON)."""
         arrays = {"values": self.values, **{f"coord_{k}": c for k, c in self.coords.items()}}
         arrays["header"] = np.array(json.dumps(self._header() | {"dims": list(self.dims)}))
-        return _write_atomic(path, lambda tmp: np.savez(tmp, **arrays))
+        return write_atomic(path, lambda tmp: np.savez(tmp, **arrays))
 
     def export(self, path):
         """Write by extension: .csv / .txt (text table), .mat (MATLAB), .npz (NumPy)."""
@@ -428,7 +428,9 @@ class Field:
     def is_vector(self) -> bool:
         return self.values.ndim > 1
 
-    def _scalar(self, values, quantity, **meta) -> "Field":
+    def with_values(self, values, quantity, **meta) -> "Field":
+        """The same mesh, coordinate and metadata with other nodal values and quantity (a derived scalar or
+        component; meta updates the metadata)."""
         return Field(self.name, self.mesh, values, self.coordinate, self.coord, self.extra, quantity,
                      {**self.meta, **meta})
 
@@ -440,34 +442,34 @@ class Field:
         names = list(self.meta.get("components") or ("r", "z", "theta"))
         if c not in names or names.index(c) >= self.values.shape[1]:
             raise ValueError(f"{self.name} has no {c!r} component (components: {names[:self.values.shape[1]]})")
-        return self._scalar(self.values[:, names.index(c)], f"{self.name}_{c}")
+        return self.with_values(self.values[:, names.index(c)], f"{self.name}_{c}")
 
     def magnitude(self) -> "Field":
         """Modulus per node (Euclidean norm of the component moduli for a vector field)."""
         v = np.abs(self.values)
-        return self._scalar(v if v.ndim == 1 else np.linalg.norm(v, axis=1), self.quantity.part("abs"))
+        return self.with_values(v if v.ndim == 1 else np.linalg.norm(v, axis=1), self.quantity.part("abs"))
 
     def spl(self, rms: bool = True) -> "Field":
         """Sound pressure level [dB re 20 µPa] of a pressure field."""
-        return self._scalar(spl(self.values, rms), "spl")
+        return self.with_values(spl(self.values, rms), "spl")
 
     @property
     def real(self) -> "Field":
-        return self._scalar(np.real(self.values), self.quantity.part("real"))
+        return self.with_values(np.real(self.values), self.quantity.part("real"))
 
     @property
     def imag(self) -> "Field":
-        return self._scalar(np.imag(self.values), self.quantity.part("imag"))
+        return self.with_values(np.imag(self.values), self.quantity.part("imag"))
 
     def phase(self, deg: bool = False) -> "Field":
         v = self.values if not self.is_vector else self.values[np.arange(len(self.values)),
                                                                 np.argmax(np.abs(self.values), axis=1)]
         ph = np.angle(v)
-        return self._scalar(np.rad2deg(ph) if deg else ph, self.quantity.part("phase_deg" if deg else "phase"))
+        return self.with_values(np.rad2deg(ph) if deg else ph, self.quantity.part("phase_deg" if deg else "phase"))
 
     def at_phase(self, phi: float) -> "Field":
         """Instantaneous real field Re(value · e^{iφ}) of a harmonic amplitude (φ [rad])."""
-        return self._scalar(np.real(self.values * np.exp(1j * phi)), self.quantity.part("real"), phase=phi)
+        return self.with_values(np.real(self.values * np.exp(1j * phi)), self.quantity.part("real"), phase=phi)
 
     # ── where ──────────────────────────────────────────────────────────────
     def restrict(self, region) -> "Field":
@@ -569,21 +571,21 @@ class Field:
             from loudpy.plot.html import html
             return html(self, path)
         if suffix in (".vtu", ".vtk"):
-            return _write_atomic(path, lambda tmp: self.to_pyvista().cast_to_unstructured_grid().save(tmp))
+            return write_atomic(path, lambda tmp: self.to_pyvista().cast_to_unstructured_grid().save(tmp))
         cols = self._arrays()
         if suffix in (".csv", ".txt"):
             head = "\n".join(f"{k}: {v}" for k, v in self._header().items())
-            return _write_atomic(path, lambda tmp: np.savetxt(
+            return write_atomic(path, lambda tmp: np.savetxt(
                 tmp, np.column_stack(list(cols.values())), delimiter=",", fmt="%.10g",
                 header=head + "\n" + ",".join(cols), comments="# "))
         tri = self.mesh.triangles(refine=True) if self.mesh.dim == 2 else np.zeros((0, 3), int)
         if suffix == ".mat":
             from scipy.io import savemat
-            d = {_mat_name(k): v for k, v in cols.items()}
+            d = {mat_name(k): v for k, v in cols.items()}
             d.update(values=self.values, triangles=tri + 1, node_tags=self.mesh.node_tags, info=self._header())
-            return _write_atomic(path, lambda tmp: savemat(tmp, d))
+            return write_atomic(path, lambda tmp: savemat(tmp, d))
         if suffix == ".npz":
-            return _write_atomic(path, lambda tmp: np.savez(tmp, values=self.values, coords=self.mesh.coords,
+            return write_atomic(path, lambda tmp: np.savez(tmp, values=self.values, coords=self.mesh.coords,
                                                             triangles=tri, node_tags=self.mesh.node_tags,
                                                             header=np.array(json.dumps(self._header()))))
         raise ValueError(f"unknown export format {suffix!r}: use .vtu, .html, .csv, .mat or .npz")

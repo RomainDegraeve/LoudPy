@@ -17,7 +17,7 @@ from pathlib import Path
 
 import numpy as np
 
-from loudpy.geometry.frame import as_frame, _is_single
+from loudpy.geometry.frame import as_frame, is_single
 from loudpy.geometry.gmsh_session import gmsh_module as _gmsh
 from loudpy.errors import MeshError
 
@@ -195,7 +195,7 @@ def mesh_cavity(msh_path, cavity_volume, center, r_c, z_b, h_near, h_far, d_near
     gmsh = _gmsh()
     occ = gmsh.model.occ
     occ.synchronize()
-    single = _is_single(center)
+    single = is_single(center)
     frames = [center] if single else list(center)
     bnd = [t for d, t in gmsh.model.getBoundary([(3, cavity_volume)], oriented=False)]
     owner = classify_driver_faces(bnd, frames, r_c, z_b)
@@ -319,7 +319,7 @@ def mesh_exterior(msh_path, volume, dtn: HalfSpaceDtN, center, r_f, z_front, h_n
     """
     gmsh = _gmsh()
     gmsh.model.occ.synchronize()
-    single = _is_single(center)
+    single = is_single(center)
     frames = [center] if single else list(center)
     fronts = ["interface_front"] if single else [f"interface_front_{j}" for j in range(len(frames))]
     groups = {"dtn": [], "ground": [], **{nm: [] for nm in fronts}, "walls": []}

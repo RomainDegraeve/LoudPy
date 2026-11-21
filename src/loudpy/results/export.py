@@ -22,10 +22,10 @@ from pathlib import Path
 
 import numpy as np
 
-from loudpy.results.data import _mat_name, _write_atomic
+from loudpy.results.data import mat_name, write_atomic
 
 
-def _block_arrays(res, b, fields):
+def block_arrays(res, b, fields):
     out = {res.coordinate: np.asarray(b.values)}
     for name, arr in b.fields.items():
         if fields is not None and name not in fields:
@@ -36,7 +36,7 @@ def _block_arrays(res, b, fields):
         out[f"{name}_mesh"] = {"coords": mesh.coords, "triangles": tri, "node_tags": np.asarray(mesh.node_tags)}
     for k, v in b.extra.items():
         if np.ndim(v) >= 1:
-            out[_mat_name(k)] = np.asarray(v)
+            out[mat_name(k)] = np.asarray(v)
     return out
 
 
@@ -71,7 +71,7 @@ def export_series(res, path, fields=None):
     lines = ['<?xml version="1.0"?>', '<VTKFile type="Collection" version="0.1">', "  <Collection>"]
     lines += [f'    <DataSet timestep="{t:.10g}" part="{p}" file={quoteattr(f)}/>' for t, p, f in entries]
     lines += ["  </Collection>", "</VTKFile>", ""]
-    return _write_atomic(path, lambda tmp: Path(tmp).write_text("\n".join(lines)))
+    return write_atomic(path, lambda tmp: Path(tmp).write_text("\n".join(lines)))
 
 
 def export_results(res, path, fields=None):
@@ -81,12 +81,12 @@ def export_results(res, path, fields=None):
         return export_series(res, path, fields)
     info = {"kind": res.kind, "study": str(res.meta.get("study", "")), "source": str(res.source or ""),
             "blocks": ",".join(b.label or str(i) for i, b in enumerate(res.blocks))}
-    blocks = [_block_arrays(res, b, fields) for b in res.blocks]
+    blocks = [block_arrays(res, b, fields) for b in res.blocks]
     if suffix == ".mat":
         from scipy.io import savemat
         d = {f"block{i + 1}": blk for i, blk in enumerate(blocks)}
         d["info"] = info
-        return _write_atomic(path, lambda tmp: savemat(tmp, d, do_compression=True))
+        return write_atomic(path, lambda tmp: savemat(tmp, d, do_compression=True))
     if suffix == ".npz":
         flat = {"info": np.array(json.dumps(info))}
         for i, blk in enumerate(blocks):
@@ -96,5 +96,5 @@ def export_results(res, path, fields=None):
                         flat[f"block{i}/{k}/{kk}"] = vv
                 else:
                     flat[f"block{i}/{k}"] = v
-        return _write_atomic(path, lambda tmp: np.savez_compressed(tmp, **flat))
+        return write_atomic(path, lambda tmp: np.savez_compressed(tmp, **flat))
     raise ValueError(f"unknown export format {suffix!r}: use .mat, .npz or .pvd (single quantities: Data.export)")

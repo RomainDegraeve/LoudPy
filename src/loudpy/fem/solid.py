@@ -21,7 +21,7 @@ from __future__ import annotations
 import numpy as np
 from numba import njit, prange
 
-from loudpy.fem.kernels import TWO_PI, _det_inv, _gradients, _jacobian, _radius
+from loudpy.fem.kernels import TWO_PI, det_inv, physical_gradients, cell_jacobian, point_radius
 
 __all__ = ["axisymmetric_kernel", "fourier_kernel", "total_lagrangian_kernel", "material_matrix_D",
            "material_matrix_D6"]
@@ -64,10 +64,10 @@ def axisymmetric_kernel(ec, N, dN, w, D, out):
         B = np.zeros((4, m))
         Ke = np.zeros((m, m))
         for q in range(n_q):
-            _jacobian(ec[e], dN[q], J)
-            det = _det_inv(J, Ji)
-            _gradients(dN[q], J, Ji, det, G)
-            r = _radius(ec[e], N[q])
+            cell_jacobian(ec[e], dN[q], J)
+            det = det_inv(J, Ji)
+            physical_gradients(dN[q], J, Ji, det, G)
+            r = point_radius(ec[e], N[q])
             inv_r = 1.0 / r
             for a in range(n):
                 B[0, 2 * a] = G[a, 0]
@@ -93,10 +93,10 @@ def fourier_kernel(ec, N, dN, w, D6, m, out):
         B = np.zeros((6, k))
         Ke = np.zeros((k, k))
         for q in range(n_q):
-            _jacobian(ec[e], dN[q], J)
-            det = _det_inv(J, Ji)
-            _gradients(dN[q], J, Ji, det, G)
-            r = _radius(ec[e], N[q])
+            cell_jacobian(ec[e], dN[q], J)
+            det = det_inv(J, Ji)
+            physical_gradients(dN[q], J, Ji, det, G)
+            r = point_radius(ec[e], N[q])
             ir = 1.0 / r
             for a in range(n):
                 cr, cz, ct = 3 * a, 3 * a + 1, 3 * a + 2
@@ -133,9 +133,9 @@ def total_lagrangian_kernel(ec, ue, N, dN, w, D, rho, alpha, beta, K_out, M_out,
         E = np.empty(4)
         u = ue[e]
         for q in range(n_q):
-            _jacobian(ec[e], dN[q], J)
-            det = _det_inv(J, Ji)
-            _gradients(dN[q], J, Ji, det, G)
+            cell_jacobian(ec[e], dN[q], J)
+            det = det_inv(J, Ji)
+            physical_gradients(dN[q], J, Ji, det, G)
             r = 0.0
             u_r = 0.0
             du_dr = 0.0

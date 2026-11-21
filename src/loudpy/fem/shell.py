@@ -104,7 +104,7 @@ def _per_cell(v, n_e, name):
 
 # ───────────────────────────────────────────────────────────────── B matrices in the local frame
 # local DOF order per node: u v w θ1 θ2 θ3 (index 6a + i)
-def _jacobian(dN, xl):
+def cell_jacobian(dN, xl):
     """J (n_e, 2, 2) = ∂(x, y)/∂(ξ, η) at one point (dN (n, 2), xl (n_e, n, 2)), its inverse and det."""
     J = np.einsum("na,enb->eab", dN, xl)
     det = J[:, 0, 0] * J[:, 1, 1] - J[:, 0, 1] * J[:, 1, 0]
@@ -156,7 +156,7 @@ def _shear_cart(N, g, n):
 def _covariant_shear(cell, pt, xl):
     """Covariant shear rows (e_ξz, e_ηz) (n_e, 2, 6n) at a reference point: J · B_s (exact, no tying)."""
     N, dN = _shape(cell, pt)
-    J, inv, _ = _jacobian(dN[0], xl)
+    J, inv, _ = cell_jacobian(dN[0], xl)
     Bs = _shear_cart(N[0], _cart(dN[0], inv), xl.shape[1])
     return np.einsum("eab,ebk->eak", J, Bs)
 
@@ -220,7 +220,7 @@ def element_matrices(nodes, cells, E, nu, rho, thickness, shear_factor=SHEAR_FAC
     pts, wts = _QUAD_GAUSS if cell == "quad4" else _TRI3
     for pt, w in zip(pts, wts):
         N, dN = _shape(cell, pt)
-        J, inv, det = _jacobian(dN[0], xl)
+        J, inv, det = cell_jacobian(dN[0], xl)
         if np.any(det <= 0):
             raise MeshError(f"{int(np.sum(det <= 0))} inverted shell cells")
         g = _cart(dN[0], inv)
@@ -252,7 +252,7 @@ def element_matrices(nodes, cells, E, nu, rho, thickness, shear_factor=SHEAR_FAC
     return K, M
 
 
-def _cell_sets(cells):
+def cell_sets(cells):
     if isinstance(cells, dict):
         return {k: np.asarray(v, np.int64) for k, v in cells.items() if len(v)}
     cells = np.asarray(cells, np.int64)
@@ -272,7 +272,7 @@ def shell_matrices(nodes, cells, E, nu, rho, thickness, shear_factor=SHEAR_FACTO
     nodes = np.asarray(nodes, float)
     n = len(nodes)
     rows, cols, kv, mv = [], [], [], []
-    for key, c in _cell_sets(cells).items():
+    for key, c in cell_sets(cells).items():
         Ke, Me = element_matrices(nodes, c, _value(E, key), _value(nu, key), _value(rho, key),
                                   _value(thickness, key), shear_factor, drill)
         dofs = (NDOF * c[:, :, None] + np.arange(NDOF)).reshape(len(c), -1)
@@ -320,7 +320,7 @@ def feature_nodes(nodes, cells, angle=30.0):
     at more than `angle` degrees (panel edges of a box), as a sorted array.
     """
     edges, normals = [], []
-    for c in _cell_sets(cells).values():
+    for c in cell_sets(cells).values():
         k = c.shape[1]
         nrm, _ = cell_normals(nodes, c)
         for a in range(k):

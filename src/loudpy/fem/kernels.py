@@ -23,9 +23,9 @@ from __future__ import annotations
 import numpy as np
 from numba import njit, prange
 
-from loudpy.fem.indexing import _fill_ij_square
-from loudpy.fem.sparse import _SparseAssemblerBase
-from loudpy.fem.sparse_kernels import _scatter_add
+from loudpy.fem.indexing import fill_ij_square
+from loudpy.fem.sparse import SparseAssemblerBase
+from loudpy.fem.sparse_kernels import scatter_add
 
 __all__ = ["Assembler", "mass", "laplace", "load", "boundary_mass", "boundary_load", "quadrature_points",
            "coefficient", "tabulate", "expand_components", "diffusion", "boundary_normal_mass"]
@@ -36,7 +36,7 @@ TWO_PI = 2.0 * np.pi
 # ------------------------------------------------------------------------------------ geometry (njit)
 
 @njit(cache=True, fastmath=False, inline="always")
-def _jacobian(ec_e, dNq, J):
+def cell_jacobian(ec_e, dNq, J):
     """J[i, j] = Σ_a x_a[i] ∂N_a/∂ξ_j, by np.dot (the summation order of the former kernels: on flat
     cells det J cancels, and a plain loop differs from them by up to 2e-11 relative)."""
     gdim = ec_e.shape[1]
@@ -47,7 +47,7 @@ def _jacobian(ec_e, dNq, J):
 
 
 @njit(cache=True, fastmath=False, inline="always")
-def _det_inv(J, Ji):
+def det_inv(J, Ji):
     """Determinant and inverse of a square 1×1, 2×2 or 3×3 Jacobian."""
     d = J.shape[0]
     if d == 1:
@@ -77,7 +77,7 @@ def _det_inv(J, Ji):
 
 
 @njit(cache=True, fastmath=False, inline="always")
-def _gradients(dNq, J, Ji, det, G):
+def physical_gradients(dNq, J, Ji, det, G):
     """Physical gradients G[a, i] = ∂N_a/∂x_i = Σ_j ∂N_a/∂ξ_j (J⁻¹)[j, i]. In 2D the cofactor form
     (J₁₁ ∂_ξ N − J₁₀ ∂_η N) / det of the former kernels (same rounding on flat, ill-conditioned cells)."""
     n, d = G.shape
@@ -112,7 +112,7 @@ def _surface_measure(J):
 
 
 @njit(cache=True, fastmath=False, inline="always")
-def _radius(ec_e, Nq):
+def point_radius(ec_e, Nq):
     r = 0.0
     for a in range(ec_e.shape[0]):
         r += Nq[a] * ec_e[a, 0]
@@ -122,7 +122,7 @@ def _radius(ec_e, Nq):
 # -------------------------------------------------------------------------------------- kernels (njit)
 
 @njit(parallel=True, cache=True, fastmath=False)
-def _mass_kernel(ec, N, dN, w, coef, axisym, out):
+def mass_kernel(ec, N, dN, w, coef, axisym, out):
     n_e, n, gdim = ec.shape
     n_q = N.shape[0]
     for e in prange(n_e):
@@ -130,10 +130,10 @@ def _mass_kernel(ec, N, dN, w, coef, axisym, out):
         Ji = np.empty((gdim, gdim))
         Me = np.zeros((n, n), dtype=out.dtype)
         for q in range(n_q):
-            _jacobian(ec[e], dN[q], J)
-            dx = w[q] * abs(_det_inv(J, Ji))
+            cell_jacobian(ec[e], dN[q], J)
+            dx = w[q] * abs(det_inv(J, Ji))
             if axisym:
-                dx *= TWO_PI * _radius(ec[e], N[q])
+                dx *= TWO_PI * point_radius(ec[e], N[q])
             c = coef[e, q] * dx
             for a in range(n):
                 ca = c * N[q, a]
@@ -143,7 +143,7 @@ def _mass_kernel(ec, N, dN, w, coef, axisym, out):
 
 
 @njit(parallel=True, cache=True, fastmath=False)
-def _laplace_kernel(ec, N, dN, w, coef, axisym, out):
+def laplace_kernel(ec, N, dN, w, coef, axisym, out):
     n_e, n, gdim = ec.shape
     n_q = N.shape[0]
     for e in prange(n_e):
@@ -152,12 +152,12 @@ def _laplace_kernel(ec, N, dN, w, coef, axisym, out):
         G = np.empty((n, gdim))
         Ke = np.zeros((n, n), dtype=out.dtype)
         for q in range(n_q):
-            _jacobian(ec[e], dN[q], J)
-            det = _det_inv(J, Ji)
+            cell_jacobian(ec[e], dN[q], J)
+            det = det_inv(J, Ji)
             dx = w[q] * abs(det)
             if axisym:
-                dx *= TWO_PI * _radius(ec[e], N[q])
-            _gradients(dN[q], J, Ji, det, G)                # ∇N = J⁻ᵀ ∇̂N
+                dx *= TWO_PI * point_radius(ec[e], N[q])
+            physical_gradients(dN[q], J, Ji, det, G)                # ∇N = J⁻ᵀ ∇̂N
             c = coef[e, q] * dx
             for a in range(n):
                 for b in range(n):
@@ -169,7 +169,7 @@ def _laplace_kernel(ec, N, dN, w, coef, axisym, out):
 
 
 @njit(parallel=True, cache=True, fastmath=False)
-def _diffusion_diag_kernel(ec, N, dN, w, coef, axisym, out):
+def diffusion_diag_kernel(ec, N, dN, w, coef, axisym, out):
     """Blocks ∫ Σ_i coef_i ∂_i N_a ∂_i N_b dx, coef (n_e, n_q, gdim): a diagonal (e.g. PML) tensor."""
     n_e, n, gdim = ec.shape
     n_q = N.shape[0]
@@ -179,12 +179,12 @@ def _diffusion_diag_kernel(ec, N, dN, w, coef, axisym, out):
         G = np.empty((n, gdim))
         Ke = np.zeros((n, n), dtype=out.dtype)
         for q in range(n_q):
-            _jacobian(ec[e], dN[q], J)
-            det = _det_inv(J, Ji)
+            cell_jacobian(ec[e], dN[q], J)
+            det = det_inv(J, Ji)
             dx = w[q] * abs(det)
             if axisym:
-                dx *= TWO_PI * _radius(ec[e], N[q])
-            _gradients(dN[q], J, Ji, det, G)                # ∇N = J⁻ᵀ ∇̂N
+                dx *= TWO_PI * point_radius(ec[e], N[q])
+            physical_gradients(dN[q], J, Ji, det, G)                # ∇N = J⁻ᵀ ∇̂N
             for i in range(gdim):
                 c = coef[e, q, i] * dx
                 for a in range(n):
@@ -204,10 +204,10 @@ def _load_kernel(ec, N, dN, w, coef, axisym, out):
         for a in range(n):
             out[e, a] = 0.0
         for q in range(n_q):
-            _jacobian(ec[e], dN[q], J)
-            dx = w[q] * abs(_det_inv(J, Ji))
+            cell_jacobian(ec[e], dN[q], J)
+            dx = w[q] * abs(det_inv(J, Ji))
             if axisym:
-                dx *= TWO_PI * _radius(ec[e], N[q])
+                dx *= TWO_PI * point_radius(ec[e], N[q])
             c = coef[e, q] * dx
             for a in range(n):
                 out[e, a] += c * N[q, a]
@@ -221,10 +221,10 @@ def _boundary_mass_kernel(ec, N, dN, w, coef, axisym, out):
         J = np.empty((gdim, tdim))
         Me = np.zeros((n, n), dtype=out.dtype)
         for q in range(n_q):
-            _jacobian(ec[e], dN[q], J)
+            cell_jacobian(ec[e], dN[q], J)
             dx = w[q] * _surface_measure(J)
             if axisym:
-                dx *= TWO_PI * _radius(ec[e], N[q])
+                dx *= TWO_PI * point_radius(ec[e], N[q])
             c = coef[e, q] * dx
             for a in range(n):
                 ca = c * N[q, a]
@@ -234,7 +234,7 @@ def _boundary_mass_kernel(ec, N, dN, w, coef, axisym, out):
 
 
 @njit(parallel=True, cache=True, fastmath=False)
-def _boundary_load_kernel(ec, N, dN, w, coef, axisym, out):
+def boundary_load_kernel(ec, N, dN, w, coef, axisym, out):
     n_e, n, gdim = ec.shape
     n_q, _, tdim = dN.shape
     for e in prange(n_e):
@@ -242,17 +242,17 @@ def _boundary_load_kernel(ec, N, dN, w, coef, axisym, out):
         for a in range(n):
             out[e, a] = 0.0
         for q in range(n_q):
-            _jacobian(ec[e], dN[q], J)
+            cell_jacobian(ec[e], dN[q], J)
             dx = w[q] * _surface_measure(J)
             if axisym:
-                dx *= TWO_PI * _radius(ec[e], N[q])
+                dx *= TWO_PI * point_radius(ec[e], N[q])
             c = coef[e, q] * dx
             for a in range(n):
                 out[e, a] += c * N[q, a]
 
 
 @njit(parallel=True, cache=True, fastmath=False)
-def _boundary_normal_mass_kernel(ec, N, dN, w, axisym, out):
+def boundary_normal_mass_kernel(ec, N, dN, w, axisym, out):
     """Blocks ∫_Γ N_a N_b n_i (2π r) ds for every component i of the (unnormalised) normal n ds:
     (∂z/∂ξ, −∂r/∂ξ) on lines in 2D (the right of the direction of travel), ∂x/∂ξ × ∂x/∂η on
     triangles in 3D. out (n_e, gdim, n²)."""
@@ -263,7 +263,7 @@ def _boundary_normal_mass_kernel(ec, N, dN, w, axisym, out):
         nds = np.empty(gdim)
         Me = np.zeros((gdim, n, n))
         for q in range(n_q):
-            _jacobian(ec[e], dN[q], J)
+            cell_jacobian(ec[e], dN[q], J)
             if tdim == 1:
                 nds[0] = J[1, 0]
                 nds[1] = -J[0, 0]
@@ -273,7 +273,7 @@ def _boundary_normal_mass_kernel(ec, N, dN, w, axisym, out):
                 nds[2] = J[0, 0] * J[1, 1] - J[1, 0] * J[0, 1]
             common = w[q]
             if axisym:
-                common = TWO_PI * _radius(ec[e], N[q]) * w[q]
+                common = TWO_PI * point_radius(ec[e], N[q]) * w[q]
             for i in range(gdim):
                 c = common * nds[i]
                 for a in range(n):
@@ -351,13 +351,13 @@ def _check_boundary(space):
 def mass(space, rule, coef=1.0, axisymmetric=False) -> np.ndarray:
     """Blocks ∫ coef N_a N_b (2π r) dx, (n_cells, n²) (scalar space: one component)."""
     _check_volume(space)
-    return _blocks(_mass_kernel, space, rule, coef, axisymmetric, True)
+    return _blocks(mass_kernel, space, rule, coef, axisymmetric, True)
 
 
 def laplace(space, rule, coef=1.0, axisymmetric=False) -> np.ndarray:
     """Blocks ∫ coef ∇N_a · ∇N_b (2π r) dx, (n_cells, n²)."""
     _check_volume(space)
-    return _blocks(_laplace_kernel, space, rule, coef, axisymmetric, True)
+    return _blocks(laplace_kernel, space, rule, coef, axisymmetric, True)
 
 
 def diffusion(space, rule, coef, axisymmetric=False) -> np.ndarray:
@@ -372,7 +372,7 @@ def diffusion(space, rule, coef, axisymmetric=False) -> np.ndarray:
         c = np.ascontiguousarray(c)
         out = np.empty((len(ec), n * n), dtype=c.dtype)
         if len(ec):
-            _diffusion_diag_kernel(ec, N, dN, w, c, bool(axisymmetric), out)
+            diffusion_diag_kernel(ec, N, dN, w, c, bool(axisymmetric), out)
         out_all.append(out)
     return np.concatenate(out_all)
 
@@ -399,7 +399,7 @@ def boundary_normal_mass(space, rule, axisymmetric=False) -> np.ndarray:
     for ec in space.cell_coords:
         out = np.empty((len(ec), space.gdim, n * n))
         if len(ec):
-            _boundary_normal_mass_kernel(ec, N, dN, w, bool(axisymmetric), out)
+            boundary_normal_mass_kernel(ec, N, dN, w, bool(axisymmetric), out)
         out_all.append(out)
     return np.concatenate(out_all)
 
@@ -407,10 +407,10 @@ def boundary_normal_mass(space, rule, axisymmetric=False) -> np.ndarray:
 def boundary_load(space, rule, f, axisymmetric=False) -> np.ndarray:
     """Blocks ∫_Γ f N_a (2π r) ds on boundary cells, (n_cells, n)."""
     _check_boundary(space)
-    return _blocks(_boundary_load_kernel, space, rule, f, axisymmetric, False)
+    return _blocks(boundary_load_kernel, space, rule, f, axisymmetric, False)
 
 
-class Assembler(_SparseAssemblerBase):
+class Assembler(SparseAssemblerBase):
     """
     Global assembly over a Space: the CSR pattern of all cells is built once; `matrix(blocks)` sums
     element blocks (n_cells, m²) and `vector(blocks)` element vectors (n_cells, m), m = DOFs per cell, in
@@ -426,7 +426,7 @@ class Assembler(_SparseAssemblerBase):
         I = np.empty(size, dtype=np.int32)
         J = np.empty(size, dtype=np.int32)
         if n_e:
-            _fill_ij_square(self.dofs, I, J, 0)
+            fill_ij_square(self.dofs, I, J, 0)
         self._finalize_pattern(I, J, size, (space.n_dofs, space.n_dofs))
 
     def matrix(self, blocks):
@@ -444,9 +444,9 @@ class Assembler(_SparseAssemblerBase):
         idx = self.dofs.ravel()
         if np.iscomplexobj(b):
             out = np.zeros(self.space.n_dofs, complex)
-            _scatter_add(np.ascontiguousarray(b.real.ravel()), idx, out.real)
-            _scatter_add(np.ascontiguousarray(b.imag.ravel()), idx, out.imag)
+            scatter_add(np.ascontiguousarray(b.real.ravel()), idx, out.real)
+            scatter_add(np.ascontiguousarray(b.imag.ravel()), idx, out.imag)
             return out
         out = np.zeros(self.space.n_dofs)
-        _scatter_add(np.ascontiguousarray(b.ravel(), dtype=float), idx, out)
+        scatter_add(np.ascontiguousarray(b.ravel(), dtype=float), idx, out)
         return out

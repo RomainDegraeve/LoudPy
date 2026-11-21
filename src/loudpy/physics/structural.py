@@ -15,7 +15,7 @@ from scipy.sparse import issparse
 
 from loudpy.fem.assembly import ElementAssembler
 from loudpy.fem.dofs import DirichletElimination
-from loudpy.fem.kernels import _mass_kernel, coefficient, expand_components
+from loudpy.fem.kernels import mass_kernel, coefficient, expand_components
 from loudpy.fem.solid import (axisymmetric_kernel, fourier_kernel, material_matrix_D, material_matrix_D6,
                               total_lagrangian_kernel)
 from loudpy.physics.registry import select
@@ -42,7 +42,7 @@ def _mass_blocks(asm, ec, coef, components):
     N, dN, w = asm.tabulation
     n = N.shape[1]
     Ms = np.empty((len(ec), n * n))
-    _mass_kernel(ec, N, dN, w, coefficient(coef, ec, N), True, Ms)
+    mass_kernel(ec, N, dN, w, coefficient(coef, ec, N), True, Ms)
     return expand_components(Ms, components)
 
 

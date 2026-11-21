@@ -286,10 +286,10 @@ class Results:
         block: one block's dict (default: a list over the blocks; one block → its dict). This is what
         res.export writes (.mat / .npz).
         """
-        from loudpy.results.export import _block_arrays
+        from loudpy.results.export import block_arrays
         if block is not None:
-            return _block_arrays(self, self.blocks[block], fields)
-        out = [_block_arrays(self, b, fields) for b in self.blocks]
+            return block_arrays(self, self.blocks[block], fields)
+        out = [block_arrays(self, b, fields) for b in self.blocks]
         return out[0] if len(out) == 1 else out
 
     # ── files ──────────────────────────────────────────────────────────────
@@ -471,8 +471,8 @@ class ModeResults(Results):
 
     def to_csv(self, path):
         """The mode table as a CSV file."""
-        from loudpy.results.data import _write_atomic
-        return _write_atomic(path, lambda tmp: self.table().to_csv(tmp))
+        from loudpy.results.data import write_atomic
+        return write_atomic(path, lambda tmp: self.table().to_csv(tmp))
 
 
 KINDS = {"frequency": FrequencyResults, "modes": ModeResults, "time": TimeResults}

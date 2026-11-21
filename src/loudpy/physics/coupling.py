@@ -13,16 +13,16 @@ from __future__ import annotations
 
 import numpy as np
 
-from loudpy.fem.batch_coupling import _fsi_local_to_V
-from loudpy.fem.indexing import _fill_ij_rect
+from loudpy.fem.batch_coupling import fsi_local_to_V
+from loudpy.fem.indexing import fill_ij_rect
 from loudpy.fem.assembly import cell_tabulation
-from loudpy.fem.kernels import _boundary_normal_mass_kernel
-from loudpy.fem.sparse import _SparseAssemblerBase, _local_coords
+from loudpy.fem.kernels import boundary_normal_mass_kernel
+from loudpy.fem.sparse import SparseAssemblerBase, local_coords
 from loudpy.physics.registry import select
 from loudpy.errors import StateError
 
 
-class FsiAssembler(_SparseAssemblerBase):
+class FsiAssembler(SparseAssemblerBase):
     PTS_PER_EDGE = 3
     PTS_PER_TRI = 6
 
@@ -56,7 +56,7 @@ class FsiAssembler(_SparseAssemblerBase):
             n_e = edges.shape[0]
             flat_tags = edges.ravel()
 
-            ec = _local_coords(iface.node_tags, iface.node_coords, flat_tags, n_e, n_p, dim=2)
+            ec = local_coords(iface.node_tags, iface.node_coords, flat_tags, n_e, n_p, dim=2)
             if iface.signs is None:
                 raise StateError(f"fluid–structure boundary {iface.name!r} is not oriented (no air next to it?)")
             signs = np.asarray(iface.signs, dtype=np.float64)
@@ -69,7 +69,7 @@ class FsiAssembler(_SparseAssemblerBase):
             u_gdofs[:, 0::2] = u_gidx * 2
             u_gdofs[:, 1::2] = u_gidx * 2 + 1
 
-            _fill_ij_rect(p_gdofs, u_gdofs, I, J, offset * block)
+            fill_ij_rect(p_gdofs, u_gdofs, I, J, offset * block)
             all_ec.append(ec)
             all_signs.append(signs)
             offset += n_e
@@ -83,8 +83,8 @@ class FsiAssembler(_SparseAssemblerBase):
         N, dN, w = cell_tabulation(1, n_p)
         out = np.empty((n_e, 2, n_p * n_p), dtype=np.float64)
         if n_e:
-            _boundary_normal_mass_kernel(self.ec, N, dN, w, True, out)
+            boundary_normal_mass_kernel(self.ec, N, dN, w, True, out)
         out_x, out_y = np.ascontiguousarray(out[:, 0]), np.ascontiguousarray(out[:, 1])
         V = np.empty(n_e * self.block, dtype=np.float64)
-        _fsi_local_to_V(out_x, out_y, self.signs, V)
+        fsi_local_to_V(out_x, out_y, self.signs, V)
         return self._to_csr(V)

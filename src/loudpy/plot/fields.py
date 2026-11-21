@@ -43,7 +43,7 @@ def _outline_segments(mesh, rows_xy):
     return np.vstack(segs) if segs else np.zeros((0, 2, 2))
 
 
-def _title(f) -> str:
+def field_title(f) -> str:
     q = quantity(f.coord)
     head = f"${q.symbol}$ = {f.coordinate:.4g} {q.unit}".strip()
     if "index" in f.meta and f.coord == "f" and "zeta" in f.extra:
@@ -52,7 +52,7 @@ def _title(f) -> str:
     return head
 
 
-def _scalar(f, show):
+def scalar_values(f, show):
     """(values, quantity, cmap, symmetric) of what is shown of a field."""
     if show is None:
         show = "spl" if f.name == "p" and np.iscomplexobj(f.values) else "abs"
@@ -103,7 +103,7 @@ def field(f, show: str | None = None, ax=None, deformed=None, scale: float | Non
         return field3d(f, show=show, ax=ax, cmap=cmap, vmin=vmin, vmax=vmax, title=title, colorbar=colorbar, **kwargs)
     if ax is None:
         _, ax = style.figure("field")
-    vals, q, cm, symmetric = _scalar(f, show)
+    vals, q, cm, symmetric = scalar_values(f, show)
     cmap = cmap or cm
     if q.name == "spl" and vmin is None and range_db is not None:
         top = float(np.nanpercentile(vals, 99.5)) if vmax is None else vmax
@@ -150,7 +150,7 @@ def field(f, show: str | None = None, ax=None, deformed=None, scale: float | Non
         ax.set_ylim(ylim)
     if colorbar:
         ax.figure.colorbar(tp, ax=ax, label=q.axis_label(), pad=0.02, shrink=0.9)
-    ax.set_title(_title(f) if title is None else title)
+    ax.set_title(field_title(f) if title is None else title)
     return ax
 
 
@@ -171,7 +171,7 @@ def boundary(f, tags, scale: float | None = None, ax=None, title=None):
     ax.set_xlabel(style.LABELS["r"])
     ax.set_ylabel(style.LABELS["z"])
     ax.legend()
-    ax.set_title(_title(f) if title is None else title)
+    ax.set_title(field_title(f) if title is None else title)
     return ax
 
 
@@ -198,9 +198,9 @@ def modes(modes, indices=None, n: int | None = None, ncols: int = 4, scale: floa
                              layout="constrained")
     for ax, k in zip(axes.ravel(), idx):
         f = modes.mode(k, name)
-        v, _, cmap, _ = _scalar(f, show)
+        v, _, cmap, _ = scalar_values(f, show)
         vmax = float(np.max(np.abs(v))) or 1.0
-        f_norm = f._scalar(v / vmax, Quantity("shape", "Normalised amplitude"))
+        f_norm = f.with_values(v / vmax, Quantity("shape", "Normalised amplitude"))
         field(f_norm, ax=ax, deformed=f, scale=scale, colorbar=False, cmap=cmap, vmin=0, vmax=1,
               title=f"{f.coordinate:.1f} Hz" + (rf", $\zeta$ = {np.real(f.extra['zeta']):.2g}"
                                                  if "zeta" in f.extra and np.isfinite(np.real(f.extra["zeta"])) else ""))
@@ -235,14 +235,14 @@ def coupled_modes(modes, indices, labels=None, range_db: float = 60.0, scale: fl
         p, u = modes.mode(k, "p"), modes.mode(k, "u")
         L = p.spl().values
         top = float(np.percentile(L, 99.0))
-        rel = p._scalar(L - top, "level")
+        rel = p.with_values(L - top, "level")
         name = labels[j] if labels is not None else f"mode {k}"
         zeta = np.real(p.extra.get("zeta", np.nan))
         head = f"{name}\n{p.coordinate:.0f} Hz" + (rf", $\zeta$ = {zeta:.2g}" if np.isfinite(zeta) else "")
         field(rel, ax=ax, cmap=style.CMAPS["spl"], vmin=-range_db, vmax=0, colorbar=False, outline=False,
               xlim=xlim, ylim=ylim, title=head)
         ax.title.set_fontsize(8)
-        solid = u._scalar(np.full(u.mesh.n_nodes, 0.55), Quantity("solid", "Structure"))
+        solid = u.with_values(np.full(u.mesh.n_nodes, 0.55), Quantity("solid", "Structure"))
         field(solid, ax=ax, deformed=u, scale=scale, colorbar=False, cmap="Greys", vmin=0, vmax=1, xlim=xlim,
               ylim=ylim, title=head)
         ax.title.set_fontsize(8)
@@ -265,7 +265,7 @@ def mode_chart(modes, y: str = "zeta", ax=None, color=None, label=None, **kwargs
     Modes as points: frequency (log axis) against the damping ratio (y="zeta") or the azimuthal
     order (y="order", coloured by ζ); one colour per mode set otherwise. Returns the axes.
     """
-    from loudpy.plot.curves import _x_axis
+    from loudpy.plot.curves import x_axis
     if ax is None:
         _, ax = style.figure("wide")
     if y == "order":
@@ -283,5 +283,5 @@ def mode_chart(modes, y: str = "zeta", ax=None, color=None, label=None, **kwargs
         ax.set_ylabel(quantity("zeta").axis_label())
         if label is not None or len(modes.blocks) > 1:
             ax.legend()
-    _x_axis(ax, "f", modes.frequencies, None)
+    x_axis(ax, "f", modes.frequencies, None)
     return ax

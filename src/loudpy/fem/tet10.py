@@ -14,7 +14,7 @@ from __future__ import annotations
 import numpy as np
 import scipy.sparse as sp
 
-from loudpy.fem.kernels import (_boundary_load_kernel, _laplace_kernel, _mass_kernel, quadrature_points,
+from loudpy.fem.kernels import (boundary_load_kernel, laplace_kernel, mass_kernel, quadrature_points,
                                 tabulate)
 from loudpy.fem.quadrature import QuadratureRule, quadrature
 from loudpy.fem.reference import lagrange
@@ -101,8 +101,8 @@ def assemble_p2(nodes, tets, curved: bool | None = None):
     one = np.ones((len(ec), len(w)))
     Ke = np.empty((len(ec), 100))
     Me = np.empty((len(ec), 100))
-    _laplace_kernel(ec, N, dN, w, one, False, Ke)
-    _mass_kernel(ec, N, dN, w, one, False, Me)
+    laplace_kernel(ec, N, dN, w, one, False, Ke)
+    mass_kernel(ec, N, dN, w, one, False, Me)
     rows = np.repeat(tets, 10, axis=1).ravel()
     cols = np.tile(tets, (1, 10)).ravel()
     n = len(nodes)
@@ -131,7 +131,7 @@ def surface_quadrature(nodes, tri, curved: bool | None = None):
     for q in range(n_q):
         coef = np.zeros((len(ec), n_q))
         coef[:, q] = 1.0
-        _boundary_load_kernel(ec, N, dN, w, coef, False, dx)
+        boundary_load_kernel(ec, N, dN, w, coef, False, dx)
         wq[:, q] = dx.sum(axis=1)                                   # Σ_a N_a = 1
     xq = quadrature_points(ec, N).reshape(-1, 3)
     surf_nodes, loc = np.unique(tri, return_inverse=True)

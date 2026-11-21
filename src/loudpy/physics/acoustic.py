@@ -9,7 +9,7 @@ from __future__ import annotations
 import numpy as np
 
 from loudpy.fem.assembly import ElementAssembler
-from loudpy.fem.kernels import (_diffusion_diag_kernel, _laplace_kernel, _mass_kernel, coefficient,
+from loudpy.fem.kernels import (diffusion_diag_kernel, laplace_kernel, mass_kernel, coefficient,
                                 quadrature_points)
 from loudpy.physics.registry import select
 
@@ -67,13 +67,13 @@ class AcouAssembler(ElementAssembler):
                                                float(getattr(sd, "alpha", 1.0)), int(getattr(sd, "n", 2)),
                                                sd.omega_pml, sd.c)
                 two_pi_rt = 2.0 * np.pi * r_t
-                _diffusion_diag_kernel(ec, N, dN, w, np.ascontiguousarray(
+                diffusion_diag_kernel(ec, N, dN, w, np.ascontiguousarray(
                     np.stack([two_pi_rt * (sz / sr), two_pi_rt * (sr / sz)], axis=-1)), False, He)
-                _mass_kernel(ec, N, dN, w, np.ascontiguousarray(two_pi_rt * sr * sz / (sd.c * sd.c)),
+                mass_kernel(ec, N, dN, w, np.ascontiguousarray(two_pi_rt * sr * sz / (sd.c * sd.c)),
                              False, Qe)
             else:
-                _laplace_kernel(ec, N, dN, w, coefficient(1.0, ec, N).astype(dtype), True, He)
-                _mass_kernel(ec, N, dN, w, coefficient(1.0 / (sd.c * sd.c), ec, N).astype(dtype), True, Qe)
+                laplace_kernel(ec, N, dN, w, coefficient(1.0, ec, N).astype(dtype), True, He)
+                mass_kernel(ec, N, dN, w, coefficient(1.0 / (sd.c * sd.c), ec, N).astype(dtype), True, Qe)
                 rho = sd.rho
 
             Hv[s0:s1] = He.ravel()

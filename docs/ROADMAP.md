@@ -35,7 +35,7 @@ Cost unit: one *session* ≈ one long working block (3–5 h). Status: ✅ done 
 | I | Shells: MITC3/MITC4 Reissner–Mindlin, direct coupling to the 3D air, wall-mode study, elastic-wall enclosure example | 4 | ✅ |
 | J | Plotting: scoped style everywhere, selections in 3D views, interactive HTML viewer, image-comparison tests | 1.5 | ✅ |
 | K | Verification and validation pipeline: manufactured solutions, analytical benchmarks, COMSOL harness, generated verification report | 3 (spread) | ✅ (COMSOL reference numbers later) |
-| L | Code quality and documentation: no private cross-imports, 100 % public docstrings, mypy, theory and verification manuals | 2 | ○ |
+| L | Code quality and documentation: no private cross-imports, 100 % public docstrings, mypy, theory and verification manuals | 2 | ◐ |
 | M | Full re-run of every example (incl. the coupled 2D ones, whose stored results predate the C1 coupling fix and the damping refits), comparison table, version 0.2.0 | 2 + ~6 h compute | ○ |
 
 Gates (each phase is committed and pushed only when its gate passes):
@@ -813,3 +813,17 @@ phase's notes). Phase K adds what turns them into a pipeline:
 | analytical benchmarks | plates (3D elasticity, MITC3 / MITC4), cavity, hemisphere, air, monopole far field, plane-wave intensity, air spring, rigid-wall limit, energy balance, swept volume |
 | COMSOL harness | reader + comparison tested on synthetic exports; reference cases registered, skipped until the exports exist |
 | generated verification report | `docs/guide/verification_report.rst`, 66 quantities / 38 tests, built by the docs |
+
+## Phase L — in progress
+
+- **L1 (done)**: no private cross-imports. 26 private names were imported from other modules (Numba kernels and
+  helpers of `fem.kernels` / `fem.sparse` / `fem.indexing` / `fem.sparse_kernels`, `plot.fields._scalar` /
+  `_title`, `results.data._write_atomic` / `_mat_name`, `results.export._block_arrays`, `geometry.frame._is_single`,
+  `fem.shell._cell_sets`, …): renamed public (new names checked against every identifier of the package and the
+  tests; `fields._scalar` → `scalar_values`, `_title` → `field_title`, kernels' `_radius` → `point_radius`,
+  `_gradients` → `physical_gradients`, `_jacobian` → `cell_jacobian`, `_sum_duplicates` → `sum_duplicates_coo`), and
+  the private `Field._scalar` used by `results.derived` and `plot` became the public `Field.with_values`. Numba
+  cache cleared (kernels renamed); every reference passes unchanged (378 tests with `--slow`). New
+  `tests/test_code_quality.py`: no `from loudpy.… import _name` anywhere (AST scan), and the public docstring
+  coverage as a ratchet — **659 / 869 public modules, classes, functions and methods documented (75.8 %)** at
+  the start of L.

@@ -100,7 +100,7 @@ def test_total_lagrangian(quads, p):
     KT, M, C, F = tl(np.zeros(sp.n_dofs))
     K = stiffness(sp, D)
     Ms = np.empty((n_e, elem.n_nodes ** 2))
-    fk._mass_kernel(ec, N, dN, w, fk.coefficient(RHO, ec, N), True, Ms)
+    fk.mass_kernel(ec, N, dN, w, fk.coefficient(RHO, ec, N), True, Ms)
     np.testing.assert_allclose(KT, K, atol=1e-12 * abs(K).max())
     np.testing.assert_allclose(M, fk.expand_components(Ms, 2), atol=1e-14 * abs(M).max())
     np.testing.assert_allclose(C, alpha * M + beta * K, atol=1e-12 * abs(C).max())

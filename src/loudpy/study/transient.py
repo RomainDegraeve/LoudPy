@@ -44,7 +44,7 @@ class Transient(Study):
 
     def solve(self, n_steps: int | None = None, duration: float | None = None) -> TimeResults:
         from loudpy.fem.assembly import cell_tabulation
-        from loudpy.fem.kernels import _boundary_load_kernel
+        from loudpy.fem.kernels import boundary_load_kernel
         from loudpy.physics.structural import MecaAssemblerNL
         from loudpy.physics.systems import meshes, nodal, System
         from loudpy.solvers.time import free_dof_reducer, generalized_alpha_newton
@@ -78,7 +78,7 @@ class Transient(Study):
         ec = np.ascontiguousarray([[coil.node_coords[pos[int(t)]][:2] for t in edge] for edge in edges], dtype=float)
         N, dN, w = cell_tabulation(1, edges.shape[1])
         fe = np.empty(edges.shape)
-        _boundary_load_kernel(ec, N, dN, w, np.ones((len(ec), len(w))), True, fe)   # ∫ N 2πr ds
+        boundary_load_kernel(ec, N, dN, w, np.ones((len(ec), len(w))), True, fe)   # ∫ N 2πr ds
         for edge, f_edge in zip(edges, fe):
             for k, t in enumerate(edge):
                 F[2 * nl.tag_to_local[int(t)] + comp] += f_edge[k]

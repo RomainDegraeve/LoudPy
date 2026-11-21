@@ -11,11 +11,11 @@ from __future__ import annotations
 
 import numpy as np
 
-from loudpy.fem.indexing import _fill_ij_square
+from loudpy.fem.indexing import fill_ij_square
 from loudpy.fem.kernels import tabulate
 from loudpy.fem.quadrature import legacy_line, legacy_triangle7, quadrature
 from loudpy.fem.reference import element_for_cells
-from loudpy.fem.sparse import _SparseAssemblerBase, _local_coords
+from loudpy.fem.sparse import SparseAssemblerBase, local_coords
 
 
 def cell_tabulation(dim: int, n_nodes: int):
@@ -33,7 +33,7 @@ def cell_tabulation(dim: int, n_nodes: int):
     return tabulate(elem, quadrature(elem.cell.name, 2 * elem.degree + 2))
 
 
-class ElementAssembler(_SparseAssemblerBase):
+class ElementAssembler(SparseAssemblerBase):
     PTS_PER_TRI = 6
     dofs_per_node = 1
 
@@ -74,7 +74,7 @@ class ElementAssembler(_SparseAssemblerBase):
             n_e = len(sd.tri)
             tri_flat = np.asarray(sd.tri).ravel()
 
-            ec = _local_coords(sd.node_tags, sd.node_coords, tri_flat, n_e, self.PTS_PER_TRI)
+            ec = local_coords(sd.node_tags, sd.node_coords, tri_flat, n_e, self.PTS_PER_TRI)
 
             gidx = np.searchsorted(self.unique_tags, tri_flat).reshape(n_e, self.PTS_PER_TRI)
             gdofs = np.ascontiguousarray(
@@ -85,7 +85,7 @@ class ElementAssembler(_SparseAssemblerBase):
 
             s0 = offset * self.block
             s1 = s0 + n_e * self.block
-            _fill_ij_square(gdofs, I, J, s0)
+            fill_ij_square(gdofs, I, J, s0)
 
             self.prep.append((sd, ec, gdofs, s0, s1, n_e))
             offset += n_e

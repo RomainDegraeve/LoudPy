@@ -85,6 +85,6 @@ def as_frame(center):
     return center if isinstance(center, Frame) else Frame(center)
 
 
-def _is_single(center):
+def is_single(center):
     """True for one center/frame, False for a sequence of them."""
     return isinstance(center, Frame) or np.ndim(center) == 1 and np.isscalar(center[0])

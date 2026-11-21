@@ -56,7 +56,7 @@ def html(fields, path, show: str | None = None, mirror: bool = False, title: str
     sections on −r … r; range_db: SPL range below the top. Returns the path.
     """
     import matplotlib as mpl
-    from loudpy.plot.fields import _scalar, _title
+    from loudpy.plot.fields import scalar_values, field_title
     frames = list(fields) if isinstance(fields, (list, tuple)) else [fields]
     if not frames:
         raise ResultsError("lp.plot.html: no field")
@@ -66,9 +66,9 @@ def html(fields, path, show: str | None = None, mirror: bool = False, title: str
     coords, tris = _surface(mesh)
     vals, labels, q, cm = [], [], None, None
     for f in frames:
-        v, q, cm, symmetric = _scalar(f, show)
+        v, q, cm, symmetric = scalar_values(f, show)
         vals.append(np.asarray(v, float))
-        labels.append(_title(f))
+        labels.append(field_title(f))
     V = np.vstack(vals)
     if mirror and mesh.dim == 2:
         n = len(coords)
