@@ -845,3 +845,11 @@ phase's notes). Phase K adds what turns them into a pipeline:
   tests, how the report is generated, the COMSOL comparison, what is not verified), next to the generated report.
   Writing it corrected two docstrings of the coupling assembler (Cam is air nodes × structure DOFs, with the
   outward normal of the air).
+
+**Gate L status** (L not closed: mypy outstanding).
+
+| Gate item | Result |
+|---|---|
+| docstring and private-import tests | `tests/test_code_quality.py`: no private name imported across modules (AST scan); 847 / 847 public objects documented (runtime count, inherited docstrings allowed) |
+| docs build without warnings | yes, locally and on CI (`sphinx -W`), with the theory manual, the verification manual and the generated report |
+| mypy | **not done**: mypy is not installed on the user's machine and installing a package needs the user's OK (session run while the user was away) — next step of L: install it, add a `[tool.mypy]` section and a CI job, fix what it reports |
