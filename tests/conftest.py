@@ -76,7 +76,8 @@ def pytest_sessionstart(session):
 
 def pytest_sessionfinish(session, exitstatus):
     """A committed mesh rewritten by a test (its signature no longer matched) would silently change
-    every regression number tied to it: fail the run instead."""
+    every regression number tied to it: fail the run instead. Also writes the verification record."""
+    _write_verification(session)
     before = getattr(session.config, "_mesh_digests", {})
     changed = sorted(n for n, d in _mesh_digests().items() if n in before and before[n] != d) if before else []
     if changed:
@@ -126,7 +127,8 @@ def verify(request):
     return record
 
 
-def pytest_sessionfinish(session, exitstatus):
+def _write_verification(session):
+    """The verification record of the run (tests/.cache/verification.json) and, on request, the report."""
     if not RECORDER.records:
         return
     RECORDER.save_json(ROOT / "tests" / ".cache" / "verification.json")
