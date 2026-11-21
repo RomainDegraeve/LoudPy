@@ -515,8 +515,8 @@ class Field:
 
     def at_nodes(self, tags) -> tuple[np.ndarray, np.ndarray]:
         """(coords, values) at the node tags present on this field's mesh (e.g. res.boundary(...))."""
-        pos = self.mesh._positions
-        rows = np.array([pos[int(t)] for t in np.asarray(tags) if int(t) in pos], dtype=np.int64)
+        rows = self.mesh.rows_of(np.asarray(tags), missing="ignore")       # a boundary may span other meshes
+        rows = rows[rows >= 0]
         return self.mesh.coords[rows], self.values[rows]
 
     def at(self, at) -> "Data | complex":

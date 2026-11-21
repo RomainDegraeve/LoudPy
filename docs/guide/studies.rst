@@ -68,7 +68,9 @@ By default a study keeps every field at every entry (time step, frequency, mode)
    res.probe_signal("tip", "a")           # every component ("component" dimension)
    res.probe_names                        # ["tip"]
 
-``fields`` keeps only the named fields, ``every`` keeps every n-th entry (per mesh block), and ``probes`` evaluates
+``fields`` keeps only the named fields, ``every`` keeps every n-th entry (of the whole frequency or time list, so a
+remeshed sweep keeps the same frequencies as a one-mesh one; for modes, every n-th mode of each mode set), and
+``probes`` evaluates
 every field at the given points for **every** entry before the fields are thinned (the probes are saved with the
 results). The settings are recorded in ``res.meta["output"]``. The multitone example stores the cone tip at 48 kHz
 and the displacement field at 1.2 kHz: about 70 MB instead of 8.7 GB. A 3D scene streams its field to a file

@@ -20,8 +20,15 @@ versions follow [Semantic Versioning](https://semver.org/) (0.x: the API may sti
   `Field.view`).
 - `lp.Driver.from_modes(…, coil=None)`: the coil is the model's `lp.Coil` item (from the file's model description),
   not a boundary named "interface_forced".
+- Fail loudly: `Mesh.rows_of` / `coords_of` (and every internal node lookup) raise `MeshError` for a node tag that is
+  not in the mesh, instead of mapping it to a neighbouring row; `rows_of(tags, missing="ignore")` gives −1 where a
+  caller means it (`Field.at_nodes`).
+- `lp.Output(every=n)` counts over the whole frequency / time list (it counted per mesh block: a remeshed sweep kept
+  other frequencies than a one-mesh one); for modes, per mode set as before.
 
 ### Added
+- `tests/test_feature_matrix.py`: features × studies (remeshed × drive × output control × save / load on boundary
+  integrals, Thiele–Small, probes, derived fields; modes, transient and remeshed voltage sweeps × output / storage).
 - `lp.load(path, rename={old: new})` / `loudpy.results.io.rename_groups`: group and item names renamed on read.
 - `lp.cabinets`: `Box` (parametric: inner sizes, slanted back, walls, braces, ports), `Step` (your CAD file: the
   inside air found and checked, driver holes closed, port bores named), `Port` (with its Helmholtz tuning),

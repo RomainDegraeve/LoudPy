@@ -29,7 +29,9 @@ PROBES = "probes"
 
 @dataclass(frozen=True)
 class Output:
-    """What a study keeps of its fields: fields (names, None for all), every (n-th entry), probes ({name: point})."""
+    """What a study keeps of its fields: fields (names, None for all), every (n-th entry: of the whole frequency /
+    time list — the same entries with or without remeshed bands —, of each mode set for modes), probes
+    ({name: point}, recorded at every entry)."""
     fields: tuple | None = None
     every: int = 1
     probes: dict | None = None
@@ -80,9 +82,17 @@ def apply(res, output: Output | None):
         res.attachments[PROBES] = att
     if output.every > 1 or output.fields is not None:
         from loudpy.results.results import Block
-        blocks = []
+        blocks, offset = [], 0
+        per_set = res.kind == "modes"                     # modes: every n-th mode of each mode set (order m)
         for b in res.blocks:
-            keep = np.arange(0, len(b), output.every)
+            if per_set:
+                keep = np.arange(0, len(b), output.every)
+            else:                                         # frequencies / times: over the whole list, so that the
+                start = (-offset) % output.every          # entries kept do not depend on the remeshed bands
+                keep = np.arange(start, len(b), output.every)
+            offset += len(b)
+            if not len(keep):
+                continue
             fields = {k: np.asarray(v)[keep] for k, v in b.fields.items()
                       if output.fields is None or k in output.fields}
             extra = {k: (np.asarray(v)[keep] if np.ndim(v) and len(v) == len(b) else v) for k, v in b.extra.items()}

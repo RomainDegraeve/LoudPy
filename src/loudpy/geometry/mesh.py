@@ -69,10 +69,12 @@ class Mesh:
         """Names of the groups (of one dimension when dim is given)."""
         return [n for n, g in self.groups.items() if dim is None or g.dim == dim]
 
-    def rows_of(self, tags) -> np.ndarray:
-        """Row indices (into node_tags / coords) of node tags."""
-        pos = self._positions
-        return np.array([pos[int(t)] for t in np.asarray(tags).ravel()], dtype=np.int64).reshape(np.shape(tags))
+    def rows_of(self, tags, missing: str = "raise") -> np.ndarray:
+        """
+        Row indices (into node_tags / coords) of node tags, same shape. A tag that is not a node of this mesh raises
+        MeshError (listing a few of them); missing="ignore" gives −1 for them instead (when the caller means it).
+        """
+        return self._rows(tags, missing)
 
     def triangles(self, groups=None, refine: bool = False) -> np.ndarray:
         """
@@ -153,25 +155,39 @@ class Mesh:
     def _scale(self) -> float:
         return float(np.linalg.norm(np.ptp(self.coords, axis=0))) if self.n_nodes else 1.0
 
-    def _rows(self, tags) -> np.ndarray:
-        """Rows of node tags (vectorised rows_of)."""
+    def _rows(self, tags, missing: str = "raise") -> np.ndarray:
+        """Rows of node tags (rows_of): vectorised, strict unless missing="ignore" (−1 for unknown tags)."""
+        from loudpy.errors import MeshError
         tags = np.asarray(tags)
         if not hasattr(self, "_sorted_tags"):
             order = np.argsort(self.node_tags, kind="stable")
             object.__setattr__(self, "_sorted_tags", (order, np.asarray(self.node_tags)[order]))
         order, st = self._sorted_tags  # type: ignore[attr-defined]   # cached on the frozen instance
-        idx = np.searchsorted(st, tags.ravel())
-        return order[np.clip(idx, 0, len(st) - 1)].reshape(tags.shape)
+        flat = tags.ravel()
+        if not len(st):
+            if len(flat) and missing != "ignore":
+                raise MeshError(f"node tags {flat[:5].tolist()} looked up in an empty mesh")
+            return np.full(tags.shape, -1, dtype=np.int64)
+        idx = np.clip(np.searchsorted(st, flat), 0, len(st) - 1)
+        rows = order[idx].astype(np.int64)
+        found = st[idx] == flat
+        if not found.all():
+            if missing == "raise":
+                bad = np.unique(flat[~found])
+                raise MeshError(f"{len(bad)} node tag(s) not in the mesh ({self.n_nodes} nodes, tags "
+                                f"{int(st[0])}…{int(st[-1])}): {bad[:8].tolist()}{' …' if len(bad) > 8 else ''}")
+            if missing != "ignore":
+                raise ValueError(f"missing must be 'raise' or 'ignore', got {missing!r}")
+            rows[~found] = -1
+        return rows.reshape(tags.shape)
 
     def nearest(self, point) -> int:
         """Row of the node nearest to `point`."""
         return int(np.argmin(np.linalg.norm(self.coords - np.asarray(point, float)[:self.dim], axis=1)))
 
     def coords_of(self, tags) -> np.ndarray:
-        """Coordinates of node tags."""
-        pos = self._positions
-        return self.coords[[pos[int(t)] for t in np.asarray(tags).ravel()]].reshape(
-            np.shape(tags) + (self.dim,))
+        """Coordinates of node tags (MeshError for a tag not in the mesh)."""
+        return self.coords[self._rows(tags).ravel()].reshape(np.shape(tags) + (self.dim,))
 
     @property
     def _positions(self) -> dict[int, int]:
