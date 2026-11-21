@@ -835,7 +835,8 @@ phase's notes). Phase K adds what turns them into a pipeline:
   **Found on the way**: the K step had added a second `pytest_sessionfinish` to `tests/conftest.py`, which replaced
   the guard that fails a run when a test rewrites a committed mesh (CI's ruff caught it: F811); merged into one
   hook (the meshes were checked unchanged). The deformed-field image differed on Linux even with the layout fixed
-  (RMS 33): the baseline is now the undeformed field.
+  (RMS 33), and so did the mode-shape grid (RMS 15): the baselines are the undeformed field and the mode chart
+  (deformed plots stay covered by the non-image plot tests).
 - **L3 (done)**: manuals. `docs/guide/theory.rst` (theory manual: structure with Fourier orders and the total
   Lagrangian form, air and PML, fluid–structure coupling with the exact block signs of the builder, coil and
   circuit, 2D DtN and far field, 3D half-space DtN, the modal scene coupling with its static correction, shells and

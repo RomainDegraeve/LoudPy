@@ -77,7 +77,7 @@ def test_image_field_and_modes(request):
     u = r.field("u", f=100.0)
     check_image(u.plot("z").figure, "field_u", request)     # (the deformed plot renders differently on Linux)
     modes = lp.load(_legacy("eigen_fourier.h5"))
-    check_image(lp.plot.modes(modes.order(0), indices=[0, 1]), "modes", request)
+    check_image(lp.plot.mode_chart(modes, y="order").figure, "modes", request)   # deformed shapes differ on Linux
 
 
 def test_global_style_untouched(tmp_path, mesh_dir):
