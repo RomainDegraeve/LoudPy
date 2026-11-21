@@ -233,7 +233,7 @@ def save(fig, path, close: bool = True, **kwargs) -> Path:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.stem + ".tmp" + path.suffix)
-    with mpl.rc_context(RC):
+    with mpl.rc_context(RC):  # type: ignore
         tidy(fig).savefig(tmp, **kwargs)
     os.replace(tmp, path)
     if close:
@@ -249,7 +249,7 @@ class _Pages:
 
     def savefig(self, fig, close: bool = True, **kwargs):
         import matplotlib.pyplot as plt
-        with mpl.rc_context(RC):
+        with mpl.rc_context(RC):  # type: ignore
             self.pdf.savefig(tidy(fig), **kwargs)
         if close:
             plt.close(fig)
