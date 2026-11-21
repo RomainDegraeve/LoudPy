@@ -14,6 +14,9 @@ What this produces
     Results/Files/mesh_<f>Hz.msh   — the mesh of each band (reused on reruns)
 
 Then run plot.py.
+
+The model is built at the top; meshing and solving run only when this file is run (python3 run.py), so the
+interface opens it without computing (python -m loudpy.ui on this folder or file) and can run it in the background.
 """
 from pathlib import Path
 import numpy as np
@@ -48,7 +51,8 @@ model.add(
     lp.Solid("glue", "SolidGlue", mesh_size=size),
     lp.Solid("dustcap", "Polypropylene", mesh_size=size),
     lp.Air("air", mesh_size=0.005),                         # at most 5 mm (see remesh)
-    lp.PML("PML", order=2, strength=1.5),                       # quadratic profile
+    lp.PML("PML", order=2, strength=1.5, thickness=0.1, tuned_to=1000.0),   # quadratic profile; the remeshed
+                                                                         # bands set their own thickness / tuning
     lp.Clamped("rims", on=lp.Group("surround_rim", "spider_rim")), lp.Clamped("axis", dofs="r"),
     lp.Coil("coil_drive"),
     lp.FluidStructure("wet_front"),
@@ -59,9 +63,10 @@ model.add(
 remesh = lp.PerWavelength(every=REMESH_EVERY, air_elements=6, air_max_size=0.005,
                           pml_thickness=0.25, pml_elements=4, c=344.0, folder=files)
 
-# ── Solve ──────────────────────────────────────────────────────────────────────
-study = lp.FrequencyResponse(model, drive=lp.Force(force))
-res = study.solve(freqs, remesh=remesh)
-print(res)
-study.save(out_path)
-print(f"Saved → {out_path}")
+if __name__ == "__main__":
+    # ── Solve ──────────────────────────────────────────────────────────────────────
+    study = lp.FrequencyResponse(model, drive=lp.Force(force))
+    res = study.solve(freqs, remesh=remesh)
+    print(res)
+    study.save(out_path)
+    print(f"Saved → {out_path}")

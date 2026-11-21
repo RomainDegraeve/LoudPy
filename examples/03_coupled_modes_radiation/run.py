@@ -29,6 +29,9 @@ What this produces
     Results/Files/fsi_dtn_checkpoint.h5  — the modes found so far, every CHECKPOINT_EVERY shifts
                                            (usable with lp.load if the run is stopped)
 Then run plot.py.
+
+The model is built at the top; meshing and solving run only when this file is run (python3 run.py), so the
+interface opens it without computing (python -m loudpy.ui on this folder or file) and can run it in the background.
 """
 from pathlib import Path
 import numpy as np
@@ -83,18 +86,19 @@ model.add(
     lp.Coil("coil_drive"),                        # used by the goal check
     lp.FluidStructure("wet_front"),
     lp.FluidStructure("wet_rear"),
-    lp.Radiation("dtn_boundary"),                       # dtn_front and _rear
+    lp.Radiation("dtn"),                                # dtn_front and dtn_rear
 )
-model.mesh(mesh_path)
+if __name__ == "__main__":
+    model.mesh(mesh_path)
 
-# ── Coupled modes ──────────────────────────────────────────────────────────────
-study = lp.Modes(model, physics="coupled")
-modes = study.solve(
-    f_min=F_MODES_MIN, f_max=F_MODES_MAX, n_per_shift=N_PER_SHIFT,
-    mac_tol=0.95, cover_zeta_max=COVER_ZETA_MAX, max_shifts=MAX_SHIFTS,
-    dtn_center=DTN_CENTER, dtn_half=DTN_HALF, dtn_order=DTN_ORDER, cover_goal=GOAL,
-    checkpoint_path=checkpoint_path, checkpoint_every=CHECKPOINT_EVERY,
-)
-print(modes)
-study.save(out_path)
-print(f"Saved → {out_path}")
+    # ── Coupled modes ──────────────────────────────────────────────────────────────
+    study = lp.Modes(model, physics="coupled")
+    modes = study.solve(
+        f_min=F_MODES_MIN, f_max=F_MODES_MAX, n_per_shift=N_PER_SHIFT,
+        mac_tol=0.95, cover_zeta_max=COVER_ZETA_MAX, max_shifts=MAX_SHIFTS,
+        dtn_center=DTN_CENTER, dtn_half=DTN_HALF, dtn_order=DTN_ORDER, cover_goal=GOAL,
+        checkpoint_path=checkpoint_path, checkpoint_every=CHECKPOINT_EVERY,
+    )
+    print(modes)
+    study.save(out_path)
+    print(f"Saved → {out_path}")

@@ -35,7 +35,21 @@ A **parametric sweep** (``lp.Sweep(…).solve().save("sweep.h5")``) is one file 
 root above; ``lp.load`` returns a ``SweepResults``.
 
 In Python, ``res.model`` is the description (``.tree``, ``.parameters``, ``.groups``, ``.files``,
-``.extract(folder)`` writes the geometry files back) and ``res.study`` the settings.
+``.extract(folder)`` writes the stored files back) and ``res.study`` the settings.
+
+A result file also stores its model as a script (``res.model["script"]``: ``Model.to_script`` /
+``Scene.to_script``, using the stored files: a 2D model's geometry files and material library; a scene's cabinet —
+an ``lp.cabinets.Box``, a STEP file, or the module file of a cabinet builder — and its drivers' geometry), so the
+file alone gives the model back:
+
+.. code-block:: python
+
+   res = lp.load("modes.h5")
+   model = res.model.rebuild("rebuilt")        # files + model.py written to "rebuilt", run → lp.Model / lp.Scene
+   model.mesh("rebuilt/mesh.msh")               # then mesh and solve as usual
+
+The drivers of a scene read their modes file where it was (it is not stored). A 2D geometry made by a Python
+builder cannot be rebuilt (``res.model.rebuildable`` is False, ``res.model["script_note"]`` says why).
 
 * Field members keep their order (an ``order`` attribute: HDF5 sorts members alphabetically).
 * Datasets larger than 5·10⁶ values are read **lazily**: 3D pressure fields stay on disk and only

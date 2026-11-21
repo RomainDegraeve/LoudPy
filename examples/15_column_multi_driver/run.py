@@ -21,6 +21,9 @@ What this produces (Results/Files/)
                        frequency (loudpy result format 3; the field is written as the sweep goes)
   - air_<f>Hz.msh    : the air mesh of each band
 Then run plot.py and plot_3d.py.
+
+The scene is built at the top (not meshed); meshing and solving run only when this file is run (python3 run.py),
+so the interface opens it without computing (python -m loudpy.ui on this folder or file).
 """
 import sys
 from pathlib import Path
@@ -41,18 +44,20 @@ FREQS = np.unique(np.concatenate([np.arange(20.0, 300.0, 2.0), np.arange(300.0, 
 DRIVE = {"top": lp.Force(1.0), "middle": lp.Force(1.0), "bottom": lp.Force(1.0)}
 BANDS = [(20.0, 1000.0), (1000.0, 2000.0)]     # one mesh each [Hz]
 TAG = "column"
-if len(sys.argv) > 1:                          # quick test: python3 run.py 40,100,300
-    FREQS = np.array([float(x) for x in sys.argv[1].split(",")])
-    TAG = "column_test"
-
 hp = driver()
 scene = lp.Scene(cabinet, [hp.place(name, at=c) for name, c in zip(NAMES, CENTERS)])
 scene.merged(ground="y", bands=[b for b in BANDS if b[0] < FREQS.max()],
              points_per_wavelength=4.0, max_size=0.07, driver_size=0.004, margin=0.05)
-scene.mesh(files)
-print(f"{hp} ×{len(NAMES)} | line {line_length():.3f} m, quarter-wave estimate {quarter_wave():.1f} Hz | "
-      f"{len(FREQS)} frequencies ≤ {FREQS.max():.0f} Hz")
 
-study = lp.FrequencyResponse(scene, drive=DRIVE)
-res = study.solve(FREQS, store=files / f"{TAG}.h5")
-print(res, f"→ {files / (TAG + '.h5')}")
+if __name__ == "__main__":
+    if len(sys.argv) > 1:                          # quick test: python3 run.py 40,100,300
+        FREQS = np.array([float(x) for x in sys.argv[1].split(",")])
+        TAG = "column_test"
+        scene.merged(ground="y", bands=[b for b in BANDS if b[0] < FREQS.max()],
+                     points_per_wavelength=4.0, max_size=0.07, driver_size=0.004, margin=0.05)
+    scene.mesh(files)
+    print(f"{hp} ×{len(NAMES)} | line {line_length():.3f} m, quarter-wave estimate {quarter_wave():.1f} Hz | "
+          f"{len(FREQS)} frequencies ≤ {FREQS.max():.0f} Hz")
+    study = lp.FrequencyResponse(scene, drive=DRIVE)
+    res = study.solve(FREQS, store=files / f"{TAG}.h5")
+    print(res, f"→ {files / (TAG + '.h5')}")

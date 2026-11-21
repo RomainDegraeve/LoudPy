@@ -12,6 +12,9 @@ What this produces (Results/Files/)
 ------------------------------------
   speaker_sweep.h5           every run in one file (lp.load gives the SweepResults back)
 Then run plot.py.
+
+The model is built at the top; meshing and solving run only when this file is run (python3 run.py), so the
+interface opens it without computing (python -m loudpy.ui on this folder or file) and can run it in the background.
 """
 from pathlib import Path
 import numpy as np
@@ -42,11 +45,12 @@ model.add(
     lp.Clamped("rims", on=lp.Group("surround_rim", "spider_rim")), lp.Clamped("axis", dofs="r"),
     lp.Coil("coil_drive"),
 )
-model.mesh(f"{files}/speaker.msh")
+if __name__ == "__main__":
+    model.mesh(f"{files}/speaker.msh")
 
-study = lp.FrequencyResponse(model, drive=lp.Force(1.0))
-sweep = lp.Sweep(study, {"E_surround": [k * E_RUBBER for k in FACTORS],
-                         "E_spider": [k * E_PHENOLIC for k in FACTORS]}).solve(FREQS)
-print(sweep)
-sweep.save(f"{files}/speaker_sweep.h5")
-print(f"Saved → {files}/speaker_sweep.h5")
+    study = lp.FrequencyResponse(model, drive=lp.Force(1.0))
+    sweep = lp.Sweep(study, {"E_surround": [k * E_RUBBER for k in FACTORS],
+                             "E_spider": [k * E_PHENOLIC for k in FACTORS]}).solve(FREQS)
+    print(sweep)
+    sweep.save(f"{files}/speaker_sweep.h5")
+    print(f"Saved → {files}/speaker_sweep.h5")

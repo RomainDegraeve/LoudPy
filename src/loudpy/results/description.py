@@ -5,12 +5,17 @@ What a result file says about the model and the study that produced it (result f
                                  regions (material, damping, mesh size), boundaries, mesh controls, mesh, the
                                  model tree, and per mesh group its physical data ("groups": region, role, ρ, E,
                                  ν, c, damping…), which is what derived fields need: a result file is enough
-    files = geometry_files(model)    {name: bytes} of the geometry (a .geo and the files it merges, a CAD file),
-                                 or the builder's code; embedded in the file up to EMBED_LIMIT bytes
+    files = geometry_files(model)    {name: bytes} of the files that rebuild the model: a 2D model's geometry (a .geo
+                                 and the files it merges, a CAD file) and non-default material library; a scene's
+                                 cabinet (its STEP file, or the module file of its builder) and its drivers'
+                                 geometry; embedded in the file up to EMBED_LIMIT bytes (a 2D builder: its code)
+    d["script"]                  the model or scene as Python code (Model / Scene.to_script) using those files:
+                                 ModelDescription.rebuild() runs it (None, with "script_note", when it cannot be
+                                 written: a Python geometry builder, drivers not made by lp.Driver.from_modes)
     settings(study)              the study's settings (type, drive, frequencies or bands, …)
 
 ModelDescription wraps the description read back from a file: res.model.tree, .parameters, .groups,
-.files, .extract(folder) (writes the embedded geometry files back).
+.files, .extract(folder) (writes the embedded files back), .rebuild(folder) (the lp.Model / lp.Scene again).
 """
 from __future__ import annotations
 
@@ -98,7 +103,13 @@ def describe(model) -> dict:
         "mesh": mesh,
         "groups": group_data(model.parts, owner),
         "tree": model.tree(),
+        **_script_entry(model),
     }
+
+
+def _script_entry(model) -> dict:
+    script, note = model_script(model)
+    return {"script": script, "script_note": note} if script is None else {"script": script}
 
 
 def _describe_scene(scene) -> dict:
@@ -121,34 +132,79 @@ def _describe_scene(scene) -> dict:
         "drivers": drivers, "settings": settings,
         "folder": str(scene.folder) if scene.folder else None,
         "tree": scene.tree(),
+        **_script_entry(scene),
     }
 
 
-def geometry_files(model) -> dict:
-    """{name: bytes} of the model's geometry (files, or the builder's / cabinet's code) to embed in a result."""
-    from loudpy.scene.scene import Scene
-    out = {}
-    if isinstance(model, Scene):
-        fn = model.cabinet
-        try:
-            out[f"{getattr(fn, '__name__', 'cabinet')}.py"] = inspect.getsource(fn).encode()
-        except (OSError, TypeError):
-            pass
-        return out
-    src = model.source
-    if src.path is None:
-        try:
-            out[f"{getattr(src.builder, '__name__', 'builder')}.py"] = inspect.getsource(src.builder).encode()
-        except (OSError, TypeError):
-            pass
-        return out
-    for name in src.files():
-        p = src.path if name == src.path.name else (Path(name) if Path(name).is_absolute() else src.path.parent / name)
+def _source_files(source) -> list[Path]:
+    """The files of a geometry source (a .geo and the files it merges, a CAD file), resolved."""
+    out = []
+    for name in source.files():
+        p = source.path if name == source.path.name else (Path(name) if Path(name).is_absolute()
+                                                            else source.path.parent / name)
         if p.exists():
-            out[name] = p.read_bytes()
-    if sum(len(b) for b in out.values()) > EMBED_LIMIT:
-        return {}
+            out.append(p.resolve())
     return out
+
+
+def embedded_paths(model) -> list[Path]:
+    """The files a result embeds to rebuild its model (module docstring), unique names, within EMBED_LIMIT (else
+    none: the script then refers to them where they are)."""
+    from loudpy.geometry.sources import GeometrySource
+    from loudpy.model.script import builder_module, default_library
+    from loudpy.scene.cabinets import Step
+    from loudpy.scene.scene import Scene
+    paths: list[Path] = []
+    if isinstance(model, Scene):
+        if isinstance(model.cabinet, Step):
+            paths.append(Path(model.cabinet.path).resolve())
+        elif callable(model.cabinet):
+            module = builder_module(model.cabinet)
+            if module is not None:
+                paths.append(module)
+        for d in model.drivers:
+            geo = (d.driver.source or {}).get("geometry")
+            if geo and Path(str(geo)).exists():
+                paths += _source_files(GeometrySource(str(geo)))
+    elif model.source.path is not None:
+        paths += _source_files(model.source)
+        if not default_library(model) and getattr(model.materials, "path", None):
+            paths.append(Path(model.materials.path).resolve())
+    unique: dict[str, Path] = {}
+    for p in paths:
+        if p.name in unique and unique[p.name] != p:
+            continue                                            # a second file of the same name: left where it is
+        unique[p.name] = p
+    out = list(unique.values())
+    if sum(p.stat().st_size for p in out) > EMBED_LIMIT:
+        return []
+    return out
+
+
+def geometry_files(model) -> dict:
+    """{name: bytes} of the files embedded in a result (embedded_paths; a 2D Python builder: its code)."""
+    from loudpy.scene.scene import Scene
+    if not isinstance(model, Scene) and model.source.path is None:
+        src = model.source
+        try:
+            return {f"{getattr(src.builder, '__name__', 'builder')}.py": inspect.getsource(src.builder).encode()}
+        except (OSError, TypeError):
+            return {}
+    return {p.name: p.read_bytes() for p in embedded_paths(model)}
+
+
+def model_script(model) -> tuple[str | None, str]:
+    """(the model or scene as code using the embedded files, or None; why not)."""
+    from loudpy.errors import ModelError
+    from loudpy.model.script import model_script as write_model, scene_script as write_scene
+    from loudpy.scene.scene import Scene
+    flat = set(embedded_paths(model))
+    try:
+        if isinstance(model, Scene):
+            return write_scene(model, title="scene", flat=flat), ""
+        return write_model(model, title=model.source.name, flat=flat), ""
+    except ModelError as e:
+        return None, str(e)
 
 
 def settings(study) -> dict:
@@ -214,6 +270,34 @@ class ModelDescription:
             p.write_bytes(data)
             out.append(p)
         return out
+
+    @property
+    def rebuildable(self) -> bool:
+        """True when the file stores the model's script (rebuild() can make the lp.Model / lp.Scene again)."""
+        return bool(self.data.get("script"))
+
+    def rebuild(self, folder=None):
+        """
+        The lp.Model or lp.Scene that produced the results, made again from the script and the files stored in the
+        result file: they are written to `folder` (default: a new temporary folder) and the script is run there.
+        Drivers read their modes file where it was (not embedded). ResultsError when the file has no script.
+        """
+        import runpy
+        import tempfile
+        from loudpy.errors import ResultsError
+        script = self.data.get("script")
+        if not script:
+            why = self.data.get("script_note") or "it was written before loudpy stored the model's script"
+            raise ResultsError(f"this result file cannot rebuild its model: {why}; open the script that made it")
+        folder = Path(folder) if folder is not None else Path(tempfile.mkdtemp(prefix="loudpy_rebuild_"))
+        self.extract(folder)
+        path = folder / "model.py"
+        path.write_text(script)
+        ns = runpy.run_path(str(path), run_name="loudpy_rebuild")
+        obj = ns.get("scene") if self.data.get("kind") == "scene" else ns.get("model")
+        if obj is None:
+            raise ResultsError(f"the stored script did not build a {self.data.get('kind', 'model')}")
+        return obj
 
     def __repr__(self):
         return self.tree or f"ModelDescription({self.data.get('kind', '?')})"

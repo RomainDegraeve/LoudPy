@@ -7,11 +7,13 @@ when it runs — to keep, share or edit a model made or changed from Python or f
 
 A 2D model: its geometry file (a Python builder cannot be written out), material library, parameters and items (only
 the fields that differ from their defaults). A scene: an lp.cabinets.Box / Step cabinet, drivers made by
-lp.Driver.from_modes (their modes file, orders, geometry, wet profiles), the air and parameters.
+lp.Driver.from_modes (their modes file, orders, geometry, wet profiles), the air and parameters; a cabinet builder
+defined at the top level of a module file is imported from that module.
 """
 from __future__ import annotations
 
 import dataclasses
+import inspect
 import os
 from pathlib import Path
 
@@ -24,12 +26,20 @@ NAMES = ["Model", "Parameters", "P", "Material", "Solid", "Air", "PML", "Clamped
          "BoundaryOf"]
 
 
-def _path(p, folder) -> str:
-    """Code for a path: HERE / 'relative' when the script's folder is known, else the absolute path."""
+def _path(p, folder, flat=None) -> str:
+    """Code for a path: HERE / 'name' for a file stored next to the script (flat: the set of such files, a result
+    file's embedded files), HERE / 'relative' when the script's folder is known, else the absolute path."""
     p = Path(p).resolve()
+    if flat and p in flat:
+        return f"HERE / {p.name!r}"
     if folder is None:
         return f"Path({str(p)!r})"
     return f"HERE / {Path(os.path.relpath(p, Path(folder).resolve())).as_posix()!r}"
+
+
+def default_library(model) -> bool:
+    """True when the model uses loudpy's own material library (nothing to write out or store)."""
+    return _default_library(model)
 
 
 def _default_library(model) -> bool:
@@ -56,8 +66,22 @@ def item_code(it) -> str:
     return f"{type(it).__name__}({', '.join(parts)})"
 
 
-def model_script(model, folder=None, title: str | None = None) -> str:
-    """The code of a 2D model (module docstring); folder: where the script will be (paths relative to it)."""
+def builder_module(fn) -> Path | None:
+    """The file of the module defining a cabinet / geometry builder at its top level (None: a lambda, a nested function,
+    a builder defined in an interactive session)."""
+    try:
+        src = inspect.getsourcefile(fn)
+    except TypeError:
+        return None
+    if not src or not Path(src).is_file() or getattr(fn, "__qualname__", "") != getattr(fn, "__name__", None) \
+            or fn.__name__ == "<lambda>":
+        return None
+    return Path(src).resolve()
+
+
+def model_script(model, folder=None, title: str | None = None, flat=None) -> str:
+    """The code of a 2D model (module docstring); folder: where the script will be (paths relative to it); flat: files
+    stored next to the script (a result file's embedded files)."""
     m = model
     if m.source.path is None:
         raise ModelError("the geometry is a Python builder: it cannot be written out — keep your script, or save the "
@@ -66,9 +90,9 @@ def model_script(model, folder=None, title: str | None = None) -> str:
              "from pathlib import Path", "", "import loudpy as lp",
              f"from loudpy import ({', '.join(NAMES)})  # noqa: F401", "",
              "HERE = Path(__file__).resolve().parent", ""]
-    args = [_path(m.source.path, folder)]
+    args = [_path(m.source.path, folder, flat)]
     if not _default_library(m):
-        args.append(f"materials={_path(m.materials.path, folder)}")
+        args.append(f"materials={_path(m.materials.path, folder, flat)}")
     if len(m.parameters):
         args.append(f"parameters=Parameters({', '.join(f'{k}={float(v)!r}' for k, v in m.parameters.items())})")
     if m.mesh_order != 2:
@@ -85,20 +109,30 @@ def model_script(model, folder=None, title: str | None = None) -> str:
     return "\n".join(lines)
 
 
-def scene_script(scene, folder=None, title: str | None = None) -> str:
-    """The code of a scene (module docstring); folder: where the script will be (paths relative to it)."""
+def scene_script(scene, folder=None, title: str | None = None, flat=None) -> str:
+    """The code of a scene (module docstring); folder: where the script will be (paths relative to it); flat: files
+    stored next to the script (a result file's embedded files). A cabinet builder defined at the top level of a
+    module file is imported from it (the module is found next to the script when it is one of `flat`)."""
     from loudpy.scene.cabinets import Box, Step
     s = scene
-    if not isinstance(s.cabinet, (Box, Step)):
-        raise ModelError("the cabinet is a Python builder: it cannot be written out — keep your script")
-    cab = repr(s.cabinet)
-    if isinstance(s.cabinet, Step):
-        cab = cab.replace(repr(s.cabinet.path), _path(s.cabinet.path, folder))
+    if isinstance(s.cabinet, (Box, Step)):
+        cab = repr(s.cabinet)
+        if isinstance(s.cabinet, Step):
+            cab = cab.replace(repr(s.cabinet.path), _path(s.cabinet.path, folder, flat))
+        cabinet_lines = [f"cabinet = {cab}"]
+    else:
+        mod = builder_module(s.cabinet)
+        if mod is None:
+            raise ModelError("the cabinet is a Python builder outside a module file (a lambda, a nested function, an "
+                             "interactive session): it cannot be written out — keep your script")
+        where = "HERE" if flat and mod in flat else f"str({_path(mod.parent, folder, flat)})"
+        cabinet_lines = ["import sys", "", f"sys.path.insert(0, str({where}))",
+                         f"from {mod.stem} import {s.cabinet.__name__} as cabinet  # noqa: E402"]
     lines = ['"""', f"{title or 'scene'} — a 3D scene written by loudpy (Scene.to_script).", '"""',
              "from pathlib import Path", "", "import loudpy as lp",
              "from loudpy import Profile, Group, Interface, BoundaryOf, Box as SelectBox, Near, P  # noqa: F401",
              "from loudpy.scene.cabinets import Box, Step, Port, Brace  # noqa: F401", "",
-             "HERE = Path(__file__).resolve().parent", "", f"cabinet = {cab}", ""]
+             "HERE = Path(__file__).resolve().parent", "", *cabinet_lines, ""]
     drivers: list[str] = []
     made: dict[int, str] = {}
     for d in s.drivers:
@@ -109,10 +143,10 @@ def scene_script(scene, folder=None, title: str | None = None) -> str:
         if key not in made:
             var = f"hp{len(made) + 1}"
             made[key] = var
-            args = [_path(src["path"], folder), repr(list(src["orders"]))]
+            args = [_path(src["path"], folder, flat), repr(list(src["orders"]))]
             if src.get("f_max") is not None:
                 args.append(f"f_max={src['f_max']!r}")
-            args += [f"geometry={_path(src['geometry'], folder)}", f"rear={src['rear']!r}"]
+            args += [f"geometry={_path(src['geometry'], folder, flat)}", f"rear={src['rear']!r}"]
             if src.get("front") is not None:
                 args.append(f"front={src['front']!r}")
             if src.get("coil"):

@@ -11,6 +11,9 @@ What this produces
     Results/Files/modes.h5   — frequencies, damping ratios, mode shapes (loudpy result format 3)
 
 Then run plot.py.
+
+The model is built at the top; meshing and solving run only when this file is run (python3 run.py), so the
+interface opens it without computing (python -m loudpy.ui on this folder or file) and can run it in the background.
 """
 from pathlib import Path
 import loudpy as lp
@@ -40,11 +43,12 @@ model.add(
     lp.Coil("coil_drive"),
     lp.FluidStructure("wet_front"),     # kept in the results for the plots
 )
-model.mesh(mesh_path)                           # reused when the geometry and settings are unchanged
+if __name__ == "__main__":
+    model.mesh(mesh_path)                           # reused when the geometry and settings are unchanged
 
-# ── Modes ──────────────────────────────────────────────────────────────────────
-study = lp.Modes(model)
-modes = study.solve(f_min=20.0, f_max=40000.0, n_per_shift=30)
-print(modes)
-study.save(out_path)
-print(f"Saved → {out_path}")
+    # ── Modes ──────────────────────────────────────────────────────────────────────
+    study = lp.Modes(model)
+    modes = study.solve(f_min=20.0, f_max=40000.0, n_per_shift=30)
+    print(modes)
+    study.save(out_path)
+    print(f"Saved → {out_path}")

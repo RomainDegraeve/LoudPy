@@ -12,6 +12,9 @@ What this produces (Results/Files/)
   plate_sweep.h5             every run in one file (lp.load gives the SweepResults back)
   plate_<a>_<h>.msh          the mesh of each run (reused on reruns)
 Then run plot.py.
+
+The model is built at the top; meshing and solving run only when this file is run (python3 run.py), so the
+interface opens it without computing (python -m loudpy.ui on this folder or file) and can run it in the background.
 """
 from pathlib import Path
 import loudpy as lp
@@ -33,11 +36,12 @@ model.add(
     lp.Clamped("rim"),
     lp.Clamped("axis", dofs="r"),
 )
-model.mesh(f"{files}/plate.msh")
-print(model)
+if __name__ == "__main__":
+    model.mesh(f"{files}/plate.msh")
+    print(model)
 
-sweep = lp.Sweep(lp.Modes(model), {"a": RADII, "h": THICKNESSES}).solve(f_min=10.0, f_max=12000.0)
-print(sweep)
-print(sweep.table())
-sweep.save(f"{files}/plate_sweep.h5")
-print(f"Saved → {files}/plate_sweep.h5")
+    sweep = lp.Sweep(lp.Modes(model), {"a": RADII, "h": THICKNESSES}).solve(f_min=10.0, f_max=12000.0)
+    print(sweep)
+    print(sweep.table())
+    sweep.save(f"{files}/plate_sweep.h5")
+    print(f"Saved → {files}/plate_sweep.h5")

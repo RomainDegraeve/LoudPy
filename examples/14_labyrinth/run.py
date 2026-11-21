@@ -21,6 +21,9 @@ What this produces (Results/Files/)
   - air_<f>Hz.msh           : the air mesh of each band
   - labyrinth_cabinet.step  : the cabinet (walls, panels, driver hole, mouth) for CAD
 Then run plot.py and plot_3d.py.
+
+The scene is built at the top (not meshed); meshing and solving run only when this file is run (python3 run.py),
+so the interface opens it without computing (python -m loudpy.ui on this folder or file).
 """
 import sys
 from pathlib import Path
@@ -41,18 +44,20 @@ F_MAX = 2000.0                                 # top of the sweep [Hz]
 FREQS = np.unique(np.concatenate([np.arange(20.0, 300.0, 2.0), np.arange(300.0, F_MAX + 1e-9, 10.0)]))
 BANDS = [(20.0, 1000.0), (1000.0, 2000.0), (2000.0, 3000.0)]     # one mesh each [Hz]
 TAG = "labyrinth"
-if len(sys.argv) > 1:                          # quick test: python3 run.py 40,70,100
-    FREQS = np.array([float(x) for x in sys.argv[1].split(",")])
-    TAG = "labyrinth_test"
-
 hp = driver()
-export_cabinet(files, hp.r_front)
 scene = lp.Scene(cabinet, [hp.place("main", at=(X0, Y0))])
 scene.merged(ground="y", bands=[b for b in BANDS if b[0] < FREQS.max()],
              points_per_wavelength=4.0, max_size=0.06, driver_size=0.003, margin=0.05)
-scene.mesh(files)
-print(f"{hp} | line {line_length():.3f} m, quarter-wave estimate {quarter_wave():.1f} Hz | "
-      f"{len(FREQS)} frequencies ≤ {FREQS.max():.0f} Hz")
 
-res = lp.FrequencyResponse(scene, drive=lp.Force(1.0)).solve(FREQS, store=files / f"{TAG}.h5")
-print(res, f"→ {files / (TAG + '.h5')}")
+if __name__ == "__main__":
+    if len(sys.argv) > 1:                          # quick test: python3 run.py 40,70,100
+        FREQS = np.array([float(x) for x in sys.argv[1].split(",")])
+        TAG = "labyrinth_test"
+        scene.merged(ground="y", bands=[b for b in BANDS if b[0] < FREQS.max()],
+                     points_per_wavelength=4.0, max_size=0.06, driver_size=0.003, margin=0.05)
+    export_cabinet(files, hp.r_front)
+    scene.mesh(files)
+    print(f"{hp} | line {line_length():.3f} m, quarter-wave estimate {quarter_wave():.1f} Hz | "
+          f"{len(FREQS)} frequencies ≤ {FREQS.max():.0f} Hz")
+    res = lp.FrequencyResponse(scene, drive=lp.Force(1.0)).solve(FREQS, store=files / f"{TAG}.h5")
+    print(res, f"→ {files / (TAG + '.h5')}")

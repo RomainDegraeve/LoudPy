@@ -15,6 +15,9 @@ What this produces (Results/Files/)
   vented_merged_<f>Hz.msh    one air mesh per band (built on the first run, reused afterwards)
 Then run plot.py and plot_3d.py. (A faster hybrid model of the same box — modal inside, 1D port —
 written with the low-level toolkit is kept in examples/legacy/vented_hybrid.)
+
+The scene is built at the top (not meshed); meshing and solving run only when this file is run (python3 run.py),
+so the interface opens it without computing (python -m loudpy.ui on this folder or file).
 """
 import sys
 from pathlib import Path
@@ -25,17 +28,19 @@ import loudpy as lp
 
 lp.set_verbosity("info")                 # progress messages (loudpy is silent by default)
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "shared"))   # the shared box
-from enclosure import vented_scene  # noqa: E402
+from enclosure import MESHES, vented_scene  # noqa: E402
 
 files = Path(__file__).resolve().parent / "Results/Files"     # this example's results
 files.mkdir(parents=True, exist_ok=True)
 FREQS = np.unique(np.concatenate([np.arange(20.0, 300.0, 2.0), np.arange(300.0, 3000.0 + 1e-9, 10.0)]))
 tag = "vented_merged"
-if len(sys.argv) > 1:                                      # quick test: a list of frequencies
-    FREQS = np.array([float(x) for x in sys.argv[-1].split(",")])
-    tag = "vented_merged_test"
+scene = vented_scene(mesh=False)                           # enclosure.py: cabinet, driver, merged air
 
-scene = vented_scene()                                     # enclosure.py: cabinet, driver, merged air, meshed
-print(scene)
-res = lp.FrequencyResponse(scene, drive=lp.Force(1.0)).solve(FREQS, store=files / f"{tag}.h5")
-print(res, "→", files / f"{tag}.h5")
+if __name__ == "__main__":
+    if len(sys.argv) > 1:                                  # quick test: a list of frequencies
+        FREQS = np.array([float(x) for x in sys.argv[-1].split(",")])
+        tag = "vented_merged_test"
+    scene.mesh(MESHES)
+    print(scene)
+    res = lp.FrequencyResponse(scene, drive=lp.Force(1.0)).solve(FREQS, store=files / f"{tag}.h5")
+    print(res, "→", files / f"{tag}.h5")

@@ -57,17 +57,21 @@ def port_tuning(volume=None):
 
 
 # ── the scenes (meshed in shared/meshes, reused while unchanged) ──────────────────────────────────────────────
-def sealed_scene(hp=None):
-    """The driver in the sealed box, front in vacuo (cavity modes to 6 kHz, loss factor 0.02)."""
-    return lp.Scene.sealed_box(SEALED, hp or driver(), at=(X0, Y0), f_max=3000.0).mesh(MESHES)
+def sealed_scene(hp=None, mesh=True):
+    """The driver in the sealed box, front in vacuo (cavity modes to 6 kHz, loss factor 0.02); meshed in MESHES
+    unless mesh=False."""
+    scene = lp.Scene.sealed_box(SEALED, hp or driver(), at=(X0, Y0), f_max=3000.0)
+    return scene.mesh(MESHES) if mesh else scene
 
 
-def exterior_scene(hp=None):
-    """The sealed box on a rigid ground: cavity modes (rear) + exterior FE / DtN (front)."""
-    return lp.Scene.sealed_box(SEALED, hp or driver(), at=(X0, Y0), f_max=3000.0, radiating=True).mesh(MESHES)
+def exterior_scene(hp=None, mesh=True):
+    """The sealed box on a rigid ground: cavity modes (rear) + exterior FE / DtN (front); meshed unless mesh=False."""
+    scene = lp.Scene.sealed_box(SEALED, hp or driver(), at=(X0, Y0), f_max=3000.0, radiating=True)
+    return scene.mesh(MESHES) if mesh else scene
 
 
-def vented_scene(hp=None):
-    """The vented box on a rigid ground: ONE air domain (inside + port + outside)."""
-    return lp.Scene.vented_box(VENTED, hp or driver(), at=(X0, Y0), f_max=3000.0,
-                               air_file="vented_merged_{f_hi:.0f}Hz.msh").mesh(MESHES)
+def vented_scene(hp=None, mesh=True):
+    """The vented box on a rigid ground: ONE air domain (inside + port + outside); meshed unless mesh=False."""
+    scene = lp.Scene.vented_box(VENTED, hp or driver(), at=(X0, Y0), f_max=3000.0,
+                                air_file="vented_merged_{f_hi:.0f}Hz.msh")
+    return scene.mesh(MESHES) if mesh else scene

@@ -12,6 +12,9 @@ What this produces
                         (t_ramp, freqs_tones, …). Storing u, v, a at every node and step would take 8.7 GB.
 
 Then run plot.py.
+
+The model is built at the top; meshing and solving run only when this file is run (python3 run.py), so the
+interface opens it without computing (python -m loudpy.ui on this folder or file) and can run it in the background.
 """
 from pathlib import Path
 import matplotlib.pyplot as plt
@@ -58,24 +61,6 @@ ramp = 0.5 * (1.0 - np.cos(np.pi * np.arange(n_ramp) / n_ramp))
 signal = FORCE_AMPLITUDE * np.concatenate([block[:n_ramp] * ramp, block])
 t = np.arange(len(signal)) / FS
 
-# ── Check: spectrum of the steady-state block ──────────────────────────────────
-steady = signal[n_ramp:]
-S = np.fft.rfft(steady) / len(steady)
-f_axis = np.fft.rfftfreq(len(steady), 1.0 / FS)
-
-fig, axes = plt.subplots(2, 1, figsize=(12, 7), tight_layout=True)
-axes[0].plot(t, signal / abs(signal).max(), lw=0.8, label="Force signal")
-axes[0].plot(t[:n_ramp], ramp, lw=1.2, color="grey", label="Ramp envelope")
-axes[0].plot(t[:n_ramp], -ramp, lw=1.2, color="grey")
-axes[0].hlines([1, -1], T_RAMP, t[-1], color="grey", lw=1.2, ls=":")
-axes[0].axvline(T_RAMP, color="red", ls="--", label=f"Ramp end / steady start ({T_RAMP} s)")
-axes[0].set(xlabel="Time [s]", ylabel="Amplitude", title=f"{len(freqs)} tones, ramp {T_RAMP} s + signal {T_BLOCK} s")
-axes[0].legend()
-axes[0].grid(True, which="both", alpha=0.3)
-axes[1].semilogx(f_axis, 20 * np.log10(2 * np.abs(S) + 1e-100), lw=0.9)
-axes[1].set(xlabel="Frequency [Hz]", ylabel="Amplitude [dB]", title="FFT of steady-state block")
-axes[1].grid(True, which="both", alpha=0.3)
-plt.show()
 
 # ── Model ──────────────────────────────────────────────────────────────────────
 size = 0.0005
@@ -92,14 +77,34 @@ model.add(
     lp.Coil("coil_drive"),
     lp.FluidStructure("wet_front"),
 )
-model.mesh(mesh_path)
+if __name__ == "__main__":
+    # ── Check: spectrum of the steady-state block ──────────────────────────────────
+    steady = signal[n_ramp:]
+    S = np.fft.rfft(steady) / len(steady)
+    f_axis = np.fft.rfftfreq(len(steady), 1.0 / FS)
 
-# ── Solve ──────────────────────────────────────────────────────────────────────
-study = lp.Transient(model, drive=lp.Force(signal, fs=FS), rho_inf=0.98, nr_tol=1e-6, nr_max_iter=10)
-STORE_EVERY = 40               # fields every 40 steps (1.2 kHz): enough for the snapshots and the animation
-output = lp.Output(fields=["u"], every=STORE_EVERY, probes={"tip": (0.0, 0.0)})     # tip: full rate (48 kHz)
-res = study.solve(output=output)
-print(res)
-study.save(out_path, case="multitone", f_min=F_MIN, f_max=F_MAX, freqs_tones=freqs,
-           t_total=T_RAMP + T_BLOCK, t_ramp=T_RAMP, seed=SEED, force_amplitude=FORCE_AMPLITUDE)
-print(f"Saved → {out_path}")
+    fig, axes = plt.subplots(2, 1, figsize=(12, 7), tight_layout=True)
+    axes[0].plot(t, signal / abs(signal).max(), lw=0.8, label="Force signal")
+    axes[0].plot(t[:n_ramp], ramp, lw=1.2, color="grey", label="Ramp envelope")
+    axes[0].plot(t[:n_ramp], -ramp, lw=1.2, color="grey")
+    axes[0].hlines([1, -1], T_RAMP, t[-1], color="grey", lw=1.2, ls=":")
+    axes[0].axvline(T_RAMP, color="red", ls="--", label=f"Ramp end / steady start ({T_RAMP} s)")
+    axes[0].set(xlabel="Time [s]", ylabel="Amplitude", title=f"{len(freqs)} tones, ramp {T_RAMP} s + signal {T_BLOCK} s")
+    axes[0].legend()
+    axes[0].grid(True, which="both", alpha=0.3)
+    axes[1].semilogx(f_axis, 20 * np.log10(2 * np.abs(S) + 1e-100), lw=0.9)
+    axes[1].set(xlabel="Frequency [Hz]", ylabel="Amplitude [dB]", title="FFT of steady-state block")
+    axes[1].grid(True, which="both", alpha=0.3)
+    plt.show()
+
+    model.mesh(mesh_path)
+
+    # ── Solve ──────────────────────────────────────────────────────────────────────
+    study = lp.Transient(model, drive=lp.Force(signal, fs=FS), rho_inf=0.98, nr_tol=1e-6, nr_max_iter=10)
+    STORE_EVERY = 40               # fields every 40 steps (1.2 kHz): enough for the snapshots and the animation
+    output = lp.Output(fields=["u"], every=STORE_EVERY, probes={"tip": (0.0, 0.0)})     # tip: full rate (48 kHz)
+    res = study.solve(output=output)
+    print(res)
+    study.save(out_path, case="multitone", f_min=F_MIN, f_max=F_MAX, freqs_tones=freqs,
+               t_total=T_RAMP + T_BLOCK, t_ramp=T_RAMP, seed=SEED, force_amplitude=FORCE_AMPLITUDE)
+    print(f"Saved → {out_path}")

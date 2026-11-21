@@ -5,6 +5,16 @@ versions follow [Semantic Versioning](https://semver.org/) (0.x: the API may sti
 
 ## [Unreleased]
 
+- Result files rebuild their model: the description stores the model or scene as a script using the files stored
+  with it (now also a scene's cabinet — STEP file or the module of a cabinet builder — and its drivers' geometry,
+  and a non-default material library); `res.model.rebuild(folder)` → the `lp.Model` / `lp.Scene` again,
+  `res.model.rebuildable`. `Scene.to_script` writes a cabinet builder defined in a module file as an import.
+- Examples: every `run.py` builds its model or scene at the top and meshes / solves only under
+  `if __name__ == "__main__":` (an interface or a notebook can open it without computing); 05 and 06 give their
+  PML a base thickness and tuning (the remeshed bands set their own, results unchanged); 03 radiates through
+  `lp.Radiation("dtn")` (its label had kept the former group name). `enclosure.sealed_scene(mesh=False)` etc.
+- `lp.cabinets.Box`: drivers checked against the front face when only the depth is a parameter.
+
 ### Changed (breaking)
 - The examples folder is `examples/` (was `LoudPy_exemples/`).
 - Readable group names in the example geometries: `cone` (was `submeca_membranne`), `dustcap`, `surround`, `former`,

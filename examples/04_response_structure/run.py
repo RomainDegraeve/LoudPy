@@ -10,6 +10,9 @@ What this produces
     Results/Files/sweep.h5   — one entry per frequency (loudpy result format 3)
 
 Then run plot.py.
+
+The model is built at the top; meshing and solving run only when this file is run (python3 run.py), so the
+interface opens it without computing (python -m loudpy.ui on this folder or file) and can run it in the background.
 """
 from pathlib import Path
 import numpy as np
@@ -46,11 +49,12 @@ model.add(
     lp.FluidStructure("wet_front"),     # kept in the results for the plots
     lp.FluidStructure("wet_rear"),
 )
-model.mesh(mesh_path)
+if __name__ == "__main__":
+    model.mesh(mesh_path)
 
-# ── Solve ──────────────────────────────────────────────────────────────────────
-study = lp.FrequencyResponse(model, drive=lp.Force(force))
-res = study.solve(freqs)
-print(res)
-study.save(out_path)
-print(f"Saved → {out_path}")
+    # ── Solve ──────────────────────────────────────────────────────────────────────
+    study = lp.FrequencyResponse(model, drive=lp.Force(force))
+    res = study.solve(freqs)
+    print(res)
+    study.save(out_path)
+    print(f"Saved → {out_path}")

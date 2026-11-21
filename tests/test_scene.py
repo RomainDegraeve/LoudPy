@@ -226,8 +226,10 @@ def test_scene_to_script_round_trip(driver, tmp_path):
     assert again.cabinet == scene.cabinet and dict(again.parameters) == {"k": 1.0}
     assert [tuple(d.frame.origin) for d in again.drivers] == [tuple(d.frame.origin) for d in scene.drivers]
     assert len(again.drivers[0].driver.modes) == len(driver.modes) and again._cavity_spec == scene._cavity_spec
-    with pytest.raises(lp.errors.ModelError, match="builder"):
-        lp.Scene(box_cabinet, [driver.place("main", at=(W / 2, H / 2))]).to_script()
+    text = lp.Scene(box_cabinet, [driver.place("main", at=(W / 2, H / 2))]).cavity().to_script()
+    assert "from test_scene import box_cabinet as cabinet" in text          # a builder in a module: imported
+    with pytest.raises(lp.errors.ModelError, match="builder"):              # a lambda cannot be written out
+        lp.Scene(lambda occ: box_cabinet(occ), [driver.place("main", at=(W / 2, H / 2))]).cavity().to_script()
 
 
 def deep_box(occ, p):

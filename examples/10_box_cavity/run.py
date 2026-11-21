@@ -17,6 +17,9 @@ What this produces (Results/Files/)
   - coupled.h5                  : forced response (driver modal amplitudes, modal pressures)
   - coupled_modes.h5            : coupled modes (complex s, driver and cavity components)
 Then run plot.py and plot_3d.py.
+
+The scene is built at the top (not meshed); meshing and solving run only when this file is run (python3 run.py),
+so the interface opens it without computing (python -m loudpy.ui on this folder or file).
 """
 import sys
 from pathlib import Path
@@ -27,18 +30,19 @@ import loudpy as lp
 
 lp.set_verbosity("info")                 # progress messages (loudpy is silent by default)
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "shared"))   # the shared box
-from enclosure import sealed_scene  # noqa: E402
+from enclosure import MESHES, sealed_scene  # noqa: E402
 
 files = Path(__file__).resolve().parent / "Results/Files"     # this example's results
 files.mkdir(parents=True, exist_ok=True)
 FREQS = np.geomspace(20.0, 3000.0, 700)        # forced response band [Hz]
 
-scene = sealed_scene()                         # enclosure.py: cabinet, driver, cavity settings
-print(scene)
+scene = sealed_scene(mesh=False)               # enclosure.py: cabinet, driver, cavity settings
 
-res = lp.FrequencyResponse(scene, drive=lp.Force(1.0)).solve(FREQS, store=files / "coupled.h5")
-print(res, "→", files / "coupled.h5")
-
-modes = lp.Modes(scene).solve(f_max=FREQS[-1] * 1.5)
-modes.save(files / "coupled_modes.h5")
-print(f"{len(modes)} coupled modes ≤ {FREQS[-1] * 1.5:.0f} Hz → {files / 'coupled_modes.h5'}")
+if __name__ == "__main__":
+    scene.mesh(MESHES)
+    print(scene)
+    res = lp.FrequencyResponse(scene, drive=lp.Force(1.0)).solve(FREQS, store=files / "coupled.h5")
+    print(res, "→", files / "coupled.h5")
+    modes = lp.Modes(scene).solve(f_max=FREQS[-1] * 1.5)
+    modes.save(files / "coupled_modes.h5")
+    print(f"{len(modes)} coupled modes ≤ {FREQS[-1] * 1.5:.0f} Hz → {files / 'coupled_modes.h5'}")

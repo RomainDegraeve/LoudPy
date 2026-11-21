@@ -23,6 +23,9 @@ What this produces
     Results/Files/eigen_fourier.h5   — one mode set per order m (loudpy result format 3)
 
 Then run plot.py and plot_3d.py.
+
+The model is built at the top; meshing and solving run only when this file is run (python3 run.py), so the
+interface opens it without computing (python -m loudpy.ui on this folder or file) and can run it in the background.
 """
 from pathlib import Path
 import loudpy as lp
@@ -57,11 +60,12 @@ model.add(
     lp.Coil("coil_drive"),
     lp.FluidStructure("wet_front"),
 )
-model.mesh(mesh_path)
+if __name__ == "__main__":
+    model.mesh(mesh_path)
 
-# ── Modes, one azimuthal order at a time ───────────────────────────────────────
-study = lp.Modes(model)
-modes = study.solve(f_min=F_MIN, f_max=F_MAX, orders=ORDERS, n_per_shift=N_PER_SHIFT)
-print(modes, {m: len(modes.order(m)) for m in modes.orders})
-study.save(out_path)
-print(f"Saved → {out_path}")
+    # ── Modes, one azimuthal order at a time ───────────────────────────────────────
+    study = lp.Modes(model)
+    modes = study.solve(f_min=F_MIN, f_max=F_MAX, orders=ORDERS, n_per_shift=N_PER_SHIFT)
+    print(modes, {m: len(modes.order(m)) for m in modes.orders})
+    study.save(out_path)
+    print(f"Saved → {out_path}")
