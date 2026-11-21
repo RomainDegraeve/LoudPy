@@ -1,6 +1,6 @@
 # Coupling_3D/Driver_in_cavity — axisymmetric driver in a non-axisymmetric 3D enclosure
 
-The driver's azimuthal-order (Fourier) modes, for m = 0 … 3, are coupled to the rigid-wall acoustic modes of a 3D enclosure of any shape, by modal superposition (`loudpy.Studies.Cavity_coupling`).
+The driver's azimuthal-order (Fourier) modes, for m = 0 … 3, are coupled to the rigid-wall acoustic modes of a 3D enclosure of any shape, by modal superposition (`loudpy.physics.modal`, through `lp.Scene(…).cavity()`).
 - The driver stays a cheap 2D meridian model.
 - Only the cavity needs 3D FEM (P2 tetrahedra, computed once).
 - The front of the driver is in vacuo.
@@ -38,7 +38,7 @@ q are the modal amplitudes of the driver and P the modal pressures of the cavity
 ## Exterior radiation: enclosure standing on a rigid ground
 The front radiates into the half-space above a perfectly reflective ground:
 - **Exterior air:** 3D P2 FE inside a hemisphere centred on the ground (radius 0.378 m).
-- **Radiation condition:** the exact half-space DtN on that hemisphere (`loudpy.Studies.Exterior_dtn`). Only the spherical harmonics with n + |m| even are kept, which is the image-source condition.
+- **Radiation condition:** the exact half-space DtN on that hemisphere (`loudpy.physics.exterior`, through `scene.exterior()`). Only the spherical harmonics with n + |m| even are kept, which is the image-source condition.
 - **Coupling:** the driver is loaded by the enclosure modes (rear) and the exterior field (front) at once.
 - **Solver:** per frequency, preconditioned GMRES, with one sparse LU per 50 Hz. The frequency range uses three meshes, sized for 1, 2 and 3 kHz.
 

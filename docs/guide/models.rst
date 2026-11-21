@@ -11,9 +11,9 @@ and a material library. Everything is declared with small value objects passed t
    model = lp.Model("speaker.geo")                     # materials: loudpy's library by default
    model.add(
        lp.Solid("membranne", "Paper", mesh_size=5e-4),
-       lp.Solid("surround", "Rubber", damping=lp.Hysteretic(eta=0.1)),
+       lp.Solid("surround", "Rubber", damping=lp.Hysteretic(eta=0.1)),            # … one item per solid region
        lp.Air("subacou", mesh_size=5e-3),
-       lp.PML("PML", order=2, strength=1.5),
+       lp.PML("PML", thickness=0.1, tuned_to=1000.0, order=2, strength=1.5),
        lp.Clamped("interface_constrained_rz"), lp.Clamped("interface_constrained_r", dofs="r"),
        lp.Coil("interface_forced"),
        lp.FluidStructure("interface_acou_meca_front"),
@@ -62,7 +62,7 @@ Regions
 -------
 
 ========================================= ==================================================
-:class:`lp.Solid <loudpy.Solid>`          elastic structure (P2 triangles, axisymmetric or with an azimuthal order *m*)
+:class:`lp.Solid <loudpy.Solid>`          elastic structure (Lagrange P1–P3 / Q1–Q2, P2 by default; axisymmetric or azimuthal order *m*)
 :class:`lp.Air <loudpy.Air>`              linear acoustic fluid
 :class:`lp.PML <loudpy.PML>`              perfectly matched layer, grown by the mesher outward from its base curves
 ========================================= ==================================================
@@ -201,7 +201,7 @@ The library's ``Air`` is computed by :func:`lp.air <loudpy.air>` at 20 °C, 101.
 .. code-block:: python
 
    warm = lp.air(temperature=308.15, humidity=0.8)     # 35 °C, 80 % RH: ρ = 1.126, c = 354.45
-   model.add(lp.Air("subacou", material=warm), lp.PML("PML", material=warm))
+   model.add(lp.Air("subacou", material=warm), lp.PML("PML", thickness=0.1, tuned_to=1000.0, material=warm))
    scene = lp.Scene(cabinet, drivers, air=warm)
 
 ``lp.air`` treats air as an ideal-gas mixture of dry air and water vapour (saturation pressure

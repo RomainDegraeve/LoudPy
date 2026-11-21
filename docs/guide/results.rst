@@ -150,5 +150,5 @@ Saving
 ------
 
 ``study.save(path, **metadata)`` or ``res.save(path)`` write the
-:doc:`loudpy result format 2 <file_format>`; the metadata come back in ``res.meta``. Large 3D
+:doc:`loudpy result format 3 <file_format>`; the metadata come back in ``res.meta``. Large 3D
 fields are read lazily (only the rows asked for are read from disk).

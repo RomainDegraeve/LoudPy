@@ -8,7 +8,7 @@ share the same three steps:
 
    study = lp.<Study>(model, ...)          # what to compute
    res = study.solve(...)                  # Results (FrequencyResults, ModeResults, TimeResults)
-   study.save("Results/Files/name.h5", note="anything")   # loudpy result format 2 (+ metadata)
+   study.save("Results/Files/name.h5", note="anything")   # loudpy result format 3 (+ metadata)
 
 Modes
 -----

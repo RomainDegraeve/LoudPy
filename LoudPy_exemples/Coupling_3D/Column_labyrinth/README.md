@@ -37,7 +37,7 @@ res.far_field(points); res.driver("top").excursion(); res.field("p", index=i)
 | file | does |
 |---|---|
 | `column.py` | Parameters, the folded-line geometry, and the line-length and tuning estimates. |
-| `Running_column.py` | Coupled sweep, 20 Hz to `F_MAX`. Steps are 2 Hz below 300 Hz, then 10 Hz. Builds the air mesh of each band on the first run (`air_<f>Hz.msh`), then writes `column.h5` (loudpy result format 2; the pressure field is streamed to the file frequency by frequency). `python3 Running_column.py 40,100,300` runs a quick test into `column_test.h5`. |
+| `Running_column.py` | Coupled sweep, 20 Hz to `F_MAX`. Steps are 2 Hz below 300 Hz, then 10 Hz. Builds the air mesh of each band on the first run (`air_<f>Hz.msh`), then writes `column.h5` (loudpy result format 3; the pressure field is streamed to the file frequency by frequency). `python3 Running_column.py 40,100,300` runs a quick test into `column_test.h5`. |
 | `Loading_column.py` | `column_response.pdf`: SPL at 1 m (front axis, 30° up and down, behind at the mouth), the excursion of each driver, vertical and horizontal directivity maps and polars, and the m ≥ 1 share and excursion phase of each driver. |
 | `Plot_3D_column.py` | `column_views_3d.pdf`: the column cut through the driver axes, showing the line in section. Shows SPL inside and outside with iso-lines, and the three deformed drivers at one instant and one scale. |
 

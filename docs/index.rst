@@ -10,9 +10,10 @@ and 3D enclosures with one or several drivers.
    import numpy as np
    import loudpy as lp
 
-   model = lp.Model("HPNEW-Sketch.geo")
-   model.add(lp.Solid("membranne", "Paper"), lp.Solid("surround", "Rubber"),
-             lp.Air("subacou"), lp.PML("PML"),
+   model = lp.Model("LoudPy_exemples/Geometries/Loudspeaker/HPNEW-Sketch.geo")
+   model.add(lp.Solid("membranne", "Paper"), lp.Solid("coil", "Copper"), lp.Solid("surround", "Rubber"),
+             lp.Solid("spider", "PhenolicCloth"), lp.Solid("former", "Kapton"), lp.Solid("glue", "SolidGlue"),
+             lp.Solid("dustcap", "Polypropylene"), lp.Air("subacou"), lp.PML("PML", thickness=0.1, tuned_to=1000.0),
              lp.Clamped("interface_constrained_rz"), lp.Clamped("interface_constrained_r", dofs="r"), lp.Coil("interface_forced"),
              lp.FluidStructure("interface_acou_meca_front"), lp.FluidStructure("interface_acou_meca_rear"))
    model.mesh("mesh.msh")

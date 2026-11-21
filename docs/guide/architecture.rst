@@ -12,7 +12,7 @@ testable on its own.
    studies       │  loudpy.study: Modes · FrequencyResponse · Transient │  orchestration
                  ├───────────────────┬──────────────────────────────────┤
    results/plot  │  loudpy.results   │  loudpy.plot                     │  Results → Data / Field (quantities,
-                 │  (Data, Field,    │  (curves, fields, view3d,        │  selections, exports), HDF5 format 2;
+                 │  (Data, Field,    │  (curves, fields, view3d,        │  selections, exports), HDF5 format 3;
                  │  selections)      │  scene3d, animate, style)        │  plots read Data / Field only
                  ├───────────────────┴──────────────────────────────────┤
    3D scenes     │  loudpy.scene: Driver · Profile · Scene · Cabinet    │  drivers placed in enclosures

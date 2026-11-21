@@ -21,7 +21,7 @@ A labyrinth (folded quarter-wave transmission line) is simulated as one air doma
 | file | does |
 |---|---|
 | `labyrinth.py` | Parameters, the folded-line geometry, and the line-length and tuning estimates. |
-| `Running_labyrinth.py` | Coupled sweep, 20 Hz to `F_MAX`. Steps are 2 Hz below 300 Hz, then 10 Hz. An `lp.Scene` (`labyrinth.cabinet`, `labyrinth.driver()`, `merged` air): builds one air mesh per band on the first run (`air_<f>Hz.msh`) and exports the cabinet (`labyrinth_cabinet.step`), then writes `labyrinth.h5` (loudpy result format 2, field streamed). `python3 Running_labyrinth.py 40,70,100` runs a quick test into `labyrinth_test.h5`. |
+| `Running_labyrinth.py` | Coupled sweep, 20 Hz to `F_MAX`. Steps are 2 Hz below 300 Hz, then 10 Hz. An `lp.Scene` (`labyrinth.cabinet`, `labyrinth.driver()`, `merged` air): builds one air mesh per band on the first run (`air_<f>Hz.msh`) and exports the cabinet (`labyrinth_cabinet.step`), then writes `labyrinth.h5` (loudpy result format 3, field streamed). `python3 Running_labyrinth.py 40,70,100` runs a quick test into `labyrinth_test.h5`. |
 | `Loading_labyrinth.py` | `labyrinth_response.pdf`: SPL at 1 m (driver axis, mouth, off axis) and excursion, against the sealed and vented boxes when their results exist; directivity maps; polar curves. |
 | `Plot_3D_labyrinth.py` | `labyrinth_views_3d.pdf`: 3D scenes cut through the driver axis, showing the whole folded line in section. Includes SPL with iso-lines and the deformed driver. |
 

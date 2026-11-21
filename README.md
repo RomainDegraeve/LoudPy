@@ -1,7 +1,7 @@
 
-![description](LoudPy_exemples/Field_Response_8970Hz_Symmetric_Clean.png)
+![description](docs/images/field_response_8970Hz.png)
 
-# LoudPy Beta
+# LoudPy 0.2 (beta)
 
 LoudPy is an open-source Python API dedicated to loudspeaker finite element simulation, released under the [GPL-3.0 license](https://www.gnu.org/licenses/gpl-3.0.html).
 
@@ -47,8 +47,12 @@ import numpy as np
 import loudpy as lp
 
 model = lp.Model("LoudPy_exemples/Geometries/Loudspeaker/HPNEW-Sketch.geo")
-model.add(lp.Solid("membranne", "Paper"), lp.Solid("surround", "Rubber"), lp.Solid("coil", "Copper"),
-          lp.Clamped("interface_constrained_rz"), lp.Clamped("interface_constrained_r", dofs="r"), lp.Coil("interface_forced"))
+model.add(lp.Solid("membranne", "Paper"), lp.Solid("coil", "Copper"), lp.Solid("surround", "Rubber"),
+          lp.Solid("spider", "PhenolicCloth"), lp.Solid("former", "Kapton"), lp.Solid("glue", "SolidGlue"),
+          lp.Solid("dustcap", "Polypropylene"),
+          lp.Clamped("interface_constrained_rz"), lp.Clamped("interface_constrained_r", dofs="r"),
+          lp.Coil("interface_forced"))
+print(model)                                          # the model tree; model.check() before meshing
 model.mesh("mesh.msh")
 
 lp.set_verbosity("info")                              # progress messages (silent by default)
@@ -84,7 +88,7 @@ scripts (write `Results/Figures/`).
 | `Frequency_study/FSI` | Coupled structural–acoustic sweep, air remeshed per wavelength |
 | `Frequency_study/FSI_elec` | The same, voltage-driven (impedance, coil current) |
 | `Time_study/Multitone` | Nonlinear time-domain simulation, multi-tone |
-| `Coupling_3D/Driver_in_cavity` | Driver in a 3D enclosure: cavity modes, radiation on a rigid ground, vented box |
+| `Coupling_3D/Driver_in_cavity` | Driver in a 3D enclosure: cavity modes, radiation on a rigid ground, vented box, elastic MDF walls |
 | `Coupling_3D/Labyrinth` | Folded transmission line on a rigid ground |
 | `Coupling_3D/Column_labyrinth` | Three drivers in a column with a folded line (multi-driver) |
 
@@ -112,17 +116,22 @@ If you want to contribute to this open-source project, feel free to reach out:
 
 ### Workflow
 
-LoudPy handles 2D axisymmetric geometries. The full pipeline is:
+geometry → selections → materials and physics → mesh → studies → results, as in COMSOL / ANSYS:
 
-1. **Import** — a STEP file is loaded and converted to BREP format by LoudPy
-2. **Physical entity assignment** — the [Gmsh standalone app](https://gmsh.info) is used to
-   assign named physical groups: closed curve loops define subdomains, individual curves define
-   boundaries. This produces two paired files: a `.brep` (geometry) and a `.geo` (named entities)
-3. **Meshing** — LoudPy loads both files, links named entities to materials and boundary
-   conditions, and generates the mesh via the Gmsh Python API (bundled — no separate install needed)
-4. **Solve** — the chosen study assembles and solves the FEM system
-5. **Results** — saved to a self-describing **HDF5** file (`.h5`, loudpy result format 2) and read
-   back with `lp.load`; evaluated, plotted and exported from the result object
+1. **Geometry** — a `.geo` file (curve loops or physical surfaces), a CAD file (STEP / IGES / BREP, a 2D
+   sketch whose closed regions become domains) or a Python builder function; 3D cabinets are builder functions
+   (`lp.Scene`).
+2. **Selections** — names are labels only: `lp.Group`, `lp.Box`, `lp.Near`, `lp.Interface`, `lp.BoundaryOf`, combined
+   with `|`, `&`, `-` (`lp.plot.selection` shows what they select).
+3. **Model items** — `lp.Solid`, `lp.Air`, `lp.PML`, `lp.Clamped`, `lp.Coil`, `lp.FluidStructure`, `lp.Radiation`,
+   `lp.MeshSize`; `print(model)` shows the model tree, `model.check()` checks it before meshing; values may be
+   parameters (`lp.Parameters`, `lp.P("h")`).
+4. **Mesh** — gmsh, deterministic, reused while its signature (geometry, items, sizes, parameters) is unchanged;
+   element order 1–3, triangles or quadrangles.
+5. **Studies** — `lp.Modes`, `lp.FrequencyResponse`, `lp.Transient`; `lp.Sweep` (parametric), `lp.Adaptive`
+   (adapted meshes), `lp.convergence` (mesh convergence).
+6. **Results** — a self-contained HDF5 file (loudpy result format 3: fields, meshes, the model description and
+   geometry files, the study settings), read back with `lp.load`.
 
 ### Studies
 
@@ -131,32 +140,44 @@ LoudPy handles 2D axisymmetric geometries. The full pipeline is:
 | `lp.Modes(model)` | Structural modes (axisymmetric, or azimuthal orders m = 0, 1, 2…), complex with damping |
 | `lp.Modes(model, physics="coupled")` | Coupled structure + air modes with an exact (DtN) radiation condition |
 | `lp.Modes(model, physics="acoustic")` | Acoustic modes of the air (rigid structure) |
-| `lp.FrequencyResponse(model, drive=…)` | Harmonic response: structure, or structure + air (force or voltage drive), air remeshed per wavelength |
+| `lp.FrequencyResponse(model, drive=…)` | Harmonic response: structure, or structure + air (force or voltage drive with the voice-coil circuit), air remeshed per wavelength |
 | `lp.Transient(model, drive=lp.Force(signal, fs))` | Geometrically nonlinear time response |
-| `lp.FrequencyResponse(scene)` | 3D enclosures with one or several drivers (cavity modes, exterior air on a rigid ground) |
+| `lp.Modes / lp.FrequencyResponse(scene)` | 3D enclosures with one or several drivers: cavity modes, exterior air on a rigid ground (exact DtN), one merged air domain (vented boxes, lines), elastic walls (shells) |
+| `lp.Sweep(study, name, values)` | Parametric study over any `lp.P` parameter (2D models and 3D scenes), one result file |
+| `lp.Adaptive(study, target=…)`, `lp.convergence(study, factors=…)` | Meshes adapted to the error estimate; convergence tables with observed orders |
 
 ### Physics
 
-- **Structural domain** — 2D axisymmetric linear elasticity, T6 elements
-- **Acoustic domain** — pressure-based formulation, T6 elements
-- **Fluid-structure coupling** — `lp.FluidStructure` boundaries, assembled automatically
-- **Damping** — Rayleigh (`α`, `β`) and hysteretic (`η`), both supporting non-proportional formulations
-- **Radiation** — Perfectly Matched Layer (`lp.PML`) or exact Dirichlet-to-Neumann condition (`lp.Radiation`)
+- **Structure** — axisymmetric linear elasticity (Lagrange P1–P3 triangles, Q1–Q2 quadrangles, curved cells),
+  azimuthal Fourier orders, total-Lagrangian nonlinearity; shells (MITC3 / MITC4) for 3D cabinet walls
+- **Air** — pressure Helmholtz equation (2D axisymmetric and 3D P2 tetrahedra), air from temperature, pressure and
+  humidity (`lp.air`)
+- **Coupling** — `lp.FluidStructure` boundaries, normals from the mesh; voice coil as a force or a voltage drive
+  (Re, Le, semi-inductance, Bl)
+- **Damping** — Rayleigh (`α`, `β`, every study) and hysteretic (`η`, frequency domain), per region
+- **Radiation** — `lp.PML`, or exact Dirichlet-to-Neumann conditions (2D sphere, 3D half-space)
 
 ### Material Library
 
-Built-in materials (`materials.json`): `Polypropylene`, `Paper`, `Copper`, `Rubber`, `Kapton`,
-`PhenolicCloth`, `Air`, `SolidGlue`. Custom materials can be added to the JSON file or defined
-directly in the study script.
+`materials.json` (typical values, unverified): `Polypropylene`, `Paper`, `Copper`, `Rubber`, `Kapton`,
+`PhenolicCloth`, `SolidGlue`, `MDF`, `Plywood`, `Aluminium`, `Steel`, `Air`; or `lp.Material(...)` in a script.
 
 ### Post-processing
 
-- `res.spl(at=…)`, `res.pressure(at=…)`, `res.displacement(at=…, component="z")`, `res.probe(name, at=…)`
-  at points, `lp.Points`, `lp.Arc`, `lp.Line` → `lp.Data` (values with coordinates and units)
-- `res.field(name, f=…)` → `lp.Field` (values on the mesh): components, SPL, regions, interpolation
-- `.plot()` on any of them, and `lp.plot` (mode grids, directivity, 3D views, animations), one
-  scientific style for every figure
-- `.to_pandas()`, `np.asarray(…)`, `.export("x.csv" | "x.mat" | "x.npz" | "x.vtu")`, `res.export("all.mat")`
+- `res.spl(at=…)`, `res.pressure(at=…)`, `res.displacement(at=…, component="z")`, `res.probe(name, at=…)` at points,
+  `lp.Points`, `lp.Arc`, `lp.Line` → `lp.Data` (values with coordinates and units); `res.far_field(...)`
+- `res.field(name, f=…)` → `lp.Field` (values on the mesh), also derived fields: strain, stress, von Mises, velocity,
+  particle velocity, intensity
+- Derived values: volume velocity, radiated power, Thiele–Small parameters
+- `.plot()` and `lp.plot` (mode grids, directivity, 3D views, animations, selections), one scientific style;
+  `lp.plot.html(field, "x.html")`: interactive viewer in one HTML file
+- `.to_pandas()`, `np.asarray(…)`, `.export("x.csv" | "x.mat" | "x.npz" | "x.vtu" | "x.html")`, `res.export("x.pvd")`
+  (ParaView series), `lp.read_comsol` / `lp.compare` for comparisons with COMSOL exports
+
+### Verification
+
+`pytest --slow` (≈ 380 tests: manufactured solutions, analytical benchmarks, regression references, plots); the
+numbers measured by the verification tests are in `docs/guide/verification_report.rst`.
 
 ---
 
