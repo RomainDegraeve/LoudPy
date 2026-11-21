@@ -137,8 +137,9 @@ class SystemBuilder:
                 if name not in self.fields:
                     raise ModelError(f"term on unknown field {name!r}; fields: {list(self.fields)}")
             shape = (self.fields[t.row].size, self.fields[t.col].size)
-            if not callable(t.matrix) and t.matrix.shape != shape:
-                raise ModelError(f"term ({t.row}, {t.col}) has shape {t.matrix.shape}, expected {shape}")
+            m_shape = getattr(t.matrix, "shape", None)
+            if not callable(t.matrix) and m_shape != shape:
+                raise ModelError(f"term ({t.row}, {t.col}) has shape {m_shape}, expected {shape}")
             self.terms.append(t)
 
     def add_load(self, load: Load) -> None:

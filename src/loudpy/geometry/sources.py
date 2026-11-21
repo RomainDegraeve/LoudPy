@@ -58,7 +58,7 @@ class GeometrySource:
     def files(self) -> dict:
         """{file: sha256} of the geometry and the files a .geo merges; for a builder its code and constants."""
         if self.builder is not None:
-            out = {self.name: _builder_digest(self.builder)}
+            out: dict = {self.name: _builder_digest(self.builder)}
             if self.takes_parameters:
                 out["parameters"] = {k: float(v) for k, v in sorted((self.parameters or {}).items())}
             return out
@@ -119,7 +119,7 @@ class GeometrySource:
         else:
             out = self.builder(gmsh.model.occ)
         gmsh.model.occ.synchronize()
-        named = {}
+        named: dict = {}
         for label, items in (out or {}).items():
             for dim, tag in _dimtags(label, items):
                 named.setdefault((dim, str(label)), []).append(tag)
@@ -161,7 +161,7 @@ def _builder_digest(fn) -> str:
 
 def _physical_groups(gmsh) -> dict:
     """{(dim, name): [tags]} of the named physical groups of dimension 1 and 2."""
-    out = {}
+    out: dict = {}
     for d, t in gmsh.model.getPhysicalGroups():
         name = gmsh.model.getPhysicalName(d, t).strip()
         if name and d in (1, 2):
@@ -262,7 +262,8 @@ class GeometryIndex:
             self.domains = {n: [int(t) for t in tags] for n, tags in layout["domains"].items()}
             self.groups = {n: [int(t) for t in tags] for n, tags in layout["groups"].items()}
             self.unnamed = set(layout["unnamed"])
-            self.outline, self.sides = {}, {}
+            self.outline: dict = {}
+            self.sides: dict = {}
             for n, tags in self.domains.items():
                 if self.kind == "loops":
                     self.outline[n] = list(tags)

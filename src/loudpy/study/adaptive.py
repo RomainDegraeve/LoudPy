@@ -84,7 +84,8 @@ def estimate_errors(res) -> dict:
     if res.model is None or not res.model.groups:
         raise StateError("the error estimate needs the physical data of the mesh groups (format-3 results)")
     groups = res.model.groups
-    by_physics, cells = {}, []
+    by_physics: dict = {}
+    cells: list = []
     for b in res.blocks:
         for physics, name in (("solid", "u"), ("air", "p")):
             if name not in b.fields:
@@ -199,7 +200,9 @@ class Adaptive:
             raise ModelError("lp.Adaptive max_iterations must be ≥ 0")
         self.study, self.target, self.max_iterations = study, float(target), int(max_iterations)
         self.folder = Path(folder) if folder is not None else None
-        self.history, self.results, self.model = [], None, None
+        self.history: list = []
+        self.results = None
+        self.model = None
 
     def solve(self, *args, **kwargs):
         """Calls ``study.solve(*args, **kwargs)`` on each mesh; returns the results of the last one."""

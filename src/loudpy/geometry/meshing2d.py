@@ -137,7 +137,7 @@ class MeshManager:
         self._initialize_gmsh(show_gui)
         try:
             self.source.load(gmsh)
-            surfaces_by_obj = {obj: [] for obj in self.SimObjects}
+            surfaces_by_obj: dict = {obj: [] for obj in self.SimObjects}
 
             # Step 1: domains and PML layers
             normal_surfaces = self._build_domains(surfaces_by_obj)
@@ -431,7 +431,8 @@ class MeshManager:
         for base in self.pml:
             obj = base.sizing
             t = obj.t if obj.t is not None else 0.1
-            counts, seen = Counter(base.names[c] for c in base.curves), Counter()
+            counts = Counter(base.names[c] for c in base.curves)
+            seen: Counter = Counter()
             for c in base.curves:
                 where = f"PML {obj.name!r}, curve {c}"
                 bnd = gmsh.model.getBoundary([(1, c)], oriented=True)

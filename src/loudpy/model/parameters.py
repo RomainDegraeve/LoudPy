@@ -103,7 +103,7 @@ class Parameters(Mapping):
     def __eq__(self, other):
         return isinstance(other, Parameters) and other._values == self._values
 
-    __hash__ = None
+    __hash__ = None  # type: ignore[assignment]   # mutable-looking equality: not hashable
 
 
 def has_references(obj) -> bool:

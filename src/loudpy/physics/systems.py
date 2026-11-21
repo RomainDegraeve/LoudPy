@@ -12,6 +12,7 @@ No study logic and no files here.
 from __future__ import annotations
 
 import logging
+from typing import Any
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -26,15 +27,15 @@ log = logging.getLogger("loudpy.physics")
 @dataclass
 class System:
     """Operators on the free structural DOFs (and the air DOFs when assembled with air)."""
-    meca: object
+    meca: Any
     K: sp.spmatrix
     M: sp.spmatrix
     C: sp.spmatrix | None
     F: np.ndarray | None = None
-    acou: object | None = None
+    acou: Any = None
     H: sp.spmatrix | None = None
     Q: sp.spmatrix | None = None
-    rho: float | None = None
+    rho: Any = None
     Cam: sp.spmatrix | None = None
     info: dict = field(default_factory=dict)
 
@@ -109,7 +110,8 @@ def dtn_system(s: System, parts, center, f_max: float, half: bool = True, n_max:
     """
     from loudpy.physics.radiation import dtn_boundary_vectors, dtn_orders, reverse_bessel_roots
     from loudpy.solvers.eigen import to_csc_complex
-    R, rho = s.C, s.rho
+    R: Any = s.C
+    rho = s.rho
     if np.abs(R).sum() < 1e-30:
         R = None
     nm, na = s.n_meca, s.n_acou
@@ -121,7 +123,9 @@ def dtn_system(s: System, parts, center, f_max: float, half: bool = True, n_max:
     Dk = sp.csr_matrix((na, na))
     Dc = sp.csr_matrix((na, na))
     G_rows, G_cols, G_vals = [], [], []
-    z_aux, beta_aux, R_aux = [], [], []
+    z_aux: list = []
+    beta_aux: list = []
+    R_aux: list = []
     info = []
     for bd in arcs:
         xy = np.asarray(bd.node_coords).reshape(len(bd.node_tags), -1)[:, :2]
@@ -161,13 +165,12 @@ def dtn_system(s: System, parts, center, f_max: float, half: bool = True, n_max:
                  "even, baffled hemisphere" if half else "all, sphere", len(z_aux) - n_aux0, bnd.size)
 
     n_aux = len(z_aux)
-    z_aux, beta_aux = np.array(z_aux), np.array(beta_aux)
-    R_aux = np.array(R_aux)
+    z_arr, beta_arr, R_arr = np.array(z_aux), np.array(beta_aux), np.array(R_aux)
     G = (sp.csr_matrix((np.concatenate(G_vals), (np.concatenate(G_rows), np.concatenate(G_cols))),
                        shape=(na, n_aux)) if n_aux else sp.csr_matrix((na, 0)))
     pieces = dict(Dk=Dk, Dc=Dc, G=G,
-                  Zaa=sp.diags(beta_aux * z_aux / (rho * R_aux)) if n_aux else None,
-                  Caa=sp.diags(-beta_aux / (rho * c)) if n_aux else None, n_aux=n_aux)
+                  Zaa=sp.diags(beta_arr * z_arr / (rho * R_arr)) if n_aux else None,
+                  Caa=sp.diags(-beta_arr / (rho * c)) if n_aux else None, n_aux=n_aux)
     from loudpy.physics.builder import symmetric_builder
     s_damped = s if R is not None else System(s.meca, s.K, s.M, None, s.F, s.acou, s.H, s.Q, s.rho, s.Cam)
     builder = symmetric_builder(s_damped, parts, pieces)

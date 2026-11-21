@@ -55,7 +55,7 @@ class Selector:
         only raise a SelectionError."""
         raise SelectionError(f"{self!r} selects boundary edges, not domains (use it for a boundary)")
 
-    def edges(self, ctx: "Edges") -> set[int]:
+    def edges(self, ctx: "Edges | Curves") -> set[int]:
         """Codes of the boundary edges the selector selects in the context `ctx` (an Edges or a Curves).
         Selectors of domains only raise a SelectionError."""
         raise SelectionError(f"{self!r} selects domains, not boundary edges (lp.BoundaryOf(…) gives its edges)")
@@ -195,7 +195,7 @@ class Box(Selector):
         for k, (lo, hi) in self.bounds.items():
             v = pts[..., axes.index(k)]
             ok &= (v >= lo - tol) & (v <= hi + tol)
-        return ok.all(axis=-1)
+        return np.asarray(ok.all(axis=-1))
 
     def domains(self, ctx):
         return {n for n in ctx.names if self._inside(ctx.points(n)[None], ctx.scale)[0]}
@@ -445,13 +445,13 @@ class Edges:
         self.mesh = mesh
         self.domain_names = mesh.names(2)
         self.where = "the mesh"
-        rows, sides = [], []
+        row_list, side_list = [], []
         for gi, n in enumerate(self.domain_names):
             r, _ = _tri_edges(mesh.groups[n].cells)
-            rows.append(r)
-            sides.append(np.full(len(r), gi))
-        rows = np.vstack(rows) if rows else np.zeros((0, 3), np.int64)
-        gidx = np.concatenate(sides) if sides else np.zeros(0, np.int64)
+            row_list.append(r)
+            side_list.append(np.full(len(r), gi))
+        rows = np.vstack(row_list) if row_list else np.zeros((0, 3), np.int64)
+        gidx = np.concatenate(side_list) if side_list else np.zeros(0, np.int64)
         codes = _codes(rows)
         order = np.argsort(codes, kind="stable")
         codes, rows, gidx = codes[order], rows[order], gidx[order]
@@ -481,7 +481,7 @@ class Edges:
             self.rows = np.vstack([self.rows, np.array(list(extra.values()), np.int64)[:, :self.rows.shape[1]]])
             self.sides = np.vstack([self.sides, np.full((len(extra), 2), -1)])
         self.domains = Domains.from_mesh(mesh, regions)
-        self._chains = None
+        self._chains: np.ndarray | None = None
 
     @property
     def regions(self):
@@ -573,7 +573,7 @@ class Curves:
         self.dim = 2
         self.curve_groups = {n: set(t) for n, t in index.groups.items() if n not in set(self.domain_names)}
         position = {n: gi for gi, n in enumerate(self.domain_names)}
-        sides = {}
+        sides: dict = {}
         for t, owners in index.sides.items():
             for n in owners:
                 if n in position:

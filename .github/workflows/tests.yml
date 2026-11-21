@@ -25,6 +25,18 @@ jobs:
       - name: ruff (errors)
         run: ruff check src tests --select F,E9 --output-format=github
 
+  types:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pip install -e ".[plot]" mypy
+      - name: mypy (configuration in pyproject.toml)
+        run: mypy
+
   test:
     strategy:
       fail-fast: false

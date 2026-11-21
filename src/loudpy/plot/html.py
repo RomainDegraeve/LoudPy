@@ -16,6 +16,7 @@ from __future__ import annotations
 import base64
 import json
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -64,7 +65,10 @@ def html(fields, path, show: str | None = None, mirror: bool = False, title: str
     if any(f.mesh is not mesh and f.mesh.n_nodes != mesh.n_nodes for f in frames):
         raise ResultsError("lp.plot.html: the frames must share one mesh")
     coords, tris = _surface(mesh)
-    vals, labels, q, cm = [], [], None, None
+    vals, labels = [], []
+    q: Any = None
+    cm: Any = None
+    symmetric = False
     for f in frames:
         v, q, cm, symmetric = scalar_values(f, show)
         vals.append(np.asarray(v, float))

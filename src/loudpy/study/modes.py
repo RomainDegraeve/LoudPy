@@ -189,6 +189,7 @@ def acoustic_modes(parts, n_modes=30, f_min=20.0, f_max=20_000.0, f_target=100.0
 
     from loudpy.physics.systems import assemble_acoustic, meshes, nodal
     s = assemble_acoustic(parts)
+    assert s.H is not None and s.Q is not None
     H, Q = s.H.tocsc().astype(float), s.Q.tocsc().astype(float)
     n_dof = H.shape[0]
     sigma = float((2.0 * np.pi * f_target) ** 2)

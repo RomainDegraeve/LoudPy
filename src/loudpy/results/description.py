@@ -153,7 +153,7 @@ def geometry_files(model) -> dict:
 
 def settings(study) -> dict:
     """The settings of a study: its type and its public, simple attributes (drive as a description)."""
-    out = {"type": type(study).__name__}
+    out: dict = {"type": type(study).__name__}
     for k, v in vars(study).items():
         if k.startswith("_") or k in ("model", "results", "is_scene"):
             continue

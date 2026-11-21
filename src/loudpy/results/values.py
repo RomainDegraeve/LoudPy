@@ -119,6 +119,7 @@ def radiated_power(res, on: str | None = None, radius: float | None = None, cent
             vals.append(0.5 * np.real(np.einsum("feg,feg,eg->f", np.conj(pg), jw[:, None, None] * un, w)))
     else:
         from loudpy.results.farfield import sphere_arc
+        assert radius is not None                      # on= or radius= (checked above)
         rho = _air_density(res)
         for b in res.blocks:
             mesh = b.mesh_of("p")
@@ -183,8 +184,8 @@ def thiele_small(res, on: str | None = None, coil: str | None = None, band: floa
         out["Sd"] = float(np.abs(Q[k]) / np.abs(vc))
         groups = res.model.groups if res.model is not None else {}
         air = [g for g in groups.values() if g.get("role") == "air"]
-        rho, c = (air[0]["rho"], air[0]["c"]) if air else (None, None)
-        if rho is not None:
+        if air:
+            rho, c = air[0]["rho"], air[0]["c"]
             out["Vas"] = float(rho * c ** 2 * out["Sd"] ** 2 * Cms)
     return out
 

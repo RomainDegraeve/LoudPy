@@ -168,7 +168,7 @@ class FrequencyResponse(Study):
         if not self.coupled:
             raise ModelError("remesh= adapts the air mesh: it needs the coupled model")
         air = [r for r in self.model.regions if isinstance(r, Air) and not isinstance(r, PML)]
-        c = rule.c or self.model.materials.resolve(air[0].material).c
+        c = float(rule.c or self.model.materials.resolve(air[0].material).c)  # type: ignore[arg-type]
         cap = rule.air_max_size
         folder = Path(rule.folder) if rule.folder else self.model.geometry.parent
         blocks, bounds = [], {}

@@ -8,6 +8,7 @@ versions follow [Semantic Versioning](https://semver.org/) (0.x: the API may sti
 The roadmap of this work is in `docs/ROADMAP.md`.
 
 ### Added
+- Type checking: `mypy` configuration in `pyproject.toml` and a CI job; the package passes it.
 - `lp.read_comsol(path)` (COMSOL text exports → `ComsolTable`, `.data(x, y)`) and `lp.compare(ours, reference,
   rtol=…, metric=…)` (interpolated comparison, maximum error and where). Verification report generated from the
   tests' own measurements: `pytest --slow --verification-report docs/guide/verification_report.rst`.

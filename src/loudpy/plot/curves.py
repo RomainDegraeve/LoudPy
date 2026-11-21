@@ -51,7 +51,8 @@ def _coord_label(dim, value) -> str:
     if dim in ("point", "component"):
         return {"r": "$r$", "z": "$z$", "theta": r"$\theta$"}.get(str(value), str(value))
     if np.isscalar(value) and np.asarray(value).dtype.kind in "fiu":
-        v = f"{value:.0f}" if abs(value) >= 1e4 else f"{value:.4g}"
+        x = float(np.asarray(value))
+        v = f"{x:.0f}" if abs(x) >= 1e4 else f"{x:.4g}"
     else:
         v = str(value)
     unit = "" if not q.unit else (q.unit if q.unit == "°" else f" {q.unit}")

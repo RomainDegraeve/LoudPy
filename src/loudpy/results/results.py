@@ -29,6 +29,8 @@ their physics: "u", "v", "a" on the "solid" mesh, "p" on the "air" mesh.
 """
 from __future__ import annotations
 
+from typing import Self
+
 from dataclasses import dataclass, field as dc_field
 
 import numpy as np
@@ -101,7 +103,7 @@ class Results:
         self.model = None                            # the model description (results.description), format 3
         self.study: dict = {}                        # the study settings, format 3
 
-    def _like(self, blocks) -> "Results":
+    def _like(self, blocks) -> Self:
         """Results of the same class with other blocks, the same metadata and description."""
         out = type(self)(blocks, self.meta, self.boundaries, self.source)
         out.attachments, out.model, out.study = self.attachments, self.model, self.study
@@ -249,7 +251,7 @@ class Results:
         q = quantity(name)
         if v.ndim == 3 and component is not None:
             v, q = v[..., COMPONENTS[component]], quantity(f"{name}_{component}")
-        coords = {self.dim: self._coord()}
+        coords: dict = {self.dim: self._coord()}
         if sel.dim is None:
             v = v[:, 0]
         else:
@@ -326,7 +328,7 @@ class FrequencyResults(Results):
         """Frequencies of the entries [Hz]."""
         return self.values
 
-    def field(self, name: str, f: float | None = None, index: int | None = None) -> Field:
+    def field(self, name: str, f: float | None = None, index: int | None = None) -> Field:  # type: ignore[override]
         """One field on its mesh at the frequency nearest f (or at a global entry index)."""
         return super().field(name, index, f)
 
@@ -349,7 +351,7 @@ class FrequencyResults(Results):
             out.append(kirchhoff_helmholtz(b.mesh_of("p"), np.asarray(b.fields["p"]), 2 * np.pi * b.values / c,
                                            sel.points(2), radius, center, baffle))
         v = np.concatenate(out, axis=0)
-        coords = {"f": self.frequencies}
+        coords: dict = {"f": self.frequencies}
         if sel.dim is None:
             v = v[:, 0]
         else:
@@ -377,7 +379,7 @@ class FrequencyResults(Results):
         return thiele_small(self, on, coil)
 
     def _sound_speed(self) -> float:
-        groups = self.model.groups if self.model is not None else {}
+        groups: dict = self.model.groups if self.model is not None else {}
         cs = {g["c"] for g in groups.values() if g.get("role") in ("air", "pml") and "c" in g}
         if len(cs) == 1:
             return cs.pop()
@@ -402,7 +404,7 @@ class TimeResults(Results):
         """Times of the entries [s]."""
         return self.values
 
-    def field(self, name: str, t: float | None = None, index: int | None = None) -> Field:
+    def field(self, name: str, t: float | None = None, index: int | None = None) -> Field:  # type: ignore[override]
         """One field on its mesh at the time nearest t (or at a step index)."""
         return super().field(name, index, t)
 

@@ -146,7 +146,7 @@ class Data:
         Select by coordinate value: the nearest one (d.sel(f=1000)), several (d.sel(angle=[0, 30, 60]))
         or a range (d.sel(t=slice(0, 0.05)), d.sel(f=slice(100, None))).
         """
-        index = {}
+        index: dict = {}
         for dim, v in value.items():
             c = self.coords[dim] if dim in self.coords else self.coords[list(self.coords)[self._axis(dim)]]
             if isinstance(v, slice):

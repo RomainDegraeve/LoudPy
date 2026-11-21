@@ -122,7 +122,7 @@ def pml_layer(group: str) -> PMLLayer | None:
         m = re.search(r"__" + key + r"=" + _FLOAT + r"(?:__|$)", group)
         return float(m.group(1)) if m else None
 
-    kw = {}
+    kw: dict = {}
     if "__r0=" in group:
         kw.update(use_r=True, r0=get("r0"), sgn_r=-1.0 if "r-" in group else 1.0,
                   tr=get("tr") or get("t") or 0.0)

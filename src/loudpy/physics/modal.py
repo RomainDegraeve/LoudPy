@@ -553,6 +553,8 @@ class DriverCavityCoupling:
         else:
             names = patch or [f"interface_driver_{j}" for j in range(self.drivers.n_drivers)]
             faces = [cavity.face_set(nm) for nm in names]
+        self.patch_nodes: np.ndarray
+        self.Bc: np.ndarray
         self._build_Bc(faces, profiles, map_tol)
         self.walls = walls
         self.w_s = 2 * np.pi * self.drivers.freq

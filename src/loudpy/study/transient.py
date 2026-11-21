@@ -51,7 +51,7 @@ class Transient(Study):
         from loudpy.physics.systems import meshes, nodal, System
         from loudpy.solvers.time import free_dof_reducer, generalized_alpha_newton
         sig = np.asarray(self.drive.amplitude, float)
-        dt = 1.0 / float(self.drive.fs)
+        dt = 1.0 / float(self.drive.fs)  # type: ignore[arg-type]   # checked by the drive (a signal has fs)
         if duration is not None:
             n_steps = int(round(duration / dt))
         n_steps = len(sig) - 1 if n_steps is None else int(n_steps)
@@ -99,6 +99,7 @@ class Transient(Study):
         params = dict(dt=dt, n_steps=n_steps, nr_max_iter=self.nr_max_iter, nr_tol=self.nr_tol, rho_inf=self.rho_inf,
                       t_total=float(t[-1]), force_amplitude=1.0, force_direction="_z_" if comp else "_r_")
         block = Block(meshes(System(nl, None, None, None), parts), np.asarray(t), fields, extra, params, "run0")
-        meta = {"study": "Transient", "fs": float(self.drive.fs), "geometry": str(self.model.geometry)}
+        meta = {"study": "Transient", "fs": float(self.drive.fs),  # type: ignore[arg-type]
+                "geometry": str(self.model.geometry)}
         self.results = self._finish(TimeResults([block], meta, self.model.boundary_nodes()))
         return self.results

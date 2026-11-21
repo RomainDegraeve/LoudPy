@@ -138,12 +138,12 @@ class Scene:
     @property
     def rho(self) -> float:
         """Density of the air [kg/m³]."""
-        return self.air.rho
+        return float(self.air.rho)  # type: ignore[arg-type]   # required at construction (air.require)
 
     @property
     def c(self) -> float:
         """Speed of sound in the air [m/s]."""
-        return self.air.c
+        return float(self.air.c)  # type: ignore[arg-type]
 
     # ── configuration ──────────────────────────────────────────────────────
     def cavity(self, mesh_size=(0.003, 0.012), f_max=6000.0, eta=0.0, near=(0.005, 0.06), file="cavity.msh",

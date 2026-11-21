@@ -79,7 +79,7 @@ RC = {
     "legend.edgecolor": "0.8",
     "legend.fancybox": False,
     "axes.linewidth": 0.7,
-    "axes.prop_cycle": mpl.cycler(color=COLORS),
+    "axes.prop_cycle": mpl.cycler(color=COLORS),  # type: ignore[attr-defined]   # re-exported by matplotlib
     "axes.grid": True,
     "axes.grid.which": "major",
     "axes.axisbelow": True,
@@ -172,7 +172,7 @@ def frequency_axis(ax, lo: float | None = None, hi: float | None = None, label: 
     (ax.set_xscale if axis == "x" else ax.set_yscale)("log")
     if lo is not None or hi is not None:
         (ax.set_xlim if axis == "x" else ax.set_ylim)(lo, hi)
-    a.set_major_locator(FixedLocator(_HZ_TICKS))
+    a.set_major_locator(FixedLocator(list(_HZ_TICKS)))
     a.set_major_formatter(FuncFormatter(_hz))
     a.set_minor_formatter(NullFormatter())
     ax.grid(True, which="minor", axis=axis, color="0.92", linewidth=0.4)

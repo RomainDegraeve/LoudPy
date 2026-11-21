@@ -29,8 +29,7 @@ log = logging.getLogger("loudpy.solvers")
 
 def has_imaginary_part(A: sp.spmatrix) -> bool:
     """True when A carries a non-trivial imaginary part (e.g. hysteretic K)."""
-    return (np.issubdtype(A.dtype, np.complexfloating)
-            and np.any(np.imag(A.data) != 0))
+    return bool(np.issubdtype(A.dtype, np.complexfloating) and np.any(np.imag(A.data) != 0))
 
 def to_csc_complex(*matrices):
     """Cast every matrix to complex CSC in one call."""
@@ -127,7 +126,7 @@ def mac_deduplicate(s_vals: np.ndarray, phi: np.ndarray,
         MAC threshold above which two close modes are considered identical.
     """
     cmp = phi
-    keep = []
+    keep: list = []
     for i, si in enumerate(s_vals):
         is_dup = False
         for j in keep:
@@ -370,7 +369,10 @@ def covering(K, M, C, f_min, f_max, n_modes_per_shift,
           f"{n_modes_per_shift} modes/shift, overlap {overlap:g}, "
           f"max {max_shifts} shifts")
 
-    s_keep, phi_keep, shifts, skipped = [], [], [], []
+    s_keep: list = []
+    phi_keep: list = []
+    shifts: list = []
+    skipped: list = []
     while not covered.all() and len(shifts) + len(skipped) < max_shifts:
         sigma0 = sigma = grid[order[~covered[order]][0]]
         s_v = None
@@ -416,7 +418,7 @@ def covering(K, M, C, f_min, f_max, n_modes_per_shift,
         n_new = 0
         for i, si in enumerate(s_v):
             window = max(freq_tol_rad, rel_tol * abs(si))
-            near = (np.flatnonzero(np.abs(np.asarray(s_keep) - si) < window)
+            near: np.ndarray | list = (np.flatnonzero(np.abs(np.asarray(s_keep) - si) < window)
                     if s_keep else [])
             dup = any(weighted_mac(phi_v[:, i], phi_keep[j], w_mac) > mac_tol
                       for j in near)

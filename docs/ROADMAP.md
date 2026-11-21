@@ -35,7 +35,7 @@ Cost unit: one *session* ≈ one long working block (3–5 h). Status: ✅ done 
 | I | Shells: MITC3/MITC4 Reissner–Mindlin, direct coupling to the 3D air, wall-mode study, elastic-wall enclosure example | 4 | ✅ |
 | J | Plotting: scoped style everywhere, selections in 3D views, interactive HTML viewer, image-comparison tests | 1.5 | ✅ |
 | K | Verification and validation pipeline: manufactured solutions, analytical benchmarks, COMSOL harness, generated verification report | 3 (spread) | ✅ (COMSOL reference numbers later) |
-| L | Code quality and documentation: no private cross-imports, 100 % public docstrings, mypy, theory and verification manuals | 2 | ◐ |
+| L | Code quality and documentation: no private cross-imports, 100 % public docstrings, mypy, theory and verification manuals | 2 | ✅ |
 | M | Full re-run of every example (incl. the coupled 2D ones, whose stored results predate the C1 coupling fix and the damping refits), comparison table, version 0.2.0 | 2 + ~6 h compute | ○ |
 
 Gates (each phase is committed and pushed only when its gate passes):
@@ -814,7 +814,7 @@ phase's notes). Phase K adds what turns them into a pipeline:
 | COMSOL harness | reader + comparison tested on synthetic exports; reference cases registered, skipped until the exports exist |
 | generated verification report | `docs/guide/verification_report.rst`, 66 quantities / 38 tests, built by the docs |
 
-## Phase L — in progress
+## Phase L — done (gate report at the end of this section)
 
 - **L1 (done)**: no private cross-imports. 26 private names were imported from other modules (Numba kernels and
   helpers of `fem.kernels` / `fem.sparse` / `fem.indexing` / `fem.sparse_kernels`, `plot.fields._scalar` /
@@ -846,10 +846,22 @@ phase's notes). Phase K adds what turns them into a pipeline:
   Writing it corrected two docstrings of the coupling assembler (Cam is air nodes × structure DOFs, with the
   outward normal of the air).
 
-**Gate L status** (L not closed: mypy outstanding).
+- **L4 (done)**: mypy (installed with the user's OK, 2026-11-21). `[tool.mypy]` in `pyproject.toml` (Python 3.13,
+  `src/loudpy`, missing stubs ignored — gmsh, numba, h5py, pyvista, scipy —, `no_implicit_optional`,
+  `warn_unused_ignores`, `warn_redundant_casts`); a CI job `types` runs it at every push. First run: 111 errors in 29
+  files. Fixed: missing container annotations (39), Optional values used without a check (asserts where the value
+  is guaranteed: the model's edges after meshing, the air of a system, a sphere radius), loop variables reused with
+  another type (gmsh options), a dict typed by its first key, `Field` / `Results._like` returning `Self`, typed
+  `System` / `Profile` fields; `# type: ignore[code]` with a reason where the pattern is deliberate (caches on frozen
+  dataclasses, the renamed keyword of `field(f=…)` / `field(t=…)` in subclasses, the scene's `far_field` without a
+  sphere, `float()` of settings validated earlier); one module override for pyvista's mistyped decorated methods.
+  No behaviour change: 378 tests with `--slow`, references unchanged. Bodies of unannotated functions are not checked
+  (mypy's default); `--check-untyped-defs` is a later tightening.
+
+**Gate L report.**
 
 | Gate item | Result |
 |---|---|
 | docstring and private-import tests | `tests/test_code_quality.py`: no private name imported across modules (AST scan); 847 / 847 public objects documented (runtime count, inherited docstrings allowed) |
 | docs build without warnings | yes, locally and on CI (`sphinx -W`), with the theory manual, the verification manual and the generated report |
-| mypy | **not done**: mypy is not installed on the user's machine and installing a package needs the user's OK (session run while the user was away) — next step of L: install it, add a `[tool.mypy]` section and a CI job, fix what it reports |
+| mypy | clean (96 source files, default strictness), CI job `types` |

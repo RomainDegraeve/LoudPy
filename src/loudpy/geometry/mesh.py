@@ -110,7 +110,7 @@ class Mesh:
         n = len(pts)
         rows, cols, vals = [], [], []
         found = np.zeros(n, bool)
-        grad = [([], [], []) for _ in range(self.dim)] if gradient else None
+        grad: list | None = [([], [], []) for _ in range(self.dim)] if gradient else None
         if self.n_nodes and not gradient:                  # a point on a node: that node's value, exactly
             from scipy.spatial import cKDTree
             d, near = cKDTree(self.coords).query(pts)
@@ -159,7 +159,7 @@ class Mesh:
         if not hasattr(self, "_sorted_tags"):
             order = np.argsort(self.node_tags, kind="stable")
             object.__setattr__(self, "_sorted_tags", (order, np.asarray(self.node_tags)[order]))
-        order, st = self._sorted_tags
+        order, st = self._sorted_tags  # type: ignore[attr-defined]   # cached on the frozen instance
         idx = np.searchsorted(st, tags.ravel())
         return order[np.clip(idx, 0, len(st) - 1)].reshape(tags.shape)
 
@@ -177,7 +177,7 @@ class Mesh:
     def _positions(self) -> dict[int, int]:
         if not hasattr(self, "_pos_cache"):
             object.__setattr__(self, "_pos_cache", {int(t): i for i, t in enumerate(self.node_tags)})
-        return self._pos_cache
+        return self._pos_cache  # type: ignore[attr-defined]
 
     def __repr__(self):
         by_dim = {d: len(self.names(d)) for d in sorted({g.dim for g in self.groups.values()})}

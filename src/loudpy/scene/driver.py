@@ -18,6 +18,8 @@ select the wet edges of the meridian mesh.
 """
 from __future__ import annotations
 
+from typing import Any
+
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -43,7 +45,7 @@ class Profile:
     start / end are snapped to the nearest end point of a selected curve (the given start stays the first
     point of the profile).
     """
-    on: object
+    on: Any
     start: tuple | None
     end: tuple | None
 
@@ -64,7 +66,7 @@ class Profile:
         """The gmsh curve tags given (former form), else None."""
         return self.on if isinstance(self.on, tuple) else None
 
-    def resolve(self, geometry) -> tuple[list[int], tuple]:
+    def resolve(self, geometry) -> tuple[list[int], tuple | None]:
         """(curve tags in chain order, start point) on `geometry` (a path, a builder or an lp.Model)."""
         if self.curves is not None:
             return list(self.curves), self.start
@@ -122,7 +124,7 @@ def _chain(index, tags, start, end, scale, what) -> tuple[list[int], tuple]:
 
     link = {t: (vertex(a), vertex(b)) for t, (a, b) in ends.items()}
     length = {t: float(np.linalg.norm(np.diff(index.curves[t], axis=0), axis=1).sum()) for t in tags}
-    at = {}
+    at: dict = {}
     for t, (a, b) in link.items():
         at.setdefault(a, []).append(t)
         at.setdefault(b, []).append(t)

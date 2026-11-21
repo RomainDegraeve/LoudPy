@@ -110,7 +110,10 @@ class Model:
             if any(o.name == it.name for o in self.regions + self.boundaries):
                 raise ModelError(f"the model already has an item named {it.name!r} (names are the labels of the "
                                  f"results: give each item its own)")
-            (self.regions if isinstance(it, Region) else self.boundaries).append(it)
+            if isinstance(it, Region):
+                self.regions.append(it)
+            else:
+                self.boundaries.append(it)
         self.meshed = None
         return self
 
@@ -190,7 +193,8 @@ class Model:
         domains = list(index.domains)
         bounds = [n for n in index.groups if n not in index.domains]
         ctx = Domains.from_geometry(index, domains)
-        out, owner = {}, {}
+        out: dict = {}
+        owner: dict = {}
         for r in self.regions:
             if isinstance(r, PML):
                 continue
@@ -229,7 +233,8 @@ class Model:
         if not pmls:
             return {}
         curves = Curves(index, meshed, regions)
-        bases, taken = {}, {}
+        bases: dict = {}
+        taken: dict = {}
         for r in pmls:
             tags = self._evaluate(r, lambda: r.selector.edges(curves))
             if not tags:
@@ -267,8 +272,10 @@ class Model:
             raise StateError("call model.mesh() first")
         sel = as_selector(selector)
         if kind == "boundary":
+            assert self._edges is not None                 # set by mesh()
             return self._edges.rows_of(sel.edges(self._edges))
         if kind == "domain":
+            assert self._edges is not None
             names = sel.domains(self._edges.domains)
             return [n for n in self.meshed.names(2) if n in names]
         raise ValueError(f"kind must be 'boundary' or 'domain', got {kind!r}")
@@ -549,17 +556,17 @@ class Model:
                 extra += [f"thickness {size(r.thickness)}", f"tuned to {r.tuned_to} Hz"]
             else:
                 extra += [material(r)]
-            extra.append(f"h {size(r.mesh_size)}")
+            extra.append(f"h {size(getattr(r, 'mesh_size', None))}")
             on = "" if r.on is None else f" on {r.on!r}"
             lines.append(f"│  {'└' if last else '├'}─ {type(r).__name__} {r.name!r}{on}: {', '.join(extra)}{what(r)}")
         lines.append(f"├─ Boundaries ({len(self.boundaries)})")
         for k, b in enumerate(self.boundaries):
             last = k == len(self.boundaries) - 1
-            extra = {"Clamped": lambda: f"dofs {b.dofs}", "Coil": lambda: f"direction {b.direction}"}.get(
-                type(b).__name__, lambda: "")()
+            detail = {"Clamped": f"dofs {getattr(b, 'dofs', '')}", "Coil": f"direction {getattr(b, 'direction', '')}"}
+            extra_b = detail.get(type(b).__name__, "")
             on = "" if b.on is None else f" on {b.on!r}"
             lines.append(f"│  {'└' if last else '├'}─ {type(b).__name__} {b.name!r}{on}"
-                         f"{': ' + extra if extra else ''}{what(b)}")
+                         f"{': ' + extra_b if extra_b else ''}{what(b)}")
         if self.mesh_controls:
             lines.append(f"├─ Mesh controls ({len(self.mesh_controls)})")
             for k, c in enumerate(self.mesh_controls):
@@ -568,7 +575,7 @@ class Model:
         if self.meshed is None:
             lines.append("└─ Mesh: not meshed")
         else:
-            cells = {}
+            cells: dict = {}
             for g in self.meshed.groups.values():
                 cells[g.cell_type] = cells.get(g.cell_type, 0) + len(g)
             lines.append(f"└─ Mesh: {self._mesh_path.name if self._mesh_path else ''}, {self.meshed.n_nodes} nodes, "

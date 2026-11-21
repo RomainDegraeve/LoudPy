@@ -140,7 +140,7 @@ class Material:
             return {"kind": "fluid", "model": "air", "temperature": self.temperature, "pressure": self.pressure,
                     "humidity": self.humidity}
         out = {k: getattr(self, k) for k in ("kind", "rho", "E", "nu", "c") if getattr(self, k) is not None}
-        damping = {}
+        damping: dict = {}
         if self.rayleigh is not None:
             damping["rayleigh"] = list(self.rayleigh)
         if self.loss_factor is not None:
@@ -155,7 +155,7 @@ class Material:
 
 def _from_format1(d: dict) -> dict:
     """Format-1 entry (flat: type, eta, alpha_ray, beta_ray, PML alpha / n) → format-2 fields."""
-    out = {"name": d.get("name"), "kind": {"elastic": "solid", "acoustic": "fluid"}.get(d.get("type", d.get("kind")),
+    out = {"name": d.get("name"), "kind": {"elastic": "solid", "acoustic": "fluid"}.get(str(d.get("type", d.get("kind"))),
                                                                                          d.get("kind", "solid"))}
     for k in ("rho", "E", "nu", "c", "temperature", "source"):
         if k in d:

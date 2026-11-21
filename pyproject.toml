@@ -80,3 +80,15 @@ ignore = ["E741", "B905", "UP038"]       # short math names (l, I), zip strictne
 [tool.ruff.lint.per-file-ignores]
 "src/loudpy/__init__.py" = ["F401", "E402"]
 "LoudPy_exemples/**" = ["E402"]
+
+[tool.mypy]
+python_version = "3.13"
+files = ["src/loudpy"]
+ignore_missing_imports = true          # gmsh, numba, h5py, pyvista, scipy ship no (complete) stubs
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+
+[[tool.mypy.overrides]]
+module = "loudpy.plot.view3d"
+disable_error_code = ["arg-type", "call-arg"]   # pyvista types its decorated Plotter methods as unbound functions

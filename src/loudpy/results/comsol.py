@@ -26,6 +26,12 @@ from loudpy.errors import ResultsError
 _UNIT = re.compile(r"^(.*?)\s*\(([^()]*)\)\s*$")
 
 
+def _bare(column: str) -> str:
+    """A column name without its unit in parentheses."""
+    m = _UNIT.match(column)
+    return m.group(1) if m else column
+
+
 def _number(tok: str):
     t = tok.strip().replace("j", "i")
     if t.endswith("i"):
@@ -62,7 +68,7 @@ class ComsolTable:
         """Values of a column: exact name, name without its unit, or a unique whole-word match."""
         if name in self.values:
             return self.values[name]
-        bare = {(_UNIT.match(c).group(1) if _UNIT.match(c) else c): c for c in self.columns}
+        bare = {_bare(c): c for c in self.columns}
         if name in bare:
             return self.values[bare[name]]
         hits = [c for c in self.columns if re.search(rf"(?<![A-Za-z_]){re.escape(name)}(?![A-Za-z_])", c)]

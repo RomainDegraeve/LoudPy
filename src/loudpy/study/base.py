@@ -1,6 +1,8 @@
 """Common base of the studies: a meshed Model (or a Scene) in, Results out."""
 from __future__ import annotations
 
+from typing import Any
+
 
 def finish(study, results):
     """results.model (the model description and its geometry files) and results.study (the settings)."""
@@ -25,7 +27,7 @@ class Study:
             kinds = "an lp.Model or an lp.Scene" if self.accepts_scene else "an lp.Model"
             raise ModelError(f"{type(self).__name__} takes {kinds}, got {type(model).__name__}")
         self.model = model
-        self.results = None
+        self.results: Any = None
 
     def _parts(self) -> list:
         """The physics parts of the meshed model."""

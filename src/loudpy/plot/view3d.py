@@ -103,8 +103,9 @@ class View3D:
 
     def __init__(self, size=(900, 700), background: str = "white", smooth: bool = True):
         self.size, self.background, self.smooth = tuple(size), background, smooth
-        self.items, self.bars = [], []
-        self.cam = None
+        self.items: list = []
+        self.bars: list = []
+        self.cam: tuple | None = None
 
     def add(self, dataset, scalars: str | None = None, quantity=None, cmap=None, clim=None, colorbar: bool | str = True,
             label: str | None = None, **kwargs) -> "View3D":
@@ -176,7 +177,7 @@ class View3D:
             pl.view_isometric()
         img = pl.screenshot(return_img=True)
         pl.close()
-        return img
+        return np.asarray(img)
 
     @style.styled
     def show(self, ax=None, title: str | None = None, colorbars: bool = True):

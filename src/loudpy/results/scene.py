@@ -190,7 +190,7 @@ class SceneResults(FrequencyResults):
             raise ResultsError("these results have no exterior air (no DtN expansion)")
         return HalfSpaceDtN(h["center"], h["radius"], up=h["up"])
 
-    def far_field(self, at) -> Data:
+    def far_field(self, at) -> Data:  # type: ignore[override]   # the scene's DtN expansion needs no sphere
         """Pressure outside the hemisphere (exact DtN expansion) at points / a selection [Pa]."""
         sel = as_selection(at)
         pts = sel.points(3)

@@ -219,13 +219,13 @@ def mesh_cavity(msh_path, cavity_volume, center, r_c, z_b, h_near, h_far, d_near
     f.setNumber(fd, "Sampling", 60)
     ft = f.add("Threshold")
     f.setNumber(ft, "InField", fd)
-    for k, v in (("SizeMin", h_near), ("SizeMax", h_far), ("DistMin", d_near), ("DistMax", d_far)):
-        f.setNumber(ft, k, v)
+    for key, v in (("SizeMin", h_near), ("SizeMax", h_far), ("DistMin", d_near), ("DistMax", d_far)):
+        f.setNumber(ft, key, v)
     f.setAsBackgroundMesh(ft)
-    for k, v in (("Mesh.MeshSizeExtendFromBoundary", 0), ("Mesh.MeshSizeFromPoints", 0),
+    for key, v in (("Mesh.MeshSizeExtendFromBoundary", 0), ("Mesh.MeshSizeFromPoints", 0),
                  ("Mesh.MeshSizeFromCurvature", 0), ("Mesh.ElementOrder", 2),
                  ("Mesh.SecondOrderLinear", 0), ("Mesh.Algorithm3D", 10)):
-        gmsh.option.setNumber(k, v)
+        gmsh.option.setNumber(key, v)
     gmsh.model.mesh.generate(3)
     Path(msh_path).parent.mkdir(parents=True, exist_ok=True)
     gmsh.write(str(msh_path))
@@ -322,7 +322,7 @@ def mesh_exterior(msh_path, volume, dtn: HalfSpaceDtN, center, r_f, z_front, h_n
     single = is_single(center)
     frames = [center] if single else list(center)
     fronts = ["interface_front"] if single else [f"interface_front_{j}" for j in range(len(frames))]
-    groups = {"dtn": [], "ground": [], **{nm: [] for nm in fronts}, "walls": []}
+    groups: dict = {"dtn": [], "ground": [], **{nm: [] for nm in fronts}, "walls": []}
     rest = []
     for _, t in gmsh.model.getBoundary([(3, volume)], oriented=False):
         xmin, ymin, zmin, xmax, ymax, zmax = gmsh.model.getBoundingBox(2, t)
@@ -348,13 +348,13 @@ def mesh_exterior(msh_path, volume, dtn: HalfSpaceDtN, center, r_f, z_front, h_n
     f.setNumber(fd, "Sampling", 60)
     ft = f.add("Threshold")
     f.setNumber(ft, "InField", fd)
-    for k, v in (("SizeMin", h_near), ("SizeMax", h_far), ("DistMin", d_near), ("DistMax", d_far)):
-        f.setNumber(ft, k, v)
+    for key, v in (("SizeMin", h_near), ("SizeMax", h_far), ("DistMin", d_near), ("DistMax", d_far)):
+        f.setNumber(ft, key, v)
     f.setAsBackgroundMesh(ft)
-    for k, v in (("Mesh.MeshSizeExtendFromBoundary", 0), ("Mesh.MeshSizeFromPoints", 0),
+    for key, v in (("Mesh.MeshSizeExtendFromBoundary", 0), ("Mesh.MeshSizeFromPoints", 0),
                  ("Mesh.MeshSizeFromCurvature", 0), ("Mesh.ElementOrder", 2),
                  ("Mesh.SecondOrderLinear", 0), ("Mesh.Algorithm3D", 10)):
-        gmsh.option.setNumber(k, v)
+        gmsh.option.setNumber(key, v)
     gmsh.model.mesh.generate(3)
     Path(msh_path).parent.mkdir(parents=True, exist_ok=True)
     gmsh.write(str(msh_path))
