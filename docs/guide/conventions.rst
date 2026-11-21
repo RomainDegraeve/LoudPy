@@ -103,10 +103,11 @@ File layout of an example
 
 .. code-block:: text
 
-   Example/
-       Running_script.py         computation → Results/Files/
-       Loading_script.py         figures     → Results/Figures/
-       Plot_3D_*.py              3D views    → Results/Figures/
-       <geometry>.py             dimensions and builders shared by the scripts (3D)
+   NN_example/
+       README.md                 what it shows, how to run it, the key results
+       run.py                    computation → Results/Files/
+       plot.py                   figures     → Results/Figures/ (and CSV / netCDF in Results/Files/)
+       plot_3d.py                3D views    → Results/Figures/
+       <geometry>.py             dimensions and builders of a 3D example (or ../shared/enclosure.py)
        Results/Files/            meshes (+ .json signatures), result files (.h5)
        Results/Figures/          PDF figures

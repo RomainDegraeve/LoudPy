@@ -75,23 +75,22 @@ ParaView.
 
 ## Examples
 
-The `LoudPy_exemples/` folder contains ready-to-run scripts (run them from the repository root).
-Each example has a `Running_*.py` (writes `Results/Files/`) and `Loading_*.py` / `Plot_*.py`
-scripts (write `Results/Figures/`).
+`LoudPy_exemples/` holds one folder per example, numbered in reading order, each with a `README.md`, a `run.py`
+(computes, writes `Results/Files/`) and a `plot.py` (figures in `Results/Figures/`); see `LoudPy_exemples/README.md`.
 
 | Example | Description |
 |---|---|
-| `Eigen_study/Meca` | Structural modes of the driver in vacuo |
-| `Eigen_study/Fourier` | Azimuthal-order (non-axisymmetric) modes, 3D views, plate validation |
-| `Eigen_study/FSI_DtN` | Coupled structure + air modes with an exact radiation condition |
-| `Frequency_study/Meca` | Mechanical-only frequency sweep |
-| `Frequency_study/FSI` | Coupled structural–acoustic sweep, air remeshed per wavelength |
-| `Frequency_study/FSI_elec` | The same, voltage-driven (impedance, coil current) |
-| `Time_study/Multitone` | Nonlinear time-domain simulation, multi-tone |
-| `Sweep_study` | Parametric sweeps: geometry (plate radius × thickness) and materials (suspension stiffness) |
-| `Coupling_3D/Driver_in_cavity` | Driver in a 3D enclosure: cavity modes, radiation on a rigid ground, vented box, elastic MDF walls |
-| `Coupling_3D/Labyrinth` | Folded transmission line on a rigid ground |
-| `Coupling_3D/Column_labyrinth` | Three drivers in a column with a folded line (multi-driver) |
+| `01_structure_modes` | Modes of the driver in vacuo |
+| `02_azimuthal_modes` | Non-axisymmetric modes (orders m = 0…4), 3D views |
+| `03_coupled_modes_radiation` | Structure + air modes with an exact radiation condition |
+| `04_response_structure` | Frequency response of the structure |
+| `05_response_coupled` | Structure + air response 20 Hz – 20 kHz, air remeshed per wavelength |
+| `06_response_voltage` | The same driven by a voltage: impedance, coil current |
+| `07_transient` | Nonlinear time response to a multitone force |
+| `08_sweep_geometry` | Parametric sweep of the geometry (plate radius × thickness) |
+| `09_sweep_materials` | Parametric sweep of materials (suspension stiffness) |
+| `10_box_cavity` … `13_box_elastic_walls` | The driver in a 3D box: cavity modes, radiation on a rigid ground, vented box, elastic walls |
+| `14_labyrinth`, `15_column_multi_driver` | Folded transmission lines, one and three drivers |
 
 ## Documentation
 

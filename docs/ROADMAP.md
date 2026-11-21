@@ -920,3 +920,13 @@ phase's notes). Phase K adds what turns them into a pipeline:
   and the tip at every step (48 kHz): its file went from 8.7 GB to 76 MB, and the tip signal (u, v, a over 48 000
   steps) is bit-identical to the full-field run. The fields were already gzip-compressed in the writer, so
   compression was not the issue.
+- **Sweeps and exports** (`dd93b7f`): `lp.Sweep(study, {name: values}, combine="grid" | "zip")`, `.geo` `DefineConstant`
+  geometry parameters (through a wrapper file: gmsh's parser / ONELAB setters did not override them), `SweepResults.evaluate`
+  → `lp.Data` over the parameters; netCDF export / `lp.load_data` (SciPy writer, no new dependency; exact round trip),
+  VTKHDF time series (checked with VTK's `vtkHDFReader`, exact). `Model.mesh_reusable`: a run that changes no mesh input
+  uses the model's mesh (the material sweep had meshed 9 times).
+- **Examples reorganised** (no study re-run): one numbered folder per example with `README.md`, `run.py`, `plot.py`
+  (`plot_3d.py`), paths relative to each script; the 16-file `Coupling_3D/Driver_in_cavity` split into 10–13 + `shared/`
+  (box module, meshes) + `validation/`; the existing results moved with them. Every `plot.py` re-run from another
+  directory on the stored results. **Found**: `res.thiele_small()` and the other boundary integrals fail on results
+  computed with remeshing per wavelength (the boundary edges are stored once, each band has its own mesh) — to fix.

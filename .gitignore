@@ -224,11 +224,13 @@ __marimo__/
 *.msh
 *.msh.json
 
-# Generated results of the new examples (rebuilt by their Running/Loading scripts)
+# Generated results of the new examples (rebuilt by their run.py / plot.py)
 *.npz
-LoudPy_exemples/Benchmarks/Results/
-LoudPy_exemples/Coupling_3D/**/Results/
-LoudPy_exemples/Eigen_study/Fourier/Results/
+LoudPy_exemples/legacy/Benchmarks/Results/
+LoudPy_exemples/legacy/vented_hybrid/Results/
+LoudPy_exemples/legacy/box_results_before_M/
+LoudPy_exemples/02_azimuthal_modes/Results/
+LoudPy_exemples/1[0-5]_*/Results/
 
 # Claude Code local session data
 **/.claude/
