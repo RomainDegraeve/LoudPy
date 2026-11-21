@@ -836,3 +836,11 @@ phase's notes). Phase K adds what turns them into a pipeline:
   the guard that fails a run when a test rewrites a committed mesh (CI's ruff caught it: F811); merged into one
   hook (the meshes were checked unchanged). The deformed-field image differed on Linux even with the layout fixed
   (RMS 33): the baseline is now the undeformed field.
+- **L3 (done)**: manuals. `docs/guide/theory.rst` (theory manual: structure with Fourier orders and the total
+  Lagrangian form, air and PML, fluid–structure coupling with the exact block signs of the builder, coil and
+  circuit, 2D DtN and far field, 3D half-space DtN, the modal scene coupling with its static correction, shells and
+  their direct coupling, error estimation and adaptivity, the system builder) and `docs/guide/verification.rst`
+  (verification manual: exact solutions, physical invariants, regression tolerances and the reference policy, plot
+  tests, how the report is generated, the COMSOL comparison, what is not verified), next to the generated report.
+  Writing it corrected two docstrings of the coupling assembler (Cam is air nodes × structure DOFs, with the
+  outward normal of the air).
