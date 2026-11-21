@@ -119,8 +119,10 @@ class Scene:
             raise ModelError(f"Scene air: {air.name!r} is a {air.kind}, not a fluid")
         air.require("rho", "c")
         self.air = air
-        self.cabinet = cabinet
         self.drivers = list(drivers)
+        if hasattr(cabinet, "for_drivers"):                       # lp.cabinets: the drivers set the front
+            cabinet = cabinet.for_drivers(self.drivers)
+        self.cabinet = cabinet
         names = [d.name for d in self.drivers]
         if len(set(names)) != len(names):
             raise ModelError(f"driver names must be unique: {names}")
@@ -145,7 +147,71 @@ class Scene:
         """Speed of sound in the air [m/s]."""
         return float(self.air.c)  # type: ignore[arg-type]
 
-    # ── configuration ──────────────────────────────────────────────────────
+    # ── ready-made scenes ──────────────────────────────────────────────────
+    @staticmethod
+    def _placed(driver, at, name):
+        from loudpy.scene.driver import PlacedDriver
+        if isinstance(driver, PlacedDriver):
+            return [driver]
+        if isinstance(driver, (list, tuple)) and driver and all(isinstance(d, PlacedDriver) for d in driver):
+            return list(driver)
+        if at is None:
+            raise ModelError("give the driver's position at=(x, y) on the front face (or placed drivers)")
+        return [driver.place(name, at=at)]
+
+    @staticmethod
+    def bands(f_max: float, width: float = 1000.0, f_min: float = 20.0) -> list:
+        """Frequency bands of the FE air meshes up to f_max: [(20, 1000), (1000, 2000), …] [Hz]."""
+        edges = [f_min] + list(np.arange(width, f_max, width)) + [f_max]
+        return [(float(a), float(b)) for a, b in zip(edges, edges[1:]) if b > a]
+
+    @classmethod
+    def sealed_box(cls, cabinet, driver, at=None, *, f_max: float = 3000.0, radiating: bool = False,
+                   ground: str = "y", eta: float = 0.02, air="Air", name: str = "main", cavity_file="cavity.msh",
+                   air_file="exterior_{f_hi:.0f}Hz.msh") -> "Scene":
+        """
+        A driver in a closed cabinet: the inside air as cavity modes (to 2 f_max, loss factor eta); radiating=True
+        adds the outside air on a rigid ground (FE + exact half-space DtN, 1 kHz bands to f_max). cabinet: an
+        lp.cabinets.Box / Step or a builder; driver: an lp.Driver placed at `at` (x, y), or placed drivers. Mesh
+        it with scene.mesh(folder).
+            scene = lp.Scene.sealed_box(lp.cabinets.Box(0.2, 0.3, 0.18), hp, at=(0.1, 0.19), radiating=True)
+        """
+        scene = cls(cabinet, cls._placed(driver, at, name), air=air)
+        scene.cavity(mesh_size=(0.003, 0.012), f_max=2 * f_max, eta=eta, file=cavity_file)
+        if radiating:
+            scene.exterior(ground=ground, bands=cls.bands(f_max), points_per_wavelength=4.5, max_size=0.06,
+                           driver_size=0.003, margin=0.05, file=air_file)
+        return scene
+
+    @classmethod
+    def vented_box(cls, cabinet, driver, at=None, *, f_max: float = 3000.0, ground: str = "y", air="Air",
+                   name: str = "main", air_file="air_{f_hi:.0f}Hz.msh") -> "Scene":
+        """
+        A driver in an open cabinet (ports, slots, a transmission line): one FE air domain inside, through the
+        openings and outside on a rigid ground (exact half-space DtN), 1 kHz bands to f_max; every driver wetted
+        on both faces. cabinet: an lp.cabinets.Box with ports / Step with openings, or a builder.
+            scene = lp.Scene.vented_box(lp.cabinets.Box(0.2, 0.3, 0.18, wall=0.015, ports=[port]), hp, at=(0.1, 0.19))
+        """
+        scene = cls(cabinet, cls._placed(driver, at, name), air=air)
+        scene.merged(ground=ground, bands=cls.bands(f_max), points_per_wavelength=4.0, max_size=0.06,
+                     driver_size=0.003, margin=0.05, file=air_file)
+        return scene
+
+    # ── default views ──────────────────────────────────────────────────────
+    def bounds(self) -> np.ndarray:
+        """(2, 3) lower and upper corners of the cabinet's outer solid and the drivers [m]."""
+        g, occ, cab = self._start("bounds")
+        tag = cab.outer if cab.outer is not None else cab.inner
+        b = np.array(occ.getBoundingBox(3, tag)).reshape(2, 3)
+        g.clear()
+        pts = np.vstack([b] + [d.outline_points() for d in self.drivers])
+        return np.array([pts.min(axis=0), pts.max(axis=0)])
+
+    def cameras(self) -> dict:
+        """Default cameras of the scene's 3D views (lp.plot.default_cameras of its bounds and drivers)."""
+        from loudpy.plot.scene3d import default_cameras
+        return default_cameras(self.bounds(), [d.frame.origin for d in self.drivers])
+
     def cavity(self, mesh_size=(0.003, 0.012), f_max=6000.0, eta=0.0, near=(0.005, 0.06), file="cavity.msh",
                cache_modes=True):
         """The cabinet air as rigid-wall cavity modes (configurations A and B)."""
@@ -233,10 +299,13 @@ class Scene:
 
     # signature: what a mesh depends on
     def _signature(self, what, extra=None):
-        try:
-            src = inspect.getsource(self.cabinet)
-        except (OSError, TypeError):
-            src = getattr(self.cabinet, "__qualname__", repr(self.cabinet))
+        if hasattr(self.cabinet, "signature"):                    # lp.cabinets.Box / Step (parameters resolved)
+            src = self._cabinet().signature()
+        else:
+            try:
+                src = inspect.getsource(self.cabinet)
+            except (OSError, TypeError):
+                src = getattr(self.cabinet, "__qualname__", repr(self.cabinet))
         drivers = []
         for d in self.drivers:
             prof = np.concatenate([np.vstack(d.driver.rear), np.vstack(d.driver.front or d.driver.rear)])
@@ -279,7 +348,12 @@ class Scene:
         g.model.add(name)
         g.option.setNumber("General.NumThreads", 1)                      # deterministic meshes
         occ = g.model.occ
-        return g, occ, self.cabinet(occ, self.parameters) if self._cabinet_takes_parameters else self.cabinet(occ)
+        return g, occ, self.cabinet(occ, self.parameters) if self._cabinet_takes_parameters else self._cabinet()(occ)
+
+    def _cabinet(self):
+        """The cabinet with its lp.P references resolved (lp.cabinets dataclasses; a builder as it is)."""
+        from loudpy.model.parameters import resolve
+        return resolve(self.cabinet, self.parameters)
 
     @staticmethod
     def _keep_only(occ, keep):
@@ -469,8 +543,9 @@ class Scene:
             cfg = self.configuration
         except StateError:
             cfg = "not configured"
-        name = getattr(self.cabinet, "__name__", "cabinet")
-        lines = [f"Scene {name}()  (3D, configuration {cfg}, P2 tetrahedra, curved)"]
+        name = self._cabinet().describe() if hasattr(self.cabinet, "describe") else \
+            f"{getattr(self.cabinet, '__name__', 'cabinet')}()"
+        lines = [f"Scene {name}  (3D, configuration {cfg}, P2 tetrahedra, curved)"]
         if len(self.parameters):
             lines.append(f"├─ Parameters: {', '.join(f'{k} = {v:g}' for k, v in self.parameters.items())}")
         lines.append(f"├─ Air: {self.air.name} (rho {self.air.rho:g} kg/m³, c {self.air.c:g} m/s)")

@@ -28,7 +28,7 @@ from .results import (load, load_data, spl, compare, read_comsol, Output, Result
                       Point, Points, Polar, Arc, Line)
 from .study import (Modes, FrequencyResponse, PerWavelength, Transient, Sweep, SweepResults, Adaptive,
                     Convergence, convergence)
-from .scene import Driver, Profile, Scene, Cabinet
+from .scene import Driver, Profile, Scene, Cabinet, cabinets
 
 from . import errors
 from ._log import set_verbosity
@@ -55,7 +55,7 @@ __all__ = [
     "Modes", "FrequencyResponse", "PerWavelength", "Transient", "Sweep", "SweepResults", "Adaptive", "Convergence",
     "convergence",
     # 3D scenes
-    "Driver", "Profile", "Scene", "Cabinet",
+    "Driver", "Profile", "Scene", "Cabinet", "cabinets",
     # results and evaluation
     "load", "load_data", "spl", "compare", "read_comsol", "Output", "Results", "FrequencyResults", "ModeResults", "TimeResults", "Data", "Field",
     "Point", "Points", "Polar", "Arc", "Line",

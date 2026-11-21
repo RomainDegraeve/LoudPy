@@ -6,6 +6,10 @@ versions follow [Semantic Versioning](https://semver.org/) (0.x: the API may sti
 ## [Unreleased]
 
 ### Added
+- `lp.cabinets`: `Box` (parametric: inner sizes, slanted back, walls, braces, ports), `Step` (your CAD file: the
+  inside air found and checked, driver holes closed, port bores named), `Port` (with its Helmholtz tuning),
+  `Brace`, `volume()`; ready-made scenes `lp.Scene.sealed_box(…, radiating=)` and `lp.Scene.vented_box(…)`
+  (settings from `f_max`), `scene.cameras()` / `lp.plot.default_cameras` (six default views).
 - Output control: `lp.Output(fields=…, every=n, probes={name: point})` on `solve(output=…)` of `lp.Modes`,
   `lp.FrequencyResponse` and `lp.Transient` (2D models): fields kept, every n-th entry, full-rate probe signals saved
   with the results (`res.probe_signal(name, field, component)`, `res.probe_names`). The multitone example uses it

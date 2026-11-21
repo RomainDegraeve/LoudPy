@@ -45,7 +45,7 @@ from loudpy.plot import style
 from loudpy.plot.animate import animate
 from loudpy.plot.curves import data, line, map, polar
 from loudpy.plot.fields import boundary, coupled_modes, field, mode_chart, modes
-from loudpy.plot.scene3d import Camera, scene_view, scene_view3d
+from loudpy.plot.scene3d import Camera, default_cameras, scene_view, scene_view3d
 from loudpy.plot.selection import selection
 from loudpy.plot.html import html
 from loudpy.plot.view3d import View3D, view
@@ -76,4 +76,4 @@ def directivity(res, f, radius: float, angles=None, center=None, axis="z", towar
 
 __all__ = ["selection", "html", "style", "figure", "save", "pdf_pages", "label_panels", "data", "line", "map",
            "polar", "field", "boundary", "modes", "coupled_modes", "mode_chart", "directivity", "View3D", "view",
-           "Camera", "scene_view", "scene_view3d", "animate"]
+           "Camera", "default_cameras", "scene_view", "scene_view3d", "animate"]

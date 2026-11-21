@@ -47,6 +47,49 @@ other conditions with ``lp.Scene(cabinet, drivers, air=lp.air(temperature=…, h
   solids joining inside and outside (``openings``: ports, slots; ``opening_size`` refines the
   mesh around them).
 
+Ready-made cabinets and scenes
+------------------------------
+
+For a box, no builder is needed: :mod:`lp.cabinets <loudpy.scene.cabinets>` has a parametric box and an
+import of your own CAD file, and ``lp.Scene.sealed_box`` / ``lp.Scene.vented_box`` choose the air
+configuration and its settings from ``f_max``:
+
+.. code-block:: python
+
+   port = lp.cabinets.Port(at=(0.06, 0.06), radius=0.02, length=0.062)          # tube wall 3 mm inside
+   box = lp.cabinets.Box(0.20, 0.30, 0.18, depth_top=0.11, wall=0.015,            # inner sizes, slanted back
+                         braces=[lp.cabinets.Brace(y=0.08, thickness=0.015, depth=0.08)], ports=[port])
+   scene = lp.Scene.vented_box(box, hp, at=(0.125, 0.19), f_max=3000)            # one air domain, 1 kHz bands
+   scene.mesh("meshes")
+   res = lp.FrequencyResponse(scene, drive=lp.Force(1.0)).solve(freqs, store="vented.h5")
+
+   sealed = lp.Scene.sealed_box(lp.cabinets.Box(0.2, 0.3, 0.18), hp, at=(0.1, 0.19))                 # cavity modes
+   radiating = lp.Scene.sealed_box(lp.cabinets.Box(0.2, 0.3, 0.18), hp, at=(0.1, 0.19), radiating=True)
+   lp.cabinets.volume(box, scene.drivers), port.tuning(lp.cabinets.volume(box, scene.drivers))
+
+The frame is the one of the examples: the driver axis is +z, y is up and the box stands on the ground
+``y = 0``. The driver sets the front (the inside ends on its rear baffle plane, the front face is its front
+plane), so a box has no front coordinate. Sizes may be parameters (``lp.cabinets.Box(lp.P("w"), …)`` with
+``lp.Scene(…, parameters=lp.Parameters(w=0.2))``).
+
+**Your own CAD file.** ``lp.cabinets.Step("box.step")`` reads the cabinet as built (STEP, IGES or BREP, any
+unit: read in metres): walls, panels, braces, port tubes, as one or several solids, in the frame above
+(``translate=``, ``scale=`` otherwise). loudpy finds the inside air itself (the closed void enclosed by the
+solids, and by the ground when the box has no bottom), closes the driver holes at the drivers' positions,
+and you name the port bores:
+
+.. code-block:: python
+
+   cad = lp.cabinets.Step("my_box.step", openings=[lp.cabinets.Port(at=(0.06, 0.06), radius=0.02,
+                                                                    length=0.062, wall=0)])
+   scene = lp.Scene.vented_box(cad, hp, at=(0.125, 0.19))
+
+It fails loudly rather than guessing: an unnamed port or slot ("no closed inside air — the cabinet is
+open"), several separate inside voids (give ``inner=(x, y, z)``, a point of the right one), a driver whose
+baffle is not on the inside air or whose front is inside a panel (the file is not where the drivers are).
+Tested: a box written to STEP and read back has the inside volume of the parametric box to 1e-9 and the same
+cavity modes and driver response (to the discretisation, 2e-3).
+
 Three air configurations
 ------------------------
 

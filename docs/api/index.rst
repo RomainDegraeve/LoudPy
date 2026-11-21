@@ -72,6 +72,13 @@ Studies
    Scene
    Cabinet
 
+Ready-made cabinets (``lp.cabinets``):
+
+.. automodule:: loudpy.scene.cabinets
+   :members: Box, Brace, Port, Step, volume
+
+.. currentmodule:: loudpy
+
 Results
 -------
 

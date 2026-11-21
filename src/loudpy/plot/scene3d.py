@@ -33,6 +33,80 @@ class Camera:
     cut: bool = True
 
 
+def default_cameras(bounds, drivers=(), view_angle: float = 25.0) -> dict:
+    """
+    Six default cameras of a scene of `bounds` ((2, 3) lower / upper corners) with drivers at `drivers` (points),
+    in the scene frame (y up, drivers facing +z, a cut plane x = driver x seen from −x):
+    front left (cut side), front right, side facing the cut, from above, rear right, close-up on the driver.
+    """
+    b = np.asarray(bounds, float).reshape(2, 3)
+    focus = b.mean(axis=0)
+    diag = float(np.linalg.norm(b[1] - b[0]))
+    dist = 0.8 * diag / np.tan(np.radians(view_angle) / 2)
+    up = (0.0, 1.0, 0.0)
+
+    def cam(direction, f=focus, d=dist, angle=view_angle):
+        u = np.asarray(direction, float) / np.linalg.norm(direction)
+        return Camera(tuple(np.asarray(f) + d * u), tuple(f), up, view_angle=angle)
+    cams = {"front left (cut side)": cam((-0.55, 0.45, 0.70)),
+            "front right (outer walls)": cam((0.70, 0.40, 0.62)),
+            "side, facing the cut": cam((-1.0, 0.2, 0.0)),
+            "from above": cam((-0.22, 1.0, 0.30)),
+            "rear right (back and side walls)": cam((0.62, 0.38, -0.70))}
+    drv = np.asarray(drivers, float).reshape(-1, 3)
+    if len(drv):
+        cams["close-up on the driver (cut side)"] = cam((-0.80, 0.32, 0.56), f=drv[0], d=0.55 * dist, angle=30.0)
+    return cams
+
+
+def scene_bounds(res) -> np.ndarray:
+    """(2, 3) bounds of a scene result's structure: its walls (or the whole air mesh) and its drivers."""
+    mesh = res.field("p", index=0).mesh
+    groups = [g for g in ("walls", "openings") if g in mesh.groups and len(mesh.groups[g].cells)]
+    pts = mesh.coords[mesh.rows_of(np.unique(np.concatenate([mesh.groups[g].cells.ravel() for g in groups])))] \
+        if groups else mesh.coords
+    pts = np.vstack([pts, _driver_centres(res)])
+    return np.array([pts.min(axis=0), pts.max(axis=0)])
+
+
+def _dashes(points, dash):
+    """Segments (pairs of points) of a dashed polyline: dash on, dash off along its arc length."""
+    seg = np.linalg.norm(np.diff(points, axis=0), axis=1)
+    s = np.r_[0.0, np.cumsum(seg)]
+    if s[-1] <= 0:
+        return []
+    marks = np.arange(0.0, s[-1], dash)
+    pts = np.column_stack([np.interp(marks, s, points[:, k]) for k in range(3)])
+    pts = np.vstack([pts, points[-1]])
+    return [(pts[i], pts[i + 1]) for i in range(0, len(pts) - 1, 2)]
+
+
+def outline(res, cut, dash: float = 0.008, angle: float = 35.0):
+    """The dashed outline of the part of the cabinet removed by the cut plane (normal, origin): the wall
+    corners (folds sharper than `angle`) on the side the normal points to, as one pyvista line set."""
+    import pyvista as pv
+    mesh = res.field("p", index=0).mesh
+    walls = [view3d.tri_surface(mesh, g) for g in ("walls", "openings") if g in mesh.groups and len(mesh.groups[g].cells)]
+    if not walls:
+        return None
+    normal, origin = np.asarray(cut[0], float), np.asarray(cut[1], float)
+    e = view3d.edges(walls, angle)
+    if e is None or not e.n_points:
+        return None
+    removed = e.clip(normal=normal, origin=origin, invert=False)
+    lines = removed.extract_all_edges().strip() if removed.n_points else None
+    if lines is None or not lines.n_points:
+        return None
+    parts = []
+    cells, k = lines.lines, 0
+    while k < len(cells):
+        n = cells[k]
+        ids = cells[k + 1:k + 1 + n]
+        k += n + 1
+        parts += [view3d.dashed(a, b, dash) for a, b in _dashes(lines.points[ids], 2 * dash)]
+    return pv.merge(parts) if parts else None
+
+
 def _driver_centres(res):
     return np.array([d["origin"] for d in res.scene.get("drivers", [])], float).reshape(-1, 3)
 
