@@ -143,7 +143,7 @@ geometry → selections → materials and physics → mesh → studies → resul
 | `lp.FrequencyResponse(model, drive=…)` | Harmonic response: structure, or structure + air (force or voltage drive with the voice-coil circuit), air remeshed per wavelength |
 | `lp.Transient(model, drive=lp.Force(signal, fs))` | Geometrically nonlinear time response |
 | `lp.Modes / lp.FrequencyResponse(scene)` | 3D enclosures with one or several drivers: cavity modes, exterior air on a rigid ground (exact DtN), one merged air domain (vented boxes, lines), elastic walls (shells) |
-| `lp.Sweep(study, name, values)` | Parametric study over any `lp.P` parameter (2D models and 3D scenes), one result file |
+| `lp.Sweep(study, {name: values, …}, combine="grid" \| "zip")` | Parametric study over any parameters (item values, builder or `.geo` geometry), 2D models and 3D scenes; results as labelled data over the parameters; one result file |
 | `lp.Adaptive(study, target=…)`, `lp.convergence(study, factors=…)` | Meshes adapted to the error estimate; convergence tables with observed orders |
 
 ### Physics
@@ -172,7 +172,8 @@ geometry → selections → materials and physics → mesh → studies → resul
 - `.plot()` and `lp.plot` (mode grids, directivity, 3D views, animations, selections), one scientific style;
   `lp.plot.html(field, "x.html")`: interactive viewer in one HTML file
 - `.to_pandas()`, `np.asarray(…)`, `.export("x.csv" | "x.mat" | "x.npz" | "x.vtu" | "x.html")`, `res.export("x.pvd")`
-  (ParaView series), `lp.read_comsol` / `lp.compare` for comparisons with COMSOL exports
+  (ParaView series), `res.export("x.vtkhdf")` (one-file series), `data.export("x.nc")` (netCDF, read back with
+  `lp.load_data`), `lp.read_comsol` / `lp.compare` for comparisons with COMSOL exports
 
 ### Verification
 

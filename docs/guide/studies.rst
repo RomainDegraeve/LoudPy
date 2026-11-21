@@ -100,12 +100,45 @@ parameters; their values then enter the mesh signature.
     sweep = lp.Sweep(lp.Modes(model), "t", [1.5e-3, 2e-3, 3e-3]).solve(f_max=4000)
     sweep.values                              # the parameter values
     sweep[2].frequencies                      # results of the third run
-    sweep.stack(lambda r: r.frequencies[:3])  # (3, 3) array
-    sweep.save("Results/sweep")               # one result file per value
+    sweep.evaluate(lambda r: r.frequencies[:3], name="f")   # lp.Data over t (× mode)
+    sweep.save("Results/sweep.h5")            # one result file; lp.load gives the sweep back
 
-Each run is the study on ``model.with_parameters(t=…)``, a copy: the model itself is not changed, and
-each variant is meshed next to the model's mesh (``disc_t_0.0015.msh`` …, reused while unchanged). A
-sweep gives exactly the results of the separate runs.
+Several parameters, as COMSOL's Parametric Sweep: **all combinations** (``combine="grid"``, the default) or
+**specified combinations** (``combine="zip"``, the lists taken pairwise):
+
+.. code-block:: python
+
+    sweep = lp.Sweep(lp.FrequencyResponse(model, drive=lp.Force(1.0)),
+                     {"E": [1.9e11, 2.1e11], "t": [1.5e-3, 2e-3, 3e-3]}).solve(freqs)     # 6 runs
+    sweep.table()                                       # the runs (pandas)
+    spl = sweep.evaluate(lambda r: r.spl(at=(0.0, 0.3)))   # lp.Data over E × t × f
+    spl.sel(E=2.1e11).plot()                            # one curve per t
+    spl.export("spl_sweep.nc")                          # netCDF for xarray / MATLAB / ParaView
+    sweep.at(E=2.1e11, t=2e-3)                          # the results of one run
+
+``evaluate(fn)`` stacks what ``fn`` returns for every run: an ``lp.Data`` keeps its own axes after the parameter
+axes; an array or a number becomes a quantity named ``name``. Zipped runs give a ``"run"`` axis, the parameter
+values of every run in ``.meta["runs"]``.
+
+**Geometry parameters**: the arguments of a builder ``builder(occ, p)``, and the ``DefineConstant[…]`` entries of a
+``.geo`` file — a model parameter of the same name replaces the value given in the file:
+
+.. code-block:: text
+
+    // plate.geo
+    SetFactory("OpenCASCADE");
+    DefineConstant[ a = 0.1, h = 0.002 ];     // radius and thickness: model parameters may set them
+    Point(2) = {a, 0, 0}; …
+
+.. code-block:: python
+
+    model = lp.Model("plate.geo", parameters=lp.Parameters(a=0.1))
+    lp.Sweep(lp.Modes(model), "a", [0.08, 0.1, 0.12])
+
+Each run is the study on ``model.with_parameters(…)``, a copy: the model itself is not changed, and each
+variant is meshed next to the model's mesh (``disc_t_0.0015.msh``, ``plate_E_2.1e+11_a_0.08.msh`` …, reused while
+unchanged; the parameter values are part of the mesh signature). A sweep gives exactly the results of the separate
+runs. Runs are computed one after the other.
 
 Adaptive meshing
 ----------------

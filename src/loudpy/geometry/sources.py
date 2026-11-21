@@ -7,6 +7,8 @@ Where the 2D geometry of a model comes from: lp.Model(geometry).
     "section.step"    a CAD file: .step / .stp / .iges / .igs (lengths converted to metres from the unit of
     "section.brep"    the file) or .brep (in metres). Its faces are the domains; a sketch without faces
                       (curves only) gives the closed regions of its curves.
+                      Its DefineConstant[name = value, …] entries are parameters: a model parameter of the
+                      same name (lp.Parameters) replaces the value (lp.Sweep over a .geo dimension).
     builder           a function builder(occ) drawing with gmsh's OpenCASCADE kernel (occ = gmsh.model.occ)
                       and returning the named parts {label: surface tag(s) or (dim, tag) pair(s)}:
                           def plate(occ):
@@ -71,7 +73,42 @@ class GeometrySource:
             for m in re.findall(r'Merge\s+"([^"]+)"', self.path.read_text()):
                 mp = m if os.path.isabs(m) else os.path.join(self.path.parent, m)
                 out[m] = digest(mp) if os.path.exists(mp) else "missing"
+            values = self.geo_values()
+            if values:
+                out["parameters"] = values
         return out
+
+    # ── parameters of a .geo (DefineConstant) ────────────────────────────────
+    @property
+    def geo_constants(self) -> list[str]:
+        """Names declared in DefineConstant[…] of a .geo (empty for other sources)."""
+        if self.path is None or self.path.suffix.lower() != ".geo":
+            return []
+        text = re.sub(r"//[^\n]*", "", self.path.read_text())
+        names = []
+        for block in re.findall(r"DefineConstant\s*\[(.*?)\]\s*;", text, re.S):
+            names += re.findall(r"(?:^|,)\s*([A-Za-z_]\w*)\s*=", block)
+        return list(dict.fromkeys(names))
+
+    def geo_values(self) -> dict:
+        """{name: value} of the model parameters that set a DefineConstant of the .geo."""
+        params = self.parameters or {}
+        return {k: float(params[k]) for k in self.geo_constants if k in params}
+
+    def _open_geo(self, gmsh):
+        """Open the .geo; with parameter values, through a wrapper that defines them first (DefineConstant keeps
+        a value already defined; relative Merge / Include paths still resolve from the .geo's folder)."""
+        values = self.geo_values()
+        if not values:
+            gmsh.open(str(self.path))
+            return
+        import tempfile
+        lines = [f"{k} = {v!r};" for k, v in values.items()]
+        lines.append(f'Include "{self.path.resolve()}";')
+        with tempfile.TemporaryDirectory() as tmp:
+            wrapper = Path(tmp) / f"{self.path.stem}_parameters.geo"
+            wrapper.write_text("\n".join(lines) + "\n")
+            gmsh.open(str(wrapper))
 
     # ── loading into gmsh ────────────────────────────────────────────────────
     def load(self, gmsh) -> dict:
@@ -88,7 +125,10 @@ class GeometrySource:
             return _surfaces(gmsh, named, self.name)
         if self.path.suffix.lower() in CAD_UNITS:
             gmsh.option.setString("Geometry.OCCTargetUnit", "M")
-        gmsh.open(str(self.path))
+        if self.path.suffix.lower() == ".geo":
+            self._open_geo(gmsh)
+        else:
+            gmsh.open(str(self.path))
         occ.synchronize()
         named = _physical_groups(gmsh)
         if not model.getEntities(2):

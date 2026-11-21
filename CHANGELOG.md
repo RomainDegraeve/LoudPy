@@ -10,6 +10,11 @@ versions follow [Semantic Versioning](https://semver.org/) (0.x: the API may sti
   `lp.FrequencyResponse` and `lp.Transient` (2D models): fields kept, every n-th entry, full-rate probe signals saved
   with the results (`res.probe_signal(name, field, component)`, `res.probe_names`). The multitone example uses it
   (its result file: 8.7 GB → about 70 MB).
+- Multi-parameter sweeps: `lp.Sweep(study, {name: values, …}, combine="grid" | "zip")` (all combinations or pairs,
+  as COMSOL's Parametric Sweep); geometry parameters from `DefineConstant[…]` of a `.geo` file (besides builders);
+  `SweepResults.evaluate(fn)` → `lp.Data` over the parameters, `.table()`, `.at(**values)`, `.names`, `.runs`.
+- Exports: netCDF for labelled data (`data.export("x.nc")`, no extra package), `lp.load_data` (`.nc`, `.npz`);
+  VTKHDF time series of fields (`res.export("x.vtkhdf")`, one HDF5 file for ParaView / VTK / pyvista).
 
 ## [0.2.0] — 2026-11-21
 

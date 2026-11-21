@@ -82,6 +82,8 @@ def export_results(res, path, fields=None):
     suffix = path.suffix.lower()
     if suffix == ".pvd":
         return export_series(res, path, fields)
+    if suffix in (".vtkhdf", ".hdf"):
+        return export_vtkhdf(res, path, fields)
     info = {"kind": res.kind, "study": str(res.meta.get("study", "")), "source": str(res.source or ""),
             "blocks": ",".join(b.label or str(i) for i, b in enumerate(res.blocks))}
     blocks = [block_arrays(res, b, fields) for b in res.blocks]
@@ -101,3 +103,78 @@ def export_results(res, path, fields=None):
                     flat[f"block{i}/{k}"] = v
         return write_atomic(path, lambda tmp: np.savez_compressed(tmp, **flat))
     raise ValueError(f"unknown export format {suffix!r}: use .mat, .npz or .pvd (single quantities: Data.export)")
+
+
+def export_vtkhdf(res, path, fields=None):
+    """
+    VTKHDF time series (one HDF5 file, read by ParaView ≥ 5.12, VTK ≥ 9.3 and pyvista): every entry of a block is a
+    time step (the coordinate as its value: time, frequency or mode frequency) on the block's mesh, stored once. The
+    point arrays are those of Field.to_pyvista (complex fields: real, imaginary parts and modulus). One file per
+    block and mesh: `path` for a single one, else <stem>_<block>_<mesh>.vtkhdf. Returns the path(s).
+    """
+    import h5py
+    path = Path(path)
+    jobs = []
+    k = 0
+    for bi, b in enumerate(res.blocks):
+        by_mesh = {}
+        for name in b.fields:
+            if fields is None or name in fields:
+                by_mesh.setdefault(id(b.mesh_of(name)), (b.mesh_of(name), []))[1].append(name)
+        for part, (mesh, names) in enumerate(by_mesh.values()):
+            jobs.append((bi, part, k, b, names))
+        k += len(b)
+    if not jobs:
+        from loudpy.errors import ResultsError
+        raise ResultsError("no field to export")
+    out = []
+    for bi, part, k0, b, names in jobs:
+        target = path if len(jobs) == 1 else path.with_name(f"{path.stem}_{b.label or bi}_{part}{path.suffix}")
+        series: dict = {}
+        grid = None
+        for i in range(len(b)):
+            g = None
+            for name in names:
+                gi = res.field(name, index=k0 + i).to_pyvista().cast_to_unstructured_grid()
+                if g is None:
+                    g = gi
+                else:
+                    for a, v in gi.point_data.items():
+                        g.point_data[a] = v
+            if grid is None:
+                grid = g
+            for a, v in g.point_data.items():
+                series.setdefault(a, []).append(np.asarray(v))
+        n_pts, n_cells = grid.n_points, grid.n_cells
+        conn = np.asarray(grid.cell_connectivity, np.int64)
+        offsets = np.asarray(grid.offset, np.int64)
+        types = np.asarray(grid.celltypes, np.uint8)
+        n_steps = len(b)
+
+        def write(tmp, series=series, grid=grid):
+            with h5py.File(tmp, "w") as f:
+                root = f.create_group("VTKHDF")
+                root.attrs["Version"] = np.array([2, 0], np.int64)
+                t = "UnstructuredGrid".encode("ascii")
+                root.attrs.create("Type", t, dtype=h5py.string_dtype("ascii", len(t)))
+                root["NumberOfPoints"] = np.array([n_pts], np.int64)
+                root["NumberOfCells"] = np.array([n_cells], np.int64)
+                root["NumberOfConnectivityIds"] = np.array([len(conn)], np.int64)
+                root["Points"] = np.asarray(grid.points, float)
+                root["Offsets"], root["Connectivity"], root["Types"] = offsets, conn, types
+                pd = root.create_group("PointData")
+                steps = root.create_group("Steps")
+                steps.attrs["NSteps"] = n_steps
+                steps["Values"] = np.asarray(b.values, float)
+                steps["PartOffsets"] = np.zeros(n_steps, np.int64)
+                steps["NumberOfParts"] = np.ones(n_steps, np.int64)
+                steps["PointOffsets"] = np.zeros(n_steps, np.int64)             # one geometry for every step
+                steps["CellOffsets"] = np.zeros((n_steps, 1), np.int64)
+                steps["ConnectivityIdOffsets"] = np.zeros((n_steps, 1), np.int64)
+                po = steps.create_group("PointDataOffsets")
+                for a, arrs in series.items():
+                    pd.create_dataset(a, data=np.concatenate(arrs, axis=0), compression="gzip", compression_opts=4,
+                                      shuffle=True)
+                    po[a] = np.arange(n_steps, dtype=np.int64) * n_pts
+        out.append(write_atomic(target, write))
+    return out[0] if len(out) == 1 else out

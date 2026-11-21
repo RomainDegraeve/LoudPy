@@ -194,8 +194,9 @@ def write(results, path):
     with h5py.File(path, "w") as f:
         if getattr(results, "is_sweep", False):
             _head(f, "sweep")
-            f.attrs["parameter"] = results.parameter
-            f.attrs["values"] = np.asarray(results.values, float)
+            f.attrs["parameter"] = results.parameter                     # format 3.0 readers: the first one
+            f.attrs["values"] = np.asarray([r[results.parameter] for r in results.runs], float)
+            f.attrs["sweep"] = _json({"names": results.names, "combine": results.combine, "runs": results.runs})
             for i, r in enumerate(results.results):
                 _write_results(f.create_group(f"runs/{i:04d}"), r)
             return
@@ -243,6 +244,9 @@ def read(path):
         if str(f.attrs.get("kind", "")) == "sweep":
             from loudpy.results.sweep import SweepResults
             runs = [_read_results(f["runs"][k], path) for k in sorted(f.get("runs", {}))]
+            if "sweep" in f.attrs:                                         # several parameters
+                d = json.loads(f.attrs["sweep"])
+                return SweepResults(d["names"], None, runs, source=str(path), combine=d["combine"], runs=d["runs"])
             return SweepResults(str(f.attrs["parameter"]), np.asarray(f.attrs["values"]), runs, source=str(path))
         return _read_results(f, path)
 

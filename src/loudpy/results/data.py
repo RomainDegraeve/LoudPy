@@ -382,16 +382,23 @@ class Data:
         arrays["header"] = np.array(json.dumps(self._header() | {"dims": list(self.dims)}))
         return write_atomic(path, lambda tmp: np.savez(tmp, **arrays))
 
+    def to_netcdf(self, path):
+        """netCDF file (read by xarray, MATLAB ncread, ParaView …; loudpy.results.netcdf); lp.load_data reads it back."""
+        from loudpy.results.netcdf import write_data
+        return write_data(self, path)
+
     def export(self, path):
-        """Write by extension: .csv / .txt (text table), .mat (MATLAB), .npz (NumPy)."""
+        """Write by extension: .nc (netCDF), .csv / .txt (text table), .mat (MATLAB), .npz (NumPy)."""
         suffix = Path(path).suffix.lower()
+        if suffix in (".nc", ".cdf", ".netcdf"):
+            return self.to_netcdf(path)
         if suffix in (".csv", ".txt", ".dat"):
             return self.to_csv(path)
         if suffix == ".mat":
             return self.to_mat(path)
         if suffix == ".npz":
             return self.to_npz(path)
-        raise ValueError(f"unknown export format {suffix!r}: use .csv, .mat or .npz")
+        raise ValueError(f"unknown export format {suffix!r}: use .nc, .csv, .mat or .npz")
 
     # ── plot ───────────────────────────────────────────────────────────────
     def plot(self, ax=None, kind: str | None = None, **kwargs):
@@ -613,3 +620,17 @@ class Field:
         """
         from loudpy import plot
         return plot.field(self, show=show, ax=ax, **kwargs)
+
+
+def load_data(path) -> Data:
+    """An lp.Data back from a file written by Data.export: .nc (netCDF) or .npz."""
+    p = Path(path)
+    if p.suffix.lower() in (".nc", ".cdf", ".netcdf"):
+        from loudpy.results.netcdf import read_data
+        return read_data(p)
+    if p.suffix.lower() == ".npz":
+        z = np.load(p, allow_pickle=False)
+        head = json.loads(str(z["header"]))
+        coords = {k: z[f"coord_{k}"] for k in head["dims"]}
+        return Data(z["values"], coords, head.get("quantity", "value"))
+    raise ValueError(f"lp.load_data reads .nc and .npz files, not {p.suffix!r}")

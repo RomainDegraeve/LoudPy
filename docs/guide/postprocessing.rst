@@ -46,8 +46,13 @@ Files for other software
        ``readtable``), Origin, ``numpy.loadtxt(…, delimiter=",")``, ``pandas.read_csv(…, comment="#")``
    * - ``d.export("spl.mat")``
      - MATLAB / Octave: the values (complex kept), one variable per coordinate, an ``info`` struct
+   * - ``d.export("spl.nc")``
+     - **netCDF** (the standard for labelled arrays): one variable per coordinate, the values (``<name>_real``
+       / ``_imag`` for complex), units and labels as attributes, the metadata (JSON). Opens with
+       ``xarray.open_dataset``, MATLAB ``ncread``, ParaView, Panoply, ``ncdump``; ``lp.load_data("spl.nc")`` gives
+       the ``lp.Data`` back. Sweeps: ``sweep.evaluate(fn).export("x.nc")``
    * - ``d.export("spl.npz")``
-     - NumPy: ``values``, ``coord_<name>``, a JSON ``header``
+     - NumPy: ``values``, ``coord_<name>``, a JSON ``header`` (``lp.load_data`` reads it back)
    * - ``field.export("p.vtu")``
      - ParaView / VisIt: the mesh (linear sub-cells through the mid-side nodes) with the values
        (re / im for complex)
@@ -61,6 +66,12 @@ Files for other software
      - every block: coordinate, fields (entries × nodes [× components]), meshes, per-entry quantities
    * - ``res.export("sweep.npz")``
      - the same as NumPy arrays (keys ``block<i>/<name>``)
+   * - ``res.export("u.vtkhdf")``
+     - **VTKHDF** time series (one HDF5 file): every entry is a time step (time, frequency or mode frequency) on
+       the mesh stored once; opens in ParaView ≥ 5.12 (play the steps), VTK and pyvista. One file per block and
+       mesh (``u_<block>_<mesh>.vtkhdf``) when there are several
+   * - ``res.export("u.pvd")``
+     - ParaView series of one ``.vtu`` per entry (older ParaView)
 
 The HDF5 result file itself (``res.save``, :doc:`file_format`) is self-describing and opens in
 HDFView, MATLAB (``h5read``) or h5py.
