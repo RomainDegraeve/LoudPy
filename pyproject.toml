@@ -85,7 +85,7 @@ ignore = ["E741", "B905", "UP038"]       # short math names (l, I), zip strictne
 python_version = "3.13"
 files = ["src/loudpy"]
 ignore_missing_imports = true          # gmsh, numba, h5py, pyvista, scipy ship no (complete) stubs
-warn_unused_ignores = true
+warn_unused_ignores = false         # library versions differ between machines (an ignore may be needed on one only)
 warn_redundant_casts = true
 no_implicit_optional = true
 

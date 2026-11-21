@@ -33,9 +33,16 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
-      - run: pip install -e ".[plot]" mypy
-      - name: mypy (configuration in pyproject.toml)
-        run: mypy
+      - name: system libraries (gmsh, VTK)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1 libglu1-mesa libegl1 libxrender1 libxcursor1 libxft2 libxinerama1
+      - run: pip install -e ".[all]" mypy
+      - name: mypy (configuration in pyproject.toml; errors as annotations)
+        run: |
+          set -o pipefail
+          mypy --no-error-summary --show-error-codes | tee mypy.txt | \
+            sed -E 's/^([^:]+):([0-9]+): error: (.*)$/::error file=\1,line=\2::\3/'
 
   test:
     strategy:
