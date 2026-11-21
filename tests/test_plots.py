@@ -2,7 +2,8 @@
 selections drawn on the mesh, the interactive HTML viewer.
 
 Baselines: tests/reference/images/<name>.png, written with --update-reference. The images are compared with the
-texts hidden (fonts differ between machines) at a low resolution, by RMS difference (matplotlib.testing)."""
+texts hidden and the axes placed on their grid cells (fonts differ between machines, and so does a
+font-dependent layout) at a low resolution, by RMS difference (matplotlib.testing)."""
 import base64
 import json
 import re
@@ -32,6 +33,14 @@ def check_image(fig, name, request):
     from matplotlib.text import Text
     for t in fig.findobj(Text):
         t.set_visible(False)
+    # layout independent of the fonts: no layout engine, every axes at its grid cell, colour bars hidden
+    fig.set_layout_engine("none")
+    for a in fig.axes:
+        spec = a.get_subplotspec()
+        if spec is None:
+            a.set_visible(False)
+        else:
+            a.set_position(spec.get_position(fig))
     IMAGES.mkdir(parents=True, exist_ok=True)
     expected = IMAGES / f"{name}.png"
     out = Path(request.config.rootpath) / "tests" / ".cache" / "images"
