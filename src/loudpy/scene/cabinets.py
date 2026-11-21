@@ -336,13 +336,13 @@ class Step:
 
     def signature(self) -> str:
         """What the meshes depend on: the file's content and the settings."""
-        digest = hashlib.sha256(self.path.read_bytes()).hexdigest()[:16]
+        digest = hashlib.sha256(Path(self.path).read_bytes()).hexdigest()[:16]
         return (f"lp.cabinets.Step/1 {digest} openings={self.openings!r} inner={self.inner!r} scale={self.scale!r} "
                 f"translate={tuple(self.translate)!r} port_size={self.port_size!r} plug_drivers={self.plug_drivers!r}")
 
     def describe(self) -> str:
         """A short description (scene tree)."""
-        return f"Step {self.path.name}" + (f" ({len(self.openings)} opening(s))" if self.openings else "")
+        return f"Step {Path(self.path).name}" + (f" ({len(self.openings)} opening(s))" if self.openings else "")
 
 
 def volume(cabinet, drivers=()) -> float:
