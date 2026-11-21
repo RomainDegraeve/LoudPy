@@ -60,6 +60,7 @@ class Block:
     extra: dict[str, np.ndarray] = dc_field(default_factory=dict)      # per-entry scalars (zeta, I_coil, …)
     meta: dict = dc_field(default_factory=dict)
     label: str = ""
+    boundaries: dict = dc_field(default_factory=dict)  # name → {"node_tags", "edges"} on this block's meshes
 
     def __len__(self):
         return len(self.values)
@@ -146,6 +147,11 @@ class Results:
     def mesh(self, physics: str = "solid", block: int = 0) -> Mesh:
         """The mesh of a physics ("solid", "air") in a block."""
         return self.blocks[block].meshes[physics]
+
+    def boundaries_of(self, block: Block) -> dict:
+        """{name: {"node_tags", "edges"}} of the boundaries on the meshes of `block` (see results.boundaries)."""
+        from loudpy.results.boundaries import boundaries_of
+        return boundaries_of(self, block)
 
     def boundary(self, name: str) -> np.ndarray:
         """Node tags of the boundaries selected by `name` (e.g. "interface_acou_meca_front")."""

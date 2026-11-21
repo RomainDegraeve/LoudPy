@@ -137,8 +137,8 @@ class FrequencyResponse(Study):
         meta = {"mesh": str(model._mesh_path)}
         self.solver_stats = dict(factorizations=solver.n_factor, gmres_solves=solver.n_gmres,
                                  gmres_iterations=solver.iters)
-        return Block(ms, np.asarray(freqs, float), fields, records.scalars(attrs), meta, label), \
-            model.boundary_nodes()
+        bounds = model.boundary_nodes()
+        return Block(ms, np.asarray(freqs, float), fields, records.scalars(attrs), meta, label, bounds), bounds
 
     # ── public ─────────────────────────────────────────────────────────────
     def solve(self, freqs, remesh: PerWavelength | None = None, store=None, output=None, **options) -> FrequencyResults:
@@ -192,4 +192,5 @@ class FrequencyResponse(Study):
             block.meta.update(wavelength=lam, band_start=f0)
             blocks.append(block)
             bounds.update(b)
+            self._meshed_copy = band_model                 # physical data of the groups for the description
         return blocks, bounds

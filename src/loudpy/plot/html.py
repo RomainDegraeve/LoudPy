@@ -5,6 +5,7 @@ Interactive viewer in one self-contained HTML file (lp.plot.html): no server, no
     lp.plot.html([res.field("p", f=f) for f in (200, 500, 1000)], "p.html")   frames with a slider
     lp.plot.html(modes.mode(0), "mode0.html", show="z")            a component; show= as in Field.plot
     res.field("p", f=500).export("p_500.html")                     the same through Field.export
+    lp.plot.View3D(…).save("scene.html")                           a 3D scene (several datasets, own colours)
 
 What is drawn: 3D meshes — the outer surface of the tetrahedra and the surface groups (shells, walls);
 2D axisymmetric meshes — the r–z section (mirror=True: −r … r). The values (SPL, |u|, a component…) are
@@ -101,12 +102,62 @@ def html(fields, path, show: str | None = None, mirror: bool = False, title: str
         n=int(len(P)), frames=[_b64(np.nan_to_num(v[used], nan=lo), np.float32) for v in V],
         labels=labels, lut=_b64(lut, np.uint8), lo=lo, hi=hi, unit=q.axis_label(), flat=bool(mesh.dim == 2),
         title=title or (labels[0] if len(labels) == 1 else q.label))
+    return _write(data, path)
+
+
+def _write(data: dict, path) -> Path:
     out = Path(path)
     out.parent.mkdir(parents=True, exist_ok=True)
     tmp = out.with_name(out.name + ".tmp")
     tmp.write_text(_PAGE.replace("__TITLE__", _esc(data["title"])).replace("__DATA__", json.dumps(data)))
     tmp.replace(out)
     return out
+
+
+def html_view(view, path, title: str | None = None) -> Path:
+    """
+    Write a View3D (lp.plot.View3D) as an interactive viewer: every dataset's outer surface with its colours
+    (scalars through its colormap and range, or its fixed colour); lines (iso-lines, edges) are left out. The
+    colour bar is the first one of the view.
+    """
+    import matplotlib as mpl
+    from matplotlib.colors import to_rgb
+    from loudpy.plot import style
+    P, T, C = [], [], []
+    n = 0
+    for ds, kw, _ in view.items:
+        surf = ds if hasattr(ds, "faces") else ds.extract_surface(algorithm="dataset_surface")
+        surf = surf.triangulate()
+        faces = np.asarray(surf.faces)
+        if not faces.size or not surf.n_points:
+            continue
+        tri = faces.reshape(-1, 4)[:, 1:]
+        sc = kw.get("scalars")
+        if sc is not None and sc in surf.point_data:
+            lo, hi = kw.get("clim") or (float(np.nanmin(surf[sc])), float(np.nanmax(surf[sc])))
+            t = np.clip((np.asarray(surf[sc], float) - lo) / ((hi - lo) or 1.0), 0, 1)
+            rgb = np.asarray(mpl.colormaps[kw.get("cmap") or "viridis"](np.nan_to_num(t)))[:, :3]
+        else:
+            rgb = np.tile(to_rgb(kw.get("color") or "lightgrey"), (surf.n_points, 1))
+        P.append(np.asarray(surf.points, float))
+        T.append(tri + n)
+        C.append(rgb)
+        n += surf.n_points
+    if not P:
+        raise ResultsError("View3D.save(.html): no surface to draw")
+    pts, tris, rgb = np.vstack(P), np.vstack(T).astype(np.int64), np.vstack(C)
+    centre = 0.5 * (pts.min(axis=0) + pts.max(axis=0))
+    scale = float(np.ptp(pts, axis=0).max()) or 1.0
+    bar = view.bars[0] if view.bars else None
+    ramp = mpl.colormaps[bar[0] if bar else "viridis"](np.linspace(0, 1, 256))
+    lut = (np.asarray(ramp)[:, :3] * 255).astype(np.uint8)
+    data = dict(pos=_b64((pts - centre) / scale, np.float32), tri=_b64(tris, np.uint32), n_tri=int(len(tris)),
+                n=int(len(pts)), frames=[], rgb=_b64(np.round(rgb * 255), np.uint8), labels=[],
+                lut=_b64(lut, np.uint8), lo=float(bar[1][0]) if bar else 0.0, hi=float(bar[1][1]) if bar else 1.0,
+                unit=style.plain_label(bar[2]) if bar else "", nobar=bar is None, flat=False,
+                title=title or "loudpy 3D view")
+    return _write(data, path)
+
 
 
 def _esc(s: str) -> str:
@@ -138,7 +189,8 @@ input[type=range]{width:min(320px,50vw)}
 <script>
 const D=__DATA__;
 function dec(s,T){const b=atob(s),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return new T(u.buffer)}
-const pos=dec(D.pos,Float32Array),tri=dec(D.tri,Uint32Array),lut=dec(D.lut,Uint8Array),frames=D.frames.map(f=>dec(f,Float32Array));
+const pos=dec(D.pos,Float32Array),tri=dec(D.tri,Uint32Array),lut=dec(D.lut,Uint8Array),frames=D.frames.map(f=>dec(f,Float32Array)),rgb=D.rgb?dec(D.rgb,Uint8Array):null;
+if(D.nobar)['lo','bar','hi','unit'].forEach(i=>document.getElementById(i).style.display='none');
 const fmt=v=>Math.abs(v)>=1e4||(Math.abs(v)<1e-2&&v!==0)?v.toExponential(2):v.toFixed(2);
 document.getElementById('t').textContent=D.title;document.getElementById('lo').textContent=fmt(D.lo);
 document.getElementById('hi').textContent=fmt(D.hi);document.getElementById('unit').textContent=D.unit;
@@ -162,7 +214,10 @@ function buf(a,name){const b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);
  const l=gl.getAttribLocation(pr,name);gl.enableVertexAttribArray(l);gl.vertexAttribPointer(l,3,gl.FLOAT,false,0,0);return b}
 buf(P,'p');buf(N,'n');const cb=buf(C,'c');
 gl.uniform1f(gl.getUniformLocation(pr,'flat_'),D.flat?1:0);
-function colour(k){const f=frames[k];for(let t=0;t<nt;t++)for(let j=0;j<3;j++){const v=f[tri[3*t+j]];
+function colour(k){if(rgb){for(let t=0;t<nt;t++)for(let j=0;j<3;j++){const v=tri[3*t+j];
+ C.set([rgb[3*v]/255,rgb[3*v+1]/255,rgb[3*v+2]/255],9*t+3*j)}
+ gl.bindBuffer(gl.ARRAY_BUFFER,cb);gl.bufferData(gl.ARRAY_BUFFER,C,gl.DYNAMIC_DRAW);draw();return}
+ const f=frames[k];for(let t=0;t<nt;t++)for(let j=0;j<3;j++){const v=f[tri[3*t+j]];
  let i=Math.round(255*(v-D.lo)/(D.hi-D.lo));i=i<0?0:i>255?255:i;C.set([lut[3*i]/255,lut[3*i+1]/255,lut[3*i+2]/255],9*t+3*j)}
  gl.bindBuffer(gl.ARRAY_BUFFER,cb);gl.bufferData(gl.ARRAY_BUFFER,C,gl.DYNAMIC_DRAW);
  document.getElementById('frame').textContent=D.labels.length>1?D.labels[k]:'';draw()}

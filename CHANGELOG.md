@@ -20,6 +20,23 @@ versions follow [Semantic Versioning](https://semver.org/) (0.x: the API may sti
   plate `.geo`) and `09_sweep_materials`; former scripts in `LoudPy_exemples/legacy/`.
 - Exports: netCDF for labelled data (`data.export("x.nc")`, no extra package), `lp.load_data` (`.nc`, `.npz`);
   VTKHDF time series of fields (`res.export("x.vtkhdf")`, one HDF5 file for ParaView / VTK / pyvista).
+- 3D views saved and turned: `View3D.save("x.png" | ".pdf" | ".svg" | ".html" | ".gltf" | ".glb" | ".vtm")` (figure,
+  self-contained interactive viewer with every surface's own colours, glTF model with colours, ParaView multiblock),
+  `View3D.interactive()` (window, or inline in Jupyter), `View3D.plotter()`, `View3D.image(scale=…)`;
+  `field.view3d()` / `lp.plot.view(field, cut=…)` (a 3D field, or a 2D displacement revolved) and
+  `lp.plot.scene_view3d(res, f, camera, cut=…)` (one view of a scene result) return a View3D. Examples 02, 06, 11
+  save HTML (and glb) files; `--interactive` opens them in a window.
+- Result blocks keep their own boundaries (`Block.boundaries`, `/blocks/<i>/boundaries` in result files;
+  `res.boundaries_of(block)`).
+
+### Fixed
+- `res.thiele_small()`, `volume_velocity` and `radiated_power(on=…)` on sweeps remeshed per wavelength (one mesh per
+  band): the boundaries were stored once (the last band's node tags) — the integrals failed and the coil velocity used
+  for Sd was read at wrong nodes on the other bands. Result files written before are read correctly: each boundary is
+  found again on every band's mesh from the geometry (example 06: fs = 111.5 Hz, Qts = 1.81, Sd = 78 cm², Vas = 1.0 L,
+  no re-run).
+- Remeshed sweeps stored no physical data of the mesh groups in their model description (`res.model.groups` empty):
+  taken from a meshed band copy now; Vas falls back to the air region's material for older files.
 
 ## [0.2.0] — 2026-11-21
 

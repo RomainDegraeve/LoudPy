@@ -8,9 +8,15 @@ its outline). SPL [dB re 20 µPa] outside (ground, outer walls, the cut in front
 maximum and the outside maximum beyond 8 cm of the driver), iso-lines every 3 dB; the deformed
 driver, whole revolution, at the instant of its largest displacement (10 % of its diameter).
 
-What this produces (in Results/Figures/)
------------------------------------------
-  - views_3d.pdf : one page per frequency of FREQS, six views
+What this produces
+------------------
+Results/Figures/
+  - views_3d.pdf       : one page per frequency of FREQS, six views
+Results/Files/
+  - scene_<f>Hz.html   : the cut-away scene, interactive in a browser (one self-contained file)
+  - scene_<f>Hz.glb    : the same as a 3D model with its colours (Blender, PowerPoint, Windows 3D viewer, the web)
+
+    python3 plot_3d_views.py --interactive      also opens each scene in a window to turn it
 """
 import sys
 from pathlib import Path
@@ -52,5 +58,13 @@ with lp.plot.pdf_pages(here / "Figures/views_3d.pdf") as pdf:
                                  cavity=cav, range_db=RANGE, outline=outline, ncols=3,
                                  title="Driver in its enclosure on a rigid ground, 1 N")
         pdf.savefig(fig)
+        # one view as a View3D: saved to interactive / 3D-model files, or turned in a window
+        v = lp.plot.scene_view3d(res, f, cameras["front left (cut side)"], cut=((-1, 0, 0), (X0, 0, 0)),
+                                 keep=lambda x: x[:, 2] > Z_F, cavity=cav, range_db=RANGE, outline=outline)
+        title = f"Driver in its enclosure on a rigid ground, 1 N, {f} Hz"
+        v.save(here / f"Files/scene_{f}Hz.html", title=title)
+        v.save(here / f"Files/scene_{f}Hz.glb")
+        if "--interactive" in sys.argv:
+            v.interactive(title=title)
         print(f"  {f} Hz rendered")
 print(f"✓ {here / 'Figures/views_3d.pdf'}")

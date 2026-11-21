@@ -16,6 +16,9 @@ Results/Figures/
   - surround / interface_<f>Hz.pdf : the surround and the interface profile (last of them)
 Results/Files/
   - directivity_0.3m.csv      : the directivity map as a table (frequency × angle)
+  - impedance.csv             : Z over frequency
+  - thiele_small.csv          : the small-signal (Thiele–Small) parameters fitted on the impedance
+  - u_<f>Hz.html              : the deformed structure in 3D (revolved), interactive, one file
 """
 from pathlib import Path
 
@@ -68,6 +71,14 @@ Z.phase(deg=True, unwrap=False).plot(ax=ax[1])
 ax[0].set_xlabel("")
 lp.plot.save(fig, here / "Figures/impedance.pdf")
 
+# ── Thiele–Small parameters (impedance fit; Sd and Vas from the radiating boundary) ──
+ts = res.thiele_small(on="interface_acou_meca_front")
+units = dict(Re="Ω", Le="H·s^(1−n)", n="", Bl="T·m", fs="Hz", Mms="kg", Cms="m/N", Rms="kg/s", Qms="", Qes="",
+             Qts="", Sd="m²", Vas="m³")
+(here / "Files/thiele_small.csv").write_text("parameter,value,unit\n" +
+                                            "".join(f"{k},{v:.6g},{units.get(k, '')}\n" for k, v in ts.items()))
+print("Thiele–Small: " + ", ".join(f"{k} = {v:.4g}" for k, v in ts.items()))
+
 # ── fields at a few frequencies ────────────────────────────────────────────────
 for f in (20, 1000, 5000, 15000):
     p, u = res.field("p", f=f), res.field("u", f=f)
@@ -75,6 +86,8 @@ for f in (20, 1000, 5000, 15000):
     p.plot(ax=ax[0], xlim=(0, 0.3), ylim=(-0.1, 0.5))
     u.plot(ax=ax[1], deformed=True)
     lp.plot.save(fig, here / f"Figures/fields_{p.coordinate:.0f}Hz.pdf")
+    u.view3d(sweep=1.5 * np.pi).save(here / f"Files/u_{u.coordinate:.0f}Hz.html",
+                                     title=f"|u| at {u.coordinate:.0f} Hz (2.83 V)")
 
 # ── surround and interface at the last of them ────────────────────────────────
 lp.plot.save(u.restrict("surround").plot(deformed=True).figure, here / f"Figures/surround_{u.coordinate:.0f}Hz.pdf")

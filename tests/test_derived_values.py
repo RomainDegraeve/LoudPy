@@ -73,6 +73,40 @@ def test_thiele_small_of_the_speaker(mesh_dir):
     assert 0.007 < ts["Sd"] < 0.0093 and ts["Vas"] > 0                                 # π (5 cm)² … π r_max²
 
 
+@pytest.mark.slow
+def test_thiele_small_of_a_remeshed_sweep(mesh_dir, tmp_path):
+    """One mesh per band: every block keeps its own boundaries (saved and read back); files without them (written
+    before) find each boundary again on the other meshes from the geometry, edge for edge."""
+    rule = lp.PerWavelength(bands=[60.0, 140.0], air_max_size=0.02, folder=tmp_path)
+    res = lp.FrequencyResponse(api.speaker_problem(mesh_dir, acoustic=True),
+                               drive=lp.Voltage(2.83, Re=6.0, Bl=7.0, Le=0.0, n=1.0)).solve(
+        np.linspace(60, 220, 33), remesh=rule)
+    assert len(res.blocks) == 2
+    assert not np.array_equal(res.blocks[0].meshes["air"].coords.shape, res.blocks[1].meshes["air"].coords.shape)
+    ts = res.thiele_small(on=FRONT)
+    assert 0.007 < ts["Sd"] < 0.0093 and ts["Vas"] > 0
+    assert res.model.groups                                          # physical data from a meshed copy
+
+    back = lp.load(res.save(tmp_path / "remeshed.h5"))
+    for a, b in zip(res.blocks, back.blocks):
+        for name, bd in a.boundaries.items():
+            np.testing.assert_array_equal(b.boundaries[name]["edges"], bd["edges"])
+    assert back.thiele_small(on=FRONT) == pytest.approx(ts, rel=1e-12)
+
+    def corners(block, edges):
+        mesh = block.mesh_of("u")
+        pts = mesh.coords[mesh._rows(np.asarray(edges)[:, :2])].round(12)
+        return sorted(map(tuple, np.sort(pts.reshape(len(pts), -1), axis=1).tolist()))
+
+    for b in back.blocks:
+        stored = dict(b.boundaries)
+        b.boundaries = {}                                            # as written before 0.2.1
+        for name in (FRONT, REAR):
+            found = back.boundaries_of(b)[name]["edges"]
+            assert corners(b, found) == corners(b, stored[name]["edges"]), (b.label, name)
+    assert back.thiele_small(on=FRONT) == pytest.approx(ts, rel=1e-12)
+
+
 def test_paraview_series(coupled, tmp_path):
     pyvista = pytest.importorskip("pyvista")
     path = coupled.export(tmp_path / "series.pvd")

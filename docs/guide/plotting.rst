@@ -68,6 +68,32 @@ drivers at one instant and one scale, from several :class:`lp.plot.Camera <loudp
 The building blocks (``view3d.tet_grid``, ``tri_surface``, ``clip``, ``isolines``, ``edges``,
 ``dashed``) are in :mod:`loudpy.plot.view3d`.
 
+Saving and turning 3D views
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Any 3D view is a :class:`lp.plot.View3D <loudpy.plot.View3D>`: build it from a field
+(``field.view3d()`` or ``lp.plot.view(field, cut=…)``: a 3D field, or a 2D displacement revolved), from one camera of
+a scene result (``lp.plot.scene_view3d``), or by hand; then save it in the format the reader needs, or open it in
+a window.
+
+.. code-block:: python
+
+   v = res.field("u", f=1000).view3d(sweep=1.5 * np.pi)     # 2D result: the structure revolved, |u|
+   v = lp.plot.scene_view3d(scene_res, 500, cut=((-1, 0, 0), (0.07, 0, 0)))   # a scene result, cut open
+
+   v.save("view.png")      # .png .jpg .tif .pdf .svg: the figure (image at 2 × size, colour bars, title), 300 dpi
+   v.save("view.html")     # interactive viewer in one self-contained file (any browser, no server, no package)
+   v.save("view.glb")      # glTF 3D model with its colours (.gltf / .glb): Blender, PowerPoint, Windows 3D viewer,
+                           # web viewers
+   v.save("view.vtm")      # the datasets with their values (ParaView: File > Open)
+   v.interactive()         # a window to turn, zoom and pan (in Jupyter: inline with pyvista's notebook backend)
+   v.plotter()             # the pyvista Plotter itself, to go further
+
+The HTML file shows every surface of the view with its own colours (SPL and the drivers' ``|u|`` side by side) and the
+first colour bar; lines (iso-lines, edges) are left out. Examples: ``06_response_voltage/plot.py`` (revolved
+structure, HTML), ``02_azimuthal_modes/plot_3d.py`` and ``11_box_radiation/plot_3d_views.py`` (HTML, glTF and
+``--interactive``).
+
 Selections
 ----------
 

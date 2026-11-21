@@ -166,3 +166,63 @@ def test_html_viewer_3d(tmp_path):
     p = lp.Field("p", mesh, np.cos(np.pi * nodes[:, 0] / 0.3) + 0j, 500.0, "f")
     _, data, dec = _viewer_data(lp.plot.html(p, tmp_path / "p.html", show="real"))
     assert data["n_tri"] == sum(len(v) for v in faces.values())
+
+
+def _can_render() -> bool:
+    """pyvista renders off screen here (checked in a subprocess: a missing OpenGL can abort the process)."""
+    import subprocess
+    import sys
+    code = ("import pyvista as pv; pl = pv.Plotter(off_screen=True); pl.add_mesh(pv.Sphere()); "
+            "pl.screenshot(return_img=True)")
+    try:
+        return subprocess.run([sys.executable, "-c", code], capture_output=True, timeout=120).returncode == 0
+    except Exception:
+        return False
+
+
+def test_view3d_saves(tmp_path):
+    """A 3D view of a 2D displacement (revolved) saved as a self-contained HTML viewer (the colours of each
+    dataset baked per vertex) and as a ParaView multiblock with its values; a 2D pressure has no 3D view."""
+    pv = pytest.importorskip("pyvista")
+    u = lp.load(_legacy("freq_meca.h5")).field("u", f=100.0)
+    v = u.view3d(sweep=np.pi)
+    text, data, dec = _viewer_data(v.save(tmp_path / "u.html", title="u at 100 Hz"))
+    assert "<script src" not in text and data["title"] == "u at 100 Hz" and not data["nobar"]
+    tri, rgb = dec(data["tri"], np.uint32).reshape(-1, 3), dec(data["rgb"], np.uint8).reshape(-1, 3)
+    surf = v.items[0][0].triangulate()
+    assert len(rgb) == data["n"] == surf.n_points and tri.max() < data["n"] and data["n_tri"] == surf.n_cells
+    assert rgb.std() > 10                                            # coloured by |u|, not uniform
+    blocks = pv.read(v.save(tmp_path / "u.vtm"))
+    assert blocks.n_blocks == 1 and "|u|" in blocks[0].point_data
+    np.testing.assert_allclose(blocks[0]["|u|"], v.items[0][0]["|u|"], rtol=1e-6)
+    from loudpy.errors import ResultsError
+    p2d = lp.Field("p", u.mesh, np.ones(u.mesh.n_nodes, complex), 100.0, "f")
+    with pytest.raises(ResultsError, match="revolves a displacement"):
+        p2d.view3d()
+    with pytest.raises(ValueError, match="unknown extension"):
+        v.save(tmp_path / "u.xyz")
+
+
+def test_view3d_cut_and_render(tmp_path):
+    """A 3D field cut by a plane: only the kept side is drawn; rendered images (PNG figure, glTF binary model)."""
+    pytest.importorskip("pyvista")
+    from loudpy.geometry.mesh import Mesh, MeshGroup
+    from support.fem_meshes import box_cavity
+    nodes, tets, _ = box_cavity(0.3, 0.2, 0.1, 0.08)
+    mesh = Mesh(np.arange(len(nodes)), nodes, {"air": MeshGroup("air", 3, "tet10", tets)})
+    p = lp.Field("p", mesh, np.cos(np.pi * nodes[:, 0] / 0.3) + 0j, 500.0, "f")
+    v = lp.plot.view(p, show="real", cut=((1, 0, 0), (0.15, 0, 0)))
+    pts = v.items[0][0].points
+    assert pts[:, 0].max() <= 0.15 + 1e-9 or pts[:, 0].min() >= 0.15 - 1e-9          # one side of the plane
+    assert v.bars[0][1][0] == pytest.approx(-v.bars[0][1][1])                         # symmetric range (real part)
+    if not _can_render():
+        pytest.skip("no off-screen OpenGL here")
+    png = v.save(tmp_path / "p.png", scale=1, dpi=100)
+    assert png.stat().st_size > 10_000
+    glb = v.save(tmp_path / "p.glb").read_bytes()
+    import struct
+    magic, version, length = struct.unpack("<III", glb[:12])
+    assert magic == 0x46546C67 and version == 2 and length == len(glb)
+    n_json = struct.unpack("<I", glb[12:16])[0]
+    doc = json.loads(glb[20:20 + n_json])
+    assert doc["meshes"] and doc["buffers"][0]["byteLength"] == len(glb) - 20 - n_json - 8

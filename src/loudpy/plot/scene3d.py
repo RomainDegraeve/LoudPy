@@ -6,6 +6,7 @@ instant and one scale, from several cameras, in one figure.
     cams = {"section": lp.plot.Camera((-1.5, .3, -.1), focus=(.07, .3, -.1), up=(0, 1, 0), parallel=0.4),
             "front":   lp.plot.Camera((.07, .3, 2.0), focus=(.07, .3, 0), up=(0, 1, 0), parallel=0.35, cut=False)}
     fig = lp.plot.scene_view(res, f=100, cameras=cams, cut=((-1, 0, 0), (0.07, 0, 0)))
+    v = lp.plot.scene_view3d(res, f=100, camera=cams["section"], cut=…)   one view: v.save("x.html"), v.interactive()
 
 The colour scale is common to every surface: `range_db` below the maximum SPL farther than
 `near_field` from the drivers (the near field saturates). keep(points) → bool can trim the cut
@@ -77,6 +78,57 @@ def scene_surfaces(res, f, cut=None, keep=None, near_field: float = 0.08, groups
     return out
 
 
+def _panel(sc, drivers, cam, clim, levels, ground, outline, size) -> view3d.View3D:
+    """The View3D of one camera of scene_view."""
+    parts = sc["cut"] if (cam.cut and "cut" in sc) else sc["full"]
+    v = view3d.View3D(size)
+    if ground is not None:
+        v.add(ground, color="#d9d9d9", lighting=False)
+    for m in parts:
+        v.add(m, scalars="spl", quantity="spl", clim=clim, lighting=False, colorbar="shared")
+    if levels is not None:
+        lines = view3d.isolines(parts, levels, "spl")
+        if lines is not None:
+            v.add(lines, color="black", line_width=0.7, opacity=0.45)
+    e = sc["edges_cut" if (cam.cut and "cut" in sc) else "edges_full"]
+    if e is not None and e.n_points:
+        v.add(e, color="#202020", line_width=1.6)
+    for s in drivers.values():
+        v.add(s, scalars="|u|", clim=(0, 1), smooth_shading=True, specular=0.3, colorbar="shared",
+              cmap=style.CMAPS["displacement"], label=r"Driver $|u|/|u|_{max}$")
+    if outline is not None and cam.cut:
+        v.add(outline, color="black", line_width=1.0)
+    v.camera(cam.position, cam.focus, cam.up, view_angle=cam.view_angle, parallel=cam.parallel)
+    return v
+
+
+def scene_view3d(res, f, camera: Camera | None = None, cut=None, keep=None, range_db: float = 50.0,
+                 contour_db: float | None = 3.0, near_field: float = 0.08, deformation: float = 0.10, outline=None,
+                 ground=None, size=(900, 760), cavity=None) -> view3d.View3D:
+    """
+    One view of scene_view as a View3D, to save (.png .pdf .html .gltf .vtm) or turn (.interactive()):
+        v = lp.plot.scene_view3d(res, 500, cut=((-1, 0, 0), (0.07, 0, 0)))
+        v.save("box_500Hz.html"); v.interactive()
+    camera: an lp.plot.Camera (cut=True on it shows the cut); default: facing the cut plane from the removed
+    side, a little from above and aside (without a cut: the scene from the front, +z, above, aside; y is up).
+    """
+    sc = scene_surfaces(res, f, cut, keep, near_field, cavity=cavity)
+    clim = (sc["top"] - range_db, sc["top"])
+    levels = np.arange(np.ceil(clim[0] / contour_db) * contour_db, clim[1] + 1e-9, contour_db) if contour_db else None
+    cam = camera if camera is not None else Camera((0, 0, 0), cut=cut is not None)
+    v = _panel(sc, res.driver_surfaces(sc["f"], deformation), cam, clim, levels, ground, outline, size)
+    if camera is None:
+        import pyvista as pv
+        b = np.asarray(pv.MultiBlock(sc["cut"] if cut is not None else sc["full"]).bounds).reshape(3, 2)
+        focus = b.mean(axis=1)
+        up = np.array([0.0, 1.0, 0.0])
+        n = np.asarray(cut[0], float) / np.linalg.norm(cut[0]) if cut is not None else np.array([0.0, 0.0, 1.0])
+        side = np.cross(n, up)
+        d = n + 0.45 * up + 0.45 * side
+        v.camera(focus + 3.0 * np.ptp(b, axis=1).max() * d / np.linalg.norm(d), focus, up, view_angle=30, zoom=1.15)
+    return v
+
+
 @style.styled
 def scene_view(res, f, cameras: dict, cut=None, keep=None, range_db: float = 50.0, contour_db: float | None = 3.0,
                near_field: float = 0.08, deformation: float = 0.10, outline=None, ground=None, size=(900, 760),
@@ -100,25 +152,7 @@ def scene_view(res, f, cameras: dict, cut=None, keep=None, range_db: float = 50.
     for ax in axs.ravel():
         ax.set_axis_off()
     for ax, (name, cam) in zip(axs.ravel(), cameras.items()):
-        parts = sc["cut"] if (cam.cut and "cut" in sc) else sc["full"]
-        v = view3d.View3D(size)
-        if ground is not None:
-            v.add(ground, color="#d9d9d9", lighting=False)
-        for m in parts:
-            v.add(m, scalars="spl", quantity="spl", clim=clim, lighting=False, colorbar="shared")
-        if levels is not None:
-            lines = view3d.isolines(parts, levels, "spl")
-            if lines is not None:
-                v.add(lines, color="black", line_width=0.7, opacity=0.45)
-        e = sc["edges_cut" if (cam.cut and "cut" in sc) else "edges_full"]
-        if e is not None and e.n_points:
-            v.add(e, color="#202020", line_width=1.6)
-        for s in drivers.values():
-            v.add(s, scalars="|u|", clim=(0, 1), smooth_shading=True, specular=0.3, colorbar="shared",
-                  cmap=style.CMAPS["displacement"], label=r"Driver $|u|/|u|_{max}$")
-        if outline is not None and cam.cut:
-            v.add(outline, color="black", line_width=1.0)
-        v.camera(cam.position, cam.focus, cam.up, view_angle=cam.view_angle, parallel=cam.parallel)
+        v = _panel(sc, drivers, cam, clim, levels, ground, outline, size)
         v.show(ax, title=name, colorbars=False)
     view3d.colorbars_for(fig, axs, v.bars, shrink=0.5)
     head = f"{sc['f']:.0f} Hz: SPL top {sc['top']:.0f} dB beyond {100 * near_field:.0f} cm of the drivers"

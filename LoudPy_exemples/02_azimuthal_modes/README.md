@@ -21,7 +21,7 @@ Each order is one mode set of the result file; read them back with
 |---|---|
 | `run.py` | HPNEW loudspeaker in vacuo, m = 0 … 4, 20 Hz – 16 kHz → `Results/Files/eigen_fourier.h5` |
 | `plot.py` | `mode_chart.pdf` (f vs m), `modes_m<m>.pdf` (meridian shapes) |
-| `plot_3d.py` | `modes_3d_m<m>.pdf`, m = 0 … 3: every mode on the whole revolved structure, 3D cut-away view + top view, max deformation 10 % of the diameter |
+| `plot_3d.py` | `modes_3d_m<m>.pdf`, m = 0 … 3: every mode on the whole revolved structure, 3D cut-away view + top view, max deformation 10 % of the diameter; `Files/mode_m<m>_1.html`: the first mode of each order, interactive (`--interactive`: also in a window) |
 | `../validation/clamped_plate.py` | clamped circular steel plate vs Kirchhoff analytical modes, m = 0 … 4 |
 
 Validation (clamped plate, a = 0.1 m, h = 2 mm): all (m, n) modes within 0.6 % of thin-plate

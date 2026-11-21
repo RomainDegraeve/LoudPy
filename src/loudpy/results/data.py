@@ -540,6 +540,12 @@ class Field:
         m = self.meta.get("order", 0) if order is None else order
         return revolve(self, m, **kwargs)
 
+    def view3d(self, **kwargs):
+        """A 3D view (lp.plot.View3D) of the field: .show(), .save("x.png" | ".html" | ".gltf" | ".vtm"),
+        .interactive(). See lp.plot.view (cut=, show=, camera= …)."""
+        from loudpy.plot.view3d import view
+        return view(self, **kwargs)
+
     # ── export ─────────────────────────────────────────────────────────────
     def _arrays(self) -> dict:
         names = ["r", "z"] if self.mesh.dim == 2 else ["x", "y", "z"]

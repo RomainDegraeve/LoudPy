@@ -13,6 +13,8 @@ the normal points out of the solid region next to each edge (into the air for a 
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 
 from loudpy.errors import ResultsError
@@ -20,10 +22,11 @@ from loudpy.errors import ResultsError
 _GAUSS = np.polynomial.legendre.leggauss(4)
 
 
-def _edges(res, on):
-    if on not in res.boundaries:
-        raise ResultsError(f"no boundary {on!r} in these results (boundaries: {list(res.boundaries)})")
-    e = np.asarray(res.boundaries[on].get("edges", []))
+def _edges(res, on, block):
+    bounds = res.boundaries_of(block)
+    if on not in bounds:
+        raise ResultsError(f"no boundary {on!r} in these results (boundaries: {list(bounds)})")
+    e = np.asarray(bounds[on].get("edges", []))
     if not len(e):
         raise ResultsError(f"the boundary {on!r} has no edges stored")
     return e
@@ -77,9 +80,9 @@ def _third_corners(mesh, edges):
 
 def _normal_velocity(res, on):
     """(blocks …) per block: Gauss data and u·n at the Gauss points (n_f, n_e, n_g)."""
-    edges = _edges(res, on)
     out = []
     for b in res.blocks:
+        edges = _edges(res, on, b)
         if "u" not in b.fields:
             raise ResultsError(f"no displacement field in block {b.label!r}")
         mesh = b.mesh_of("u")
@@ -182,12 +185,35 @@ def thiele_small(res, on: str | None = None, coil: str | None = None, band: floa
         k = int(np.argmin(np.abs(f - out["fs"])))
         vc = _coil_velocity(res, coil)[k]
         out["Sd"] = float(np.abs(Q[k]) / np.abs(vc))
-        groups = res.model.groups if res.model is not None else {}
-        air = [g for g in groups.values() if g.get("role") == "air"]
-        if air:
-            rho, c = air[0]["rho"], air[0]["c"]
+        air = _air_properties(res)
+        if air is not None:
+            rho, c = air
             out["Vas"] = float(rho * c ** 2 * out["Sd"] ** 2 * Cms)
     return out
+
+
+def _air_properties(res) -> tuple[float, float] | None:
+    """(ρ, c) of the air: from the mesh groups' data, else from the air region's material (files whose
+    description has no group data: remeshed sweeps written before 0.2.1)."""
+    if res.model is None:
+        return None
+    air = [g for g in res.model.groups.values() if g.get("role") == "air" and "rho" in g and "c" in g]
+    if air:
+        return float(air[0]["rho"]), float(air[0]["c"])
+    regions = [r for r in (res.model.get("regions") or []) if r.get("type") == "Air"]
+    if not regions:
+        return None
+    r = regions[0]
+    if r.get("rho") is not None and r.get("c") is not None:
+        return float(r["rho"]), float(r["c"])
+    from loudpy.model.materials import load_materials
+    try:
+        lib = res.model.get("materials")
+        m = load_materials(lib if lib and lib != "loudpy library" and Path(lib).exists() else None)
+        mat = m.resolve(r["material"]) if isinstance(r.get("material"), str) else None
+    except Exception:                                  # library moved / material renamed: no Vas
+        return None
+    return (float(mat.rho), float(mat.c)) if mat is not None and mat.rho and mat.c else None
 
 
 def _coil_label(res) -> str:
@@ -200,10 +226,12 @@ def _coil_label(res) -> str:
 
 def _coil_velocity(res, coil) -> np.ndarray:
     """Mean axial velocity jω u_z of the coil boundary's nodes over frequency."""
-    tags = np.asarray(res.boundaries[coil]["node_tags"])
     out = []
     for b in res.blocks:
+        tags = np.asarray(res.boundaries_of(b)[coil]["node_tags"])
         mesh = b.mesh_of("u")
+        if not np.isin(tags, mesh.node_tags).all():
+            raise ResultsError(f"the coil boundary {coil!r} has nodes outside the mesh of block {b.label!r}")
         uz = np.asarray(b.fields["u"])[:, mesh._rows(tags), 1].mean(axis=1)
         out.append(2j * np.pi * np.asarray(b.values) * uz)
     return np.concatenate(out)

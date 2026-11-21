@@ -227,6 +227,14 @@ def label_panels(axes, x: float = -0.12, y: float = 1.04, start: str = "a") -> N
         ax.text(x, y, f"({chr(ord(start) + k)})", transform=ax.transAxes, fontsize=10, va="bottom", ha="left")
 
 
+def plain_label(label: str) -> str:
+    """A label without its TeX markup (for text drawn outside matplotlib: VTK, HTML), e.g.
+    "$|u|/|u|_{max}$" → "|u|/|u|_max"."""
+    import re
+    s = re.sub(r"\\(mathrm|mathit|text)\{([^}]*)\}", r"\2", label)
+    return s.replace("\\", "").replace("$", "").replace("{", "").replace("}", "")
+
+
 def save(fig, path, close: bool = True, **kwargs) -> Path:
     """Save a figure (folder created; written next to the target then renamed: safe on synced folders)."""
     import matplotlib.pyplot as plt

@@ -86,7 +86,7 @@ def apply(res, output: Output | None):
             fields = {k: np.asarray(v)[keep] for k, v in b.fields.items()
                       if output.fields is None or k in output.fields}
             extra = {k: (np.asarray(v)[keep] if np.ndim(v) and len(v) == len(b) else v) for k, v in b.extra.items()}
-            blocks.append(Block(b.meshes, np.asarray(b.values)[keep], fields, extra, b.meta, b.label))
+            blocks.append(Block(b.meshes, np.asarray(b.values)[keep], fields, extra, b.meta, b.label, b.boundaries))
         res.blocks = blocks
     res.meta["output"] = output.describe()
     return res

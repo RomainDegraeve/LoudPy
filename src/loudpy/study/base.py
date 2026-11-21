@@ -7,7 +7,11 @@ from typing import Any
 def finish(study, results):
     """results.model (the model description and its geometry files) and results.study (the settings)."""
     from loudpy.results.description import ModelDescription, describe, geometry_files, settings
-    results.model = ModelDescription(describe(study.model), geometry_files(study.model))
+    desc = describe(study.model)
+    copy = getattr(study, "_meshed_copy", None)          # remeshed sweeps mesh copies, not the user's model
+    if copy is not None and isinstance(desc, dict) and not desc.get("groups"):
+        desc["groups"] = describe(copy)["groups"]
+    results.model = ModelDescription(desc, geometry_files(study.model))
     results.study = settings(study)
     return results
 

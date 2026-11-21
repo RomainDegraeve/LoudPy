@@ -7,9 +7,11 @@ hemisphere with the **exact** half-space radiation condition (DtN); the rear is 
 python3 LoudPy_exemples/11_box_radiation/run.py            # ~14 min → Results/Files/exterior.h5
 python3 LoudPy_exemples/11_box_radiation/plot.py           # SPL at 1 m, polars, response change
 python3 LoudPy_exemples/11_box_radiation/plot_3d.py        # cuts every 10 Hz (slow)
-python3 LoudPy_exemples/11_box_radiation/plot_3d_views.py  # full 3D scenes from 6 angles
+python3 LoudPy_exemples/11_box_radiation/plot_3d_views.py  # full 3D scenes from 6 angles (+ HTML / glb files)
+python3 LoudPy_exemples/11_box_radiation/plot_3d_views.py --interactive   # also opens each scene in a window
 ```
 
 **Shows**: `scene.exterior()`, band meshes per wavelength, the exact far field (`res.far_field`, `res.spl(at=lp.Arc…)`),
-directivity, `lp.plot.scene_view`.
+directivity, `lp.plot.scene_view`; one view as a `View3D` (`lp.plot.scene_view3d`) saved as an interactive HTML file
+and a glTF model (`.glb`), or opened in a window (`v.interactive()`).
 **Check**: at 50 Hz the far field is omnidirectional and p·r is within 1.4 % of a monopole on a rigid ground.

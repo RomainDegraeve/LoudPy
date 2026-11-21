@@ -930,3 +930,14 @@ phase's notes). Phase K adds what turns them into a pipeline:
   (box module, meshes) + `validation/`; the existing results moved with them. Every `plot.py` re-run from another
   directory on the stored results. **Found**: `res.thiele_small()` and the other boundary integrals fail on results
   computed with remeshing per wavelength (the boundary edges are stored once, each band has its own mesh) — to fix.
+- **Fixed** (user: "Fix T&S"): blocks keep their own boundaries (`Block.boundaries`, written per block); for older
+  files `results/boundaries.py` finds each boundary again on every band's mesh (the cell edges lying on the stored
+  boundary's curve, 5 % of the edge length; checked edge for edge against per-block storage in
+  `test_thiele_small_of_a_remeshed_sweep`). Also found: `Mesh._rows` maps unknown tags to wrong rows silently — the
+  coil velocity (Sd) of remeshed results was read at wrong nodes on all bands but the last (now checked); and the
+  model description of remeshed sweeps had no group data (no Vas). Example 06 from its stored file: fs 111.5 Hz,
+  Qms 17.1, Qes 2.02, Qts 1.81, Sd 78 cm² (r = 5.0 cm), Vas 1.0 L.
+- **3D views saved / turned** (user: "add 3d view saving / visualization"): `View3D.save` (.png/.pdf/.svg figure,
+  .html self-contained viewer with per-vertex colours, .gltf/.glb, .vtm), `View3D.interactive()`, `field.view3d()`,
+  `lp.plot.view`, `lp.plot.scene_view3d`; examples 02, 06, 11. The HTML viewer was checked by decoding its data and
+  compiling its script (JavaScriptCore); not yet looked at in a browser (the browser pane refused local pages).

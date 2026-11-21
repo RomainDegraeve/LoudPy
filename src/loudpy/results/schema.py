@@ -17,7 +17,8 @@ loudpy result format 3 (HDF5). Self-describing, independent of Python class name
             groups/<name>   (n_cells, k) node tags;  attrs: dim, cell_type
         fields/<name>       (n, n_nodes[, dpn]), real or complex    name = "u" | "p" | "v" | "a"
         extra/<name>        (n,) per-entry quantities (zeta, I_coil, …)
-    /boundaries/<name>/     node_tags, edges (node tags)
+        boundaries/<name>/  node_tags, edges of the boundaries on this block's meshes (remeshed sweeps)
+    /boundaries/<name>/     node_tags, edges (node tags; of the last block's meshes when blocks have their own)
     /attachments/<name>/    arrays + attrs (JSON "meta"): data a result needs besides its fields
                             (modal bases of 3D drivers, cavity modes, DtN settings …)
     attrs results_class     the Results subclass to rebuild (e.g. "SceneResults"), optional
@@ -155,6 +156,7 @@ def _write_results(g, results) -> None:
             _dataset(bg["fields"], name, arr)
         for name, arr in b.extra.items():
             _dataset(bg.require_group("extra"), name, np.asarray(arr))
+        _write_boundaries(bg, b.boundaries)
     _write_boundaries(g, results.boundaries)
     _write_attachments(g, getattr(results, "attachments", None))
     _write_description(g, results)
@@ -228,7 +230,8 @@ def _read_results(g, path):
                             {n: (LazyArray(path, d.name) if d.size > LAZY_ELEMENTS else d[()])
                              for n, d in _ordered(bg.get("fields"))},
                             {n: d[()] for n, d in bg.get("extra", {}).items()},
-                            json.loads(bg.attrs.get("meta", "{}")), str(bg.attrs.get("label", ""))))
+                            json.loads(bg.attrs.get("meta", "{}")), str(bg.attrs.get("label", "")),
+                            {n: {k: bd[k][()] for k in bd} for n, bd in bg.get("boundaries", {}).items()}))
     boundaries = {n: {k: bd[k][()] for k in bd} for n, bd in g.get("boundaries", {}).items()}
     meta = json.loads(g.attrs.get("meta", "{}"))
     cls = result_class(str(g.attrs.get("results_class", "")), kind)

@@ -10,10 +10,16 @@ coloured by |u| (Field.revolve). Two views per mode: revolved over 270° (the cu
 section, spider and former) and a full revolution seen from the front (the circumferential
 pattern on the membrane and the surround). Largest displacement: DEFORMATION × the diameter.
 
-What this produces (in Results/Figures/)
------------------------------------------
-  - modes_3d_m<m>.pdf : PER_PAGE modes per page, one row per mode (3D view | front view)
+What this produces
+------------------
+Results/Figures/
+  - modes_3d_m<m>.pdf  : PER_PAGE modes per page, one row per mode (3D view | front view)
+Results/Files/
+  - mode_m<m>_1.html   : the first mode of each order, interactive in a browser (Field.view3d().save)
+
+    python3 plot_3d.py --interactive      also opens those modes in a window to turn them
 """
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -55,4 +61,10 @@ for m in [m for m in ORDERS if m in modes.orders]:
             fig.colorbar(ScalarMappable(Normalize(0, 1), lp.plot.style.CMAPS["displacement"]), ax=axs, shrink=0.5,
                          label=r"$|u|/|u|_{max}$")
             pdf.savefig(fig)
+    first = om.mode(0)
+    v = first.view3d(sweep=1.5 * np.pi, deformation=DEFORMATION)
+    title = f"m = {m}, mode 1: {first.coordinate:.0f} Hz"
+    v.save(here / f"Files/mode_m{m}_1.html", title=title)
+    if "--interactive" in sys.argv:
+        v.interactive(title=title)
     print(f"✓ m = {m}: {len(om)} modes → {here / f'Figures/modes_3d_m{m}.pdf'}")
