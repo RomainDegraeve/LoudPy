@@ -68,6 +68,7 @@ class HalfSpaceDtN:
         self._ax = ax                                         # (x', y') in the ground plane
 
     def n_max(self, k):
+        """Highest spherical-harmonic degree kept at wavenumber k: ceil(kR) + n_extra."""
         return int(np.ceil(k * self.R)) + self.n_extra
 
     @staticmethod
@@ -77,9 +78,11 @@ class HalfSpaceDtN:
 
     @staticmethod
     def n_harm(n_max):
+        """Number of harmonics (n, m) with n + |m| even up to degree n_max."""
         return (n_max + 1) * (n_max + 2) // 2
 
     def local(self, x):
+        """Spherical coordinates (r, θ from the ground normal, φ) of points about the centre."""
         d = np.atleast_2d(x) - self.center
         r = np.linalg.norm(d, axis=1)
         theta = np.arccos(np.clip(d[:, self.up] / np.maximum(r, 1e-300), -1, 1))
@@ -177,12 +180,15 @@ class ExteriorFE:
         return self
 
     def preconditioner(self, k):
+        """LU of K − k²M + (ik + 1/R) M_Γ (local absorbing condition) as a LinearOperator: the GMRES
+        preconditioner around wavenumber k."""
         A = (self.K - k * k * self.M + (1j * k + 1.0 / self.dtn.R) * self.MG).tocsc()
         lu = spla.splu(A, permc_spec="MMD_AT_PLUS_A", diag_pivot_thresh=0.0,
                        options=dict(SymmetricMode=True))
         return spla.LinearOperator(A.shape, matvec=lu.solve, dtype=complex)
 
     def coefficients(self, p, k):
+        """DtN expansion coefficients c_h = (2/R²) ∫_Γ p Y_h dS of an exterior field p at wavenumber k."""
         nh = self.dtn.n_harm(self.dtn.n_max(k))
         return 2.0 / self.dtn.R ** 2 * (self.G[:, :nh].T @ p[self.gnodes])
 

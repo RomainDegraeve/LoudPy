@@ -24,6 +24,7 @@ ROLES = {
 
 
 def role_of(obj) -> str | None:
+    """The physics role of a model item or part ("solid", "air", "coil"…), or None."""
     return getattr(obj, "role", None)
 
 

@@ -1,3 +1,7 @@
+"""
+loudpy.fem.sparse_kernels — Numba kernels of the sparse assembly: the map from element entries to CSR
+positions (build_mapping), duplicate summation of COO entries and the scatter-add of element blocks.
+"""
 from numba import njit
 
 @njit(cache=True)

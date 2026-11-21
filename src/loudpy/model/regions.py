@@ -26,6 +26,8 @@ from loudpy.model.materials import Material
 
 @dataclass
 class Region(Combinable):
+    """Base of the region items (lp.Solid, lp.Air, lp.PML): a name and the selector of its domains (on=…,
+    default: the name as a label)."""
     name: str
     on: Selector | str | None = field(default=None, kw_only=True)      # default: Group(name)
 

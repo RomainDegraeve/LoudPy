@@ -1,3 +1,8 @@
+"""
+loudpy.geometry.meshing2d — the 2D (axisymmetric) mesher: MeshManager loads a geometry source into gmsh,
+builds the planned domains and the PML layers, applies the size fields, meshes and extracts the mesh
+groups (MeshPart, NodeSet); the mesh signature decides reuse.
+"""
 import gmsh
 import json
 import logging
@@ -28,6 +33,7 @@ class DomainSizing:
 
     @property
     def is_structure(self) -> bool:
+        """True for a solid domain."""
         return self.kind.startswith("solid")
 
 
@@ -50,10 +56,12 @@ class MeshPart:
 
     @property
     def tri(self) -> np.ndarray:
+        """Cells of a domain part (node tags)."""
         return self.cells
 
     @property
     def edges(self) -> np.ndarray:
+        """Cells of an edge part (node tags)."""
         return self.cells
 
 
@@ -124,6 +132,8 @@ class MeshManager:
 
     def generate_mesh(self, msh_path: str, write_mesh_file: bool, show_gui: bool = False,
                       extract_mesh_data: bool = False):
+        """Build and mesh the geometry with gmsh: write it to msh_path when write_mesh_file, open the gmsh
+        window when show_gui, and return the extracted mesh data when extract_mesh_data."""
         self._initialize_gmsh(show_gui)
         try:
             self.source.load(gmsh)
@@ -170,6 +180,7 @@ class MeshManager:
 
     @staticmethod
     def signature_path(msh_path: str) -> str:
+        """Path of the signature file of a mesh (<mesh>.json)."""
         return msh_path + ".json"
 
     def mesh_signature(self) -> Dict[str, Any]:
@@ -225,6 +236,7 @@ class MeshManager:
     # =========================================================================
 
     def extract_mesh_data(self) -> Tuple[List[MeshPart], List[MeshPart], NodeSet]:
+        """Domain parts, edge parts and the node set of the current gmsh mesh."""
         try:
             node_tags, node_coords, _ = gmsh.model.mesh.getNodes()
             node_coords = node_coords.reshape(-1, 3)

@@ -827,3 +827,12 @@ phase's notes). Phase K adds what turns them into a pipeline:
   `tests/test_code_quality.py`: no `from loudpy.… import _name` anywhere (AST scan), and the public docstring
   coverage as a ratchet — **659 / 869 public modules, classes, functions and methods documented (75.8 %)** at
   the start of L.
+- **L2 (done)**: docstrings on every public module, class, function, method and property — **847 / 847** (counted
+  at runtime with `inspect.getdoc`, so an override inherits its base's docstring, as in Sphinx; dataclasses'
+  generated signatures do not count). 193 docstrings written (selectors, selections, Data / Field accessors,
+  builder, parts, assemblers, solvers, scene and results helpers, five module docstrings); the private
+  `Field._scalar` is now the documented `Field.with_values`. `test_public_docstrings` requires 100 %.
+  **Found on the way**: the K step had added a second `pytest_sessionfinish` to `tests/conftest.py`, which replaced
+  the guard that fails a run when a test rewrites a committed mesh (CI's ruff caught it: F811); merged into one
+  hook (the meshes were checked unchanged). The deformed-field image differed on Linux even with the layout fixed
+  (RMS 33): the baseline is now the undeformed field.

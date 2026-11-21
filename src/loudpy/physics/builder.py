@@ -58,10 +58,12 @@ class Term:
     func: Callable | None = None
 
     def factor(self, s):
+        """f(s): s**power, or func(s)."""
         return self.func(s) if self.func is not None else s ** self.power
 
     @property
     def polynomial(self) -> bool:
+        """True when the term is a constant matrix times s⁰, s¹ or s² (it enters a polynomial eigenproblem)."""
         return self.func is None and self.power in (0, 1, 2) and not callable(self.matrix)
 
     def value(self, s):
@@ -90,6 +92,7 @@ class LowRank:
         self.scale = scale
 
     def scaled(self, f):
+        """The same operator multiplied by f."""
         return LowRank(self.shape, self.rows, self.U, self.core, self.cols, self.V, self.scale * f)
 
     def __matmul__(self, x):
@@ -107,6 +110,7 @@ class Load:
     vector: object
 
     def value(self, s):
+        """The load vector at s."""
         return self.vector(s) if callable(self.vector) else self.vector
 
 
@@ -120,12 +124,14 @@ class SystemBuilder:
 
     # ── declaration ─────────────────────────────────────────────────────────
     def add_field(self, f: Field) -> Field:
+        """Declare an unknown (a field name may be declared once)."""
         if f.name in self.fields:
             raise ModelError(f"field {f.name!r} declared twice")
         self.fields[f.name] = f
         return f
 
     def add(self, *terms: Term) -> None:
+        """Add terms (their fields must be declared, their shapes match the fields' sizes)."""
         for t in terms:
             for name in (t.row, t.col):
                 if name not in self.fields:
@@ -136,6 +142,7 @@ class SystemBuilder:
             self.terms.append(t)
 
     def add_load(self, load: Load) -> None:
+        """Add a right-hand side on a declared field."""
         if load.field not in self.fields:
             raise ModelError(f"load on unknown field {load.field!r}")
         self.loads.append(load)
@@ -143,6 +150,7 @@ class SystemBuilder:
     # ── layout ──────────────────────────────────────────────────────────────
     @property
     def offsets(self) -> dict[str, int]:
+        """Offset of each field in the global vector (declaration order)."""
         out, k = {}, 0
         for name, f in self.fields.items():
             out[name] = k
@@ -151,6 +159,7 @@ class SystemBuilder:
 
     @property
     def size(self) -> int:
+        """Total number of unknowns."""
         return sum(f.size for f in self.fields.values())
 
     def split(self, x) -> dict[str, np.ndarray]:
@@ -204,6 +213,7 @@ class SystemBuilder:
         return sp.bmat(rows, format="csc")
 
     def rhs(self, s=None) -> np.ndarray:
+        """The right-hand side at s (sum of the loads)."""
         b = np.zeros(self.size, dtype=complex)
         off = self.offsets
         for load in self.loads:

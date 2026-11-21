@@ -269,6 +269,8 @@ class StreamWriter:
         self.n_blocks = 0
 
     def block(self, label, values, meshes, fields, dtype=np.complex64, meta=None) -> int:
+        """Create a block (label, coordinate values, meshes, field shapes) whose rows are written later; returns
+        its index."""
         i = self.n_blocks
         g = self.f.create_group(f"blocks/{i:04d}")
         g.attrs["label"] = label
@@ -286,10 +288,12 @@ class StreamWriter:
         return i
 
     def row(self, block, field, i, data):
+        """Write entry i of a field of a block (and flush)."""
         self.f[f"blocks/{block:04d}/fields/{field}"][i] = data
         self.f.flush()
 
     def extra(self, block, name, data):
+        """Write a per-entry array of a block (and flush)."""
         g = self.f[f"blocks/{block:04d}"].require_group("extra")
         if name in g:
             del g[name]

@@ -1,3 +1,7 @@
+"""
+loudpy.geometry.step_cleaning — clean-up of 2D sketches read from STEP / IGES files before they are used
+as geometry sources (duplicate and tiny curves removed, end points merged).
+"""
 import logging
 import gmsh
 import os 

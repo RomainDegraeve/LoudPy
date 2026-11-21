@@ -183,10 +183,12 @@ class LagrangeElement:
 
     @property
     def n_nodes(self) -> int:
+        """Number of nodes (basis functions) of the element."""
         return len(self.nodes)
 
     @property
     def dim(self) -> int:
+        """Dimension of the reference cell."""
         return self.cell.dim
 
     def __repr__(self):

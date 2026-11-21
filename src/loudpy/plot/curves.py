@@ -59,6 +59,8 @@ def _coord_label(dim, value) -> str:
 
 
 def x_axis(ax, dim, x, logx):
+    """Set the x axis of a curve plot over coordinate `dim` (log frequency axis when it spans more than a
+    factor 8, unless logx says otherwise)."""
     if logx is None:
         logx = dim == "f" and np.all(x > 0) and x.max() / max(x.min(), 1e-30) > 8
     if logx and dim == "f":

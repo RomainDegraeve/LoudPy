@@ -38,11 +38,14 @@ def spl(p, rms: bool = True) -> np.ndarray:
 
 
 def mat_name(s: str) -> str:
+    """A valid MATLAB variable name from any text."""
     s = re.sub(r"\W+", "_", s).strip("_") or "x"
     return s if s[0].isalpha() else "x_" + s
 
 
 def write_atomic(path: Path, write):
+    """Write a file through a temporary file renamed at the end (safe on synced folders); `write(tmp)`
+    writes the temporary file. Returns the path."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.stem + ".tmp" + path.suffix)
@@ -76,6 +79,7 @@ class Data:
     # ── NumPy ──────────────────────────────────────────────────────────────
     @property
     def dims(self) -> tuple[str, ...]:
+        """Names of the coordinates, in the order of the value axes."""
         return tuple(self.coords)
 
     @property
@@ -85,10 +89,12 @@ class Data:
 
     @property
     def shape(self):
+        """Shape of the values."""
         return self.values.shape
 
     @property
     def ndim(self):
+        """Number of coordinates."""
         return self.values.ndim
 
     def __len__(self):
@@ -101,6 +107,7 @@ class Data:
         return self.values[idx]
 
     def to_numpy(self) -> np.ndarray:
+        """The values as a NumPy array."""
         return self.values
 
     def __repr__(self):
@@ -160,15 +167,18 @@ class Data:
 
     # ── parts of complex amplitudes ────────────────────────────────────────
     def abs(self) -> "Data":
+        """Modulus |values|."""
         return self._new(np.abs(self.values), self.quantity.part("abs") if np.iscomplexobj(self.values)
                          else self.quantity)
 
     @property
     def real(self) -> "Data":
+        """Real part."""
         return self._new(self.values.real, self.quantity.part("real"))
 
     @property
     def imag(self) -> "Data":
+        """Imaginary part."""
         return self._new(self.values.imag, self.quantity.part("imag"))
 
     def phase(self, deg: bool = False, unwrap: bool = True) -> "Data":
@@ -426,6 +436,7 @@ class Field:
 
     @property
     def is_vector(self) -> bool:
+        """True for a vector field (values (n, components))."""
         return self.values.ndim > 1
 
     def with_values(self, values, quantity, **meta) -> "Field":
@@ -455,13 +466,16 @@ class Field:
 
     @property
     def real(self) -> "Field":
+        """Real part."""
         return self.with_values(np.real(self.values), self.quantity.part("real"))
 
     @property
     def imag(self) -> "Field":
+        """Imaginary part."""
         return self.with_values(np.imag(self.values), self.quantity.part("imag"))
 
     def phase(self, deg: bool = False) -> "Field":
+        """Phase [rad, or degrees with deg=True]; for a vector field, of its largest component at each node."""
         v = self.values if not self.is_vector else self.values[np.arange(len(self.values)),
                                                                 np.argmax(np.abs(self.values), axis=1)]
         ph = np.angle(v)

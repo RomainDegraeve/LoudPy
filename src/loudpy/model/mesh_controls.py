@@ -28,8 +28,10 @@ class MeshSize:
 
     @property
     def selector(self) -> Selector:
+        """The selector of the domains it sizes."""
         return as_selector(self.on)
 
     @property
     def label(self) -> str:
+        """Its name, or the text of its selector."""
         return self.name if self.name is not None else repr(self.on)

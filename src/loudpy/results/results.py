@@ -45,6 +45,7 @@ ALIASES = {"u_meca": "u", "v_meca": "v", "a_meca": "a", "p_acou": "p"}     # for
 
 
 def canonical(name: str) -> str:
+    """The current name of a field (former names such as "u_meca" mapped to "u")."""
     return ALIASES.get(name, name)
 
 
@@ -62,6 +63,7 @@ class Block:
         return len(self.values)
 
     def mesh_of(self, name: str) -> Mesh:
+        """The mesh of a field (by its physics, or the block's only mesh)."""
         phys = PHYSICS_OF.get(name)
         if phys in self.meshes:
             return self.meshes[phys]
@@ -113,6 +115,7 @@ class Results:
 
     @property
     def names(self) -> list[str]:
+        """Names of the fields over all blocks."""
         out = []
         for b in self.blocks:
             out += [n for n in b.fields if n not in out]
@@ -139,6 +142,7 @@ class Results:
         return Data(self.extra(name), {self.dim: self._coord()}, quantity(name), meta=self._meta())
 
     def mesh(self, physics: str = "solid", block: int = 0) -> Mesh:
+        """The mesh of a physics ("solid", "air") in a block."""
         return self.blocks[block].meshes[physics]
 
     def boundary(self, name: str) -> np.ndarray:
@@ -319,6 +323,7 @@ class FrequencyResults(Results):
 
     @property
     def frequencies(self) -> np.ndarray:
+        """Frequencies of the entries [Hz]."""
         return self.values
 
     def field(self, name: str, f: float | None = None, index: int | None = None) -> Field:
@@ -394,6 +399,7 @@ class TimeResults(Results):
 
     @property
     def times(self) -> np.ndarray:
+        """Times of the entries [s]."""
         return self.values
 
     def field(self, name: str, t: float | None = None, index: int | None = None) -> Field:
@@ -416,14 +422,17 @@ class ModeResults(Results):
 
     @property
     def frequencies(self) -> np.ndarray:
+        """Frequencies of the modes [Hz]."""
         return self.values
 
     @property
     def zeta(self) -> np.ndarray:
+        """Damping ratios of the modes."""
         return self.extra("zeta")
 
     @property
     def sets(self) -> list[str]:
+        """Labels of the mode sets (one per block: orders, coupled set…)."""
         return [b.label for b in self.blocks]
 
     @property
@@ -439,6 +448,7 @@ class ModeResults(Results):
         return self._like(sel)
 
     def set(self, label: str) -> "ModeResults":
+        """The modes of one set (by label)."""
         sel = [b for b in self.blocks if b.label == label]
         if not sel:
             raise ResultsError(f"no mode set {label!r} (sets: {self.sets})")

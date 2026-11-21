@@ -253,6 +253,8 @@ def element_matrices(nodes, cells, E, nu, rho, thickness, shear_factor=SHEAR_FAC
 
 
 def cell_sets(cells):
+    """Cells as a dict {"tri3": …, "quad4": …} of node-row arrays (an array of 3- or 4-node cells is put
+    under its type; empty sets are dropped)."""
     if isinstance(cells, dict):
         return {k: np.asarray(v, np.int64) for k, v in cells.items() if len(v)}
     cells = np.asarray(cells, np.int64)

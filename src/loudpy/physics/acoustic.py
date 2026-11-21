@@ -45,6 +45,8 @@ def pml_coefficients(layer, x, alpha, n, omega, c):
 
 
 class AcouAssembler(ElementAssembler):
+    """Assembler of the air operators H = ∫∇N·∇N 2πr and Q = ∫NN/c² 2πr (with the PML stretching in the
+    PML parts) on the air and PML parts."""
     PTS_PER_TRI = 6
     dofs_per_node = 1
 

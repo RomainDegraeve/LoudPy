@@ -40,10 +40,12 @@ class System:
 
     @property
     def n_meca(self) -> int:
+        """Number of structure DOFs."""
         return self.K.shape[0]
 
     @property
     def n_acou(self) -> int:
+        """Number of air DOFs (0 without air)."""
         return 0 if self.H is None else self.H.shape[0]
 
     def speed_of_sound(self) -> float:

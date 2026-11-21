@@ -34,11 +34,13 @@ class Range:
     hint: str = ""
 
     def valid(self, v: float) -> bool:
+        """True when v lies in the range (bounds inclusive or exclusive as declared)."""
         above = v >= self.lo if self.lo_inclusive else v > self.lo
         below = v <= self.hi if self.hi_inclusive else v < self.hi
         return above and below
 
     def describe(self) -> str:
+        """The range as text, e.g. "(0, 1] Pa"."""
         lo = "[" if self.lo_inclusive else "("
         hi = "]" if self.hi_inclusive else ")"
         return f"{lo}{self.lo:g}, {self.hi:g}{hi}" + (f" {self.unit}" if self.unit else "")

@@ -51,6 +51,7 @@ class ComsolTable:
 
     @property
     def units(self) -> dict[str, str]:
+        """Unit of each column (the text in parentheses at the end of its name, or "")."""
         out = {}
         for c in self.columns:
             m = _UNIT.match(c)
@@ -135,6 +136,7 @@ class Comparison:
 
     @property
     def passed(self) -> bool | None:
+        """True / False against rtol, None without a tolerance."""
         return None if self.rtol is None else bool(self.max_error <= self.rtol)
 
     def __str__(self):

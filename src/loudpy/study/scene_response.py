@@ -20,6 +20,7 @@ from loudpy.errors import ModelError, SelectionError, StateError
 
 
 def multidriver(scene):
+    """The scene's drivers as one MultiDriver (stacked modal coordinates)."""
     from loudpy.physics.modal import MultiDriver
     return MultiDriver([d.driver.modes for d in scene.drivers], [d.frame for d in scene.drivers],
                        names=[d.name for d in scene.drivers])
@@ -80,6 +81,7 @@ def scene_walls(scene, cav):
 
 
 def cavity_coupling(scene, drivers, cav):
+    """The cavity coupling of the scene's drivers (and walls) with its cavity modes."""
     from loudpy.physics.modal import DriverCavityCoupling
     patch = ["interface_driver"] if len(scene.drivers) == 1 else None
     return DriverCavityCoupling(cav, drivers, [d.driver.rear for d in scene.drivers], rho=scene.rho, c=scene.c,
@@ -123,6 +125,8 @@ def _fe_mesh(ext) -> Mesh:
 
 
 def solve(study, freqs, store=None, chunk_hz=50.0, rtol=1e-7, log=None):
+    """Frequency response of a scene in its configuration (cavity, cavity + exterior, merged); the 3D
+    pressure field is streamed to `store` when given. Returns SceneResults."""
     if log is None:                                   # progress messages: logger "loudpy"
         from loudpy._log import info as log
     from loudpy.results import load

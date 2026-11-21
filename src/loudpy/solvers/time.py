@@ -28,18 +28,22 @@ class GeneralizedAlpha:
 
     @property
     def alpha_m(self):
+        """α_m of the generalized-α scheme (from ρ∞)."""
         return (2.0 * self.rho_inf - 1.0) / (self.rho_inf + 1.0)
 
     @property
     def alpha_f(self):
+        """α_f of the generalized-α scheme (from ρ∞)."""
         return self.rho_inf / (self.rho_inf + 1.0)
 
     @property
     def gamma(self):
+        """Newmark γ = ½ − α_m + α_f."""
         return 0.5 - self.alpha_m + self.alpha_f
 
     @property
     def beta(self):
+        """Newmark β = ¼ (1 − α_m + α_f)²."""
         return 0.25 * (1.0 - self.alpha_m + self.alpha_f) ** 2
 
 

@@ -80,6 +80,7 @@ class ShellStructure:
 
     @property
     def n_dofs(self) -> int:
+        """Number of DOFs (6 per node)."""
         return fe.NDOF * len(self.nodes)
 
     @property
@@ -95,6 +96,7 @@ class ShellStructure:
 
     @property
     def M(self):
+        """Consistent mass matrix."""
         return self._M
 
     @property
@@ -112,6 +114,7 @@ class ShellStructure:
 
     @property
     def C(self):
+        """Viscous damping α M + β K (zero unless lp.Rayleigh)."""
         a, b = self.rayleigh
         return a * self._M + b * self._K
 
@@ -135,6 +138,7 @@ class ShellStructure:
         return f, phi, self.modal_damping(f)
 
     def modal_damping(self, f):
+        """Modal damping ratios at the frequencies f [Hz]: α/2ω + βω/2 (Rayleigh), η/2 (hysteretic), 0."""
         from loudpy.model.damping import Hysteretic, Rayleigh
         w = 2 * np.pi * np.maximum(np.asarray(f, float), 1e-12)
         if isinstance(self.damping, Rayleigh):
@@ -171,6 +175,7 @@ class WallShells:
         return shell_air_coupling(self, n_air)
 
     def area(self) -> float:
+        """Total area of the shell cells [m²]."""
         return float(fe.cell_normals(self.nodes, self.cells)[1].sum())
 
 

@@ -214,6 +214,7 @@ class MaterialLibrary(Mapping):
 
     @classmethod
     def load(cls, path) -> "MaterialLibrary":
+        """Read a material library file (JSON, formats 1 and 2)."""
         path = Path(path)
         with open(path) as fh:
             data = json.load(fh)
@@ -241,6 +242,7 @@ class MaterialLibrary(Mapping):
         return len(self._m)
 
     def resolve(self, material: "str | Material") -> Material:
+        """The Material itself, or the library's material of that name."""
         return material if isinstance(material, Material) else self[material]
 
     def __repr__(self):

@@ -51,9 +51,13 @@ class Selector:
     `|` (union), `&` (intersection) and `-` (difference)."""
 
     def domains(self, ctx: "Domains") -> set[str]:
+        """Names of the domain groups the selector selects in the context `ctx` (a Domains). Selectors of edges
+        only raise a SelectionError."""
         raise SelectionError(f"{self!r} selects boundary edges, not domains (use it for a boundary)")
 
     def edges(self, ctx: "Edges") -> set[int]:
+        """Codes of the boundary edges the selector selects in the context `ctx` (an Edges or a Curves).
+        Selectors of domains only raise a SelectionError."""
         raise SelectionError(f"{self!r} selects domains, not boundary edges (lp.BoundaryOf(…) gives its edges)")
 
     def labels(self) -> list[str]:
@@ -146,10 +150,12 @@ class Group(Selector):
         return set().union(*(ctx.curve_groups[n] for n in names))
 
     def labels(self):
+        """The labels of the group (names or glob patterns)."""
         return list(self.labels_)
 
     @property
     def by_groups(self):
+        """True when the selection is made of labels only (one part per named group is kept)."""
         return True
 
     def __repr__(self):
@@ -394,6 +400,7 @@ class Domains:
         return cls(names, outlines, dim=mesh.dim, regions=regions, where="the mesh")
 
     def outline(self, name) -> np.ndarray:
+        """Sampled outline of a domain group (points of its closed boundary)."""
         if callable(self._outlines) or self._outlines is None:
             self._outlines = self._outlines() if callable(self._outlines) else {}
         if name not in self._outlines:
@@ -401,6 +408,7 @@ class Domains:
         return self._outlines[name]
 
     def points(self, name) -> np.ndarray:
+        """Outline points of a domain group as an (n, dim) array."""
         return self.outline(name).reshape(-1, self.dim)
 
     def closed(self, name) -> bool:
@@ -415,6 +423,7 @@ class Domains:
 
     @property
     def scale(self) -> float:
+        """Diagonal of the bounding box of all outlines (the length scale of the tolerances)."""
         if not hasattr(self, "_scale"):
             pts = np.concatenate([self.points(n) for n in self.names]) if self.names else np.zeros((1, self.dim))
             self._scale = float(np.linalg.norm(np.ptp(pts, axis=0)))
@@ -476,17 +485,21 @@ class Edges:
 
     @property
     def regions(self):
+        """The regions of the model (name → domain groups) available to selectors."""
         return self.domains.regions
 
     @property
     def dim(self) -> int:
+        """Spatial dimension of the mesh."""
         return self.mesh.dim
 
     @property
     def scale(self) -> float:
+        """Diagonal of the bounding box of the mesh."""
         return float(np.linalg.norm(np.ptp(self.mesh.coords, axis=0)))
 
     def coords_of(self, rows) -> np.ndarray:
+        """Coordinates of node tags."""
         return self.mesh.coords_of(rows)
 
     def points(self) -> np.ndarray:
@@ -577,23 +590,29 @@ class Curves:
 
     @property
     def regions(self):
+        """The regions of the model (name → domain groups) available to selectors."""
         return self.domains.regions
 
     @property
     def scale(self) -> float:
+        """Length scale of the tolerances: the domains' scale, or the curves' bounding box."""
         return self.domains.scale if self.domain_names else \
             float(np.linalg.norm(np.ptp(np.concatenate(list(self.index.curves.values())), axis=0)))
 
     def points(self) -> np.ndarray:
+        """Sampled points of every curve (k, n, dim)."""
         return np.stack([self.index.curves[int(t)] for t in self.codes])
 
     def distance(self, p) -> np.ndarray:
+        """Distance of a point to every curve (k,)."""
         return np.array([_distance_to_segments(self.index.segments([int(t)]), p) for t in self.codes])
 
     def chains(self) -> np.ndarray:
+        """Chain index of each curve (each curve is its own chain)."""
         return np.arange(len(self.codes))
 
     def domain_mask(self, selector: Selector) -> np.ndarray:
+        """Mask over the domain groups (plus one entry for 'outside') of those the selector selects."""
         names = selector.domains(self.domains)
         return np.array([n in names for n in self.domain_names] + [False], bool)
 

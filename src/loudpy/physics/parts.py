@@ -20,6 +20,8 @@ from loudpy.errors import ModelError
 
 
 class Part:
+    """A physics part: one mesh group with a role (solid, air, pml, clamped, coil, fluid_structure,
+    radiation) and the data its contribution needs."""
     role: str = ""
 
     def __init__(self, group):
@@ -27,14 +29,17 @@ class Part:
 
     @property
     def name(self) -> str:
+        """Name of the mesh group."""
         return self.group.name
 
     @property
     def node_tags(self) -> np.ndarray:
+        """Node tags of the group."""
         return self.group.node_tags
 
     @property
     def node_coords(self) -> np.ndarray:
+        """Coordinates of the group's nodes."""
         return self.group.node_coords
 
     def __repr__(self):
@@ -42,14 +47,18 @@ class Part:
 
 
 class RegionPart(Part):
+    """A part on 2D cells (a domain)."""
     @property
     def tri(self) -> np.ndarray:
+        """Cells of the part (node tags)."""
         return self.group.tri
 
 
 class EdgePart(Part):
+    """A part on boundary edges."""
     @property
     def edges(self) -> np.ndarray:
+        """Edges of the part (node tags)."""
         return self.group.edges
 
 

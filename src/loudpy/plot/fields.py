@@ -44,6 +44,7 @@ def _outline_segments(mesh, rows_xy):
 
 
 def field_title(f) -> str:
+    """Title of a field plot: its coordinate value (frequency, time, mode number and damping ratio)."""
     q = quantity(f.coord)
     head = f"${q.symbol}$ = {f.coordinate:.4g} {q.unit}".strip()
     if "index" in f.meta and f.coord == "f" and "zeta" in f.extra:

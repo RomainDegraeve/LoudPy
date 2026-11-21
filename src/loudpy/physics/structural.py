@@ -47,7 +47,10 @@ def _mass_blocks(asm, ec, coef, components):
 
 
 class MecaAssembler(_Structural):
+    """Assembler of the axisymmetric structure (m = 0): K (complex with hysteretic damping), M and C of the
+    solid parts, clamped DOFs eliminated."""
     def assemble(self):
+        """Assemble K, M and C of the solid parts (sparse, all DOFs)."""
         Kv = np.zeros(self.V_size, dtype=np.complex128)
         Mv = np.zeros(self.V_size, dtype=np.float64)
         Cv = np.zeros(self.V_size, dtype=np.float64)
@@ -164,6 +167,7 @@ class MecaAssemblerFourier(ElementAssembler):
         self.T = None
 
     def assemble(self):
+        """Assemble K, M and C of azimuthal order m (3 DOFs per node)."""
         Kv = np.zeros(self.V_size, dtype=np.complex128)
         Mv = np.zeros(self.V_size, dtype=np.float64)
         Cv = np.zeros(self.V_size, dtype=np.float64)
@@ -237,6 +241,7 @@ class MecaAssemblerFourier(ElementAssembler):
         return out[0] if len(out) == 1 else out
 
     def expand(self, u_red):
+        """Full nodal DOFs from the reduced vector (axis conditions and clamps applied by T)."""
         if self.T is None:
             raise StateError("expand() called before apply_blocked_boundaries().")
         return self.T @ u_red

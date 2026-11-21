@@ -147,6 +147,8 @@ def mac_deduplicate(s_vals: np.ndarray, phi: np.ndarray,
     return s_vals[idx], phi[:, idx]
 
 def solve_gep(K, M, n_modes, f_target, hysteretic):
+    """Generalized eigenproblem K φ = ω² M φ: n_modes modes nearest f_target by shift-invert (complex K:
+    hysteretic damping, complex eigenvalues)."""
     omega_t = 2.0 * np.pi * f_target
      # Shift at the target eigenvalue λ = ω_t² on the positive real axis.
     # Real K    → eigenvalues λ_k = ω_k² (real, positive)
@@ -166,6 +168,8 @@ def solve_gep(K, M, n_modes, f_target, hysteretic):
     return s_vals, eigvecs
 
 def solve_qep(K, M, C, n_modes, f_target):
+    """Quadratic eigenproblem (K + sC + s²M) φ = 0 (viscous damping): n_modes eigenvalues s nearest
+    i·2πf_target, by shift-invert on the linearised problem."""
     n     = K.shape[0]
     sigma = 1j * 2.0 * np.pi * f_target
     log.debug(f"  QEP | σ = {sigma:.4e}")

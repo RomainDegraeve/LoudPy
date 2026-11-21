@@ -30,6 +30,8 @@ def _check_components(owner, value):
 
 @dataclass
 class Boundary(Combinable):
+    """Base of the boundary items (lp.Clamped, lp.Coil, lp.FluidStructure, lp.Radiation): a name and the
+    selector of its edges (on=…, default: the name as a label)."""
     name: str
     on: Selector | str | None = field(default=None, kw_only=True)      # default: Group(name)
 

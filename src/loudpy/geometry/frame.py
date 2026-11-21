@@ -45,21 +45,26 @@ class Frame:
 
     @property
     def axis(self):
+        """The local z axis (the driver axis) in global coordinates."""
         return self.rotation[:, 2]
 
     @property
     def is_identity(self):
+        """True when the rotation is the identity (local axes = global axes)."""
         return np.array_equal(self.rotation, np.eye(3))
 
     @property
     def axis_aligned(self):
+        """True when every local axis is along a global axis (rotation made of 0 and ±1)."""
         a = np.abs(self.rotation)
         return bool(np.all(np.isclose(a, 0.0, atol=1e-12) | np.isclose(a, 1.0, atol=1e-12)))
 
     def to_local(self, x):
+        """Global points (n, 3) → local coordinates (n, 3)."""
         return (np.asarray(x, float) - self.origin) @ self.rotation
 
     def to_global(self, xl):
+        """Local points (n, 3) → global coordinates (n, 3)."""
         return np.asarray(xl, float) @ self.rotation.T + self.origin
 
     def place(self, dim_tags):

@@ -26,6 +26,7 @@ from loudpy.results.data import mat_name, write_atomic
 
 
 def block_arrays(res, b, fields):
+    """Plain arrays of one block: the coordinate, and per field its values, node coordinates and cells."""
     out = {res.coordinate: np.asarray(b.values)}
     for name, arr in b.fields.items():
         if fields is not None and name not in fields:
@@ -75,6 +76,8 @@ def export_series(res, path, fields=None):
 
 
 def export_results(res, path, fields=None):
+    """Write results by extension: .mat, .npz, .csv (scalars per entry), .vtu (one file per field and
+    entry) or .pvd (ParaView series). Returns the path."""
     path = Path(path)
     suffix = path.suffix.lower()
     if suffix == ".pvd":

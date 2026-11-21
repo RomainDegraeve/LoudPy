@@ -113,12 +113,16 @@ class DriverResponse:
 
 
 class SceneResults(FrequencyResults):
+    """Frequency response of a 3D scene: driver (and wall) modal amplitudes, cavity modal pressures, the
+    exterior field and its DtN expansion (see the module docstring)."""
     @property
     def scene(self) -> dict:
+        """The scene description stored with the results (drivers, configuration, air, hemisphere)."""
         return self.attachments.get("scene", {}).get("meta", {})
 
     @property
     def drivers(self) -> list[str]:
+        """Names of the drivers."""
         return [d["name"] for d in self.scene.get("drivers", [])]
 
     def _stacked(self, name):
@@ -139,6 +143,7 @@ class SceneResults(FrequencyResults):
         return self._stacked("q")
 
     def driver(self, name: str) -> DriverResponse:
+        """The response of one driver (DriverResponse): its modes, frame, modal amplitudes and drive."""
         from loudpy.geometry.frame import Frame
         from loudpy.physics.modal import DriverModes
         d = next((d for d in self.scene["drivers"] if d["name"] == name), None)

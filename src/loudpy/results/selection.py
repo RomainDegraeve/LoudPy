@@ -23,13 +23,16 @@ class Selection:
     dim: str | None = None
 
     def points(self, d: int) -> np.ndarray:
+        """The evaluation points in d dimensions (n, d)."""
         raise NotImplementedError
 
     @property
     def coord(self) -> np.ndarray | None:
+        """Values of the coordinate along the selection (angles, distances, labels), or None for one point."""
         return None
 
     def describe(self) -> str:
+        """Short text of the selection (for titles and metadata)."""
         return repr(self)
 
 

@@ -199,6 +199,9 @@ class Driver:
     @classmethod
     def from_modes(cls, path, orders, f_max=None, *, geometry, rear: Profile, front: Profile | None = None,
                    coil: str = "interface_forced", name: str | None = None) -> "Driver":
+        """A driver from an eigen result file of its axisymmetric model: the modes of the azimuthal orders
+        `orders` (up to f_max), the coil nodes (boundary `coil`) and the wet profiles `rear` / `front` selected
+        on its 2D geometry (a path, a builder or its lp.Model)."""
         from loudpy.physics.modal import DriverModes
         from loudpy.results import load
         modes = DriverModes.from_eigen_h5(path, list(orders), f_max=f_max)
@@ -219,10 +222,12 @@ class Driver:
 
     @property
     def r_rear(self) -> float:
+        """Radius where the rear profile starts (the baffle) [m]."""
         return float(self.rear[0][0][0])
 
     @property
     def r_front(self) -> float:
+        """Radius where the front profile starts [m]."""
         return float(self.front[0][0][0]) if self.front else self.r_rear
 
     @property
@@ -232,6 +237,7 @@ class Driver:
 
     @property
     def z_front(self) -> float:
+        """Local z of the start of the front profile [m]."""
         return float(self.front[0][0][1]) if self.front else self.z_baffle
 
     def place(self, name: str, at=(0.0, 0.0), axis=None, ref=None) -> "PlacedDriver":
@@ -246,6 +252,7 @@ class Driver:
 
 @dataclass
 class PlacedDriver:
+    """A driver placed in a scene: its name, the Driver and its Frame (Driver.place)."""
     name: str
     driver: Driver
     frame: Frame

@@ -112,6 +112,7 @@ def _file_meta(f):
 
 
 def read(path):
+    """Read a result file of format 1 (before loudpy 0.1) into the current results classes."""
     with h5py.File(path, "r") as f:
         meta, boundaries = _file_meta(f), _boundaries(f)
         if "fields/freq" in f:

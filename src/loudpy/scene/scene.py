@@ -188,6 +188,7 @@ class Scene:
 
     @property
     def configuration(self) -> str:
+        """"cavity", "cavity+exterior", "exterior" or "merged", from the configured air."""
         if self._open is not None and self._open.kind == "merged":
             return "merged"
         if self._cavity is not None and self._open is not None:
@@ -336,6 +337,7 @@ class Scene:
         return dict(center=center.tolist(), radius=radius, up=up)
 
     def dtn(self):
+        """The half-space DtN on the scene's hemisphere (after meshing)."""
         from loudpy.physics.exterior import HalfSpaceDtN
         h = self.hemisphere
         return HalfSpaceDtN(h["center"], h["radius"], up=h["up"])

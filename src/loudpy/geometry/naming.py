@@ -55,15 +55,19 @@ def source_group(mesh_group: str) -> str:
 
 
 def tokens(name: str) -> list[str]:
+    """The "_"-separated tokens of a group name (its base name, without the size / layer suffixes)."""
     return [t for t in base_name(name).split("_") if t]
 
 
 def is_modifier(token: str) -> bool:
+    """True for a token that only modifies a name for matching (digits, directions, PML directions, sides,
+    "Corner")."""
     return (bool(_DIGITS.match(token)) or token in DIRECTIONS or token in PML_DIRECTIONS
             or token in SIDES or token == "Corner")
 
 
 def is_prefix(token: str) -> bool:
+    """True for a token that is a prefix ("sub…")."""
     return token.startswith("sub")
 
 

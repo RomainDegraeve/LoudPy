@@ -36,6 +36,7 @@ class P:
     offset: float = 0.0
 
     def value(self, params: Mapping) -> float:
+        """The value of the reference with these parameters: scale · params[name] + offset."""
         if params is None or self.name not in params:
             known = sorted(params) if params else []
             raise ModelError(f"unknown parameter {self.name!r}; parameters: {known}")
@@ -90,6 +91,7 @@ class Parameters(Mapping):
         return len(self._values)
 
     def with_(self, **changes) -> "Parameters":
+        """A copy with some values changed (only existing names)."""
         unknown = set(changes) - set(self._values)
         if unknown:
             raise ModelError(f"unknown parameters {sorted(unknown)}; parameters: {sorted(self._values)}")

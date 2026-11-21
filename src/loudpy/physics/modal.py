@@ -94,6 +94,7 @@ class CavityModes:
 
     # ── FE ─────────────────────────────────────────────────────────────────
     def assemble(self):
+        """Assemble the P2 stiffness and mass of the cavity (and its volume)."""
         self._K, self._M, self.volume = assemble_p2(self.nodes, self.tets)
         return self._K, self._M
 
@@ -122,6 +123,7 @@ class CavityModes:
 
     @property
     def freqs(self):
+        """Rigid-wall frequencies of the modes [Hz]."""
         return self.c * np.sqrt(np.maximum(self.kappa2, 0.0)) / (2 * np.pi)
 
     def static_inverse(self, B):
@@ -139,6 +141,7 @@ class CavityModes:
 
     # ── storage ────────────────────────────────────────────────────────────
     def save(self, path):
+        """Write the mesh and the modes to an HDF5 file."""
         import h5py
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         with h5py.File(path, "w") as f:
@@ -152,6 +155,7 @@ class CavityModes:
 
     @classmethod
     def load(cls, path):
+        """Read modes written by save()."""
         import h5py
         with h5py.File(path, "r") as f:
             obj = cls(f["nodes"][()], f["tets"][()], f["patch_tris"][()])
@@ -164,6 +168,7 @@ class CavityModes:
         return obj
 
     def nearest_node(self, x):
+        """Row of the node nearest a point."""
         return int(np.argmin(np.linalg.norm(self.nodes - np.asarray(x, float), axis=1)))
 
 
@@ -269,6 +274,7 @@ class MultiDriver:
 
     @property
     def n_drivers(self):
+        """Number of drivers."""
         return len(self.frames)
 
     def slice(self, j):

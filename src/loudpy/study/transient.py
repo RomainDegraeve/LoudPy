@@ -43,6 +43,8 @@ class Transient(Study):
                              f"lp.Rayleigh.from_loss_factor(eta) for a transient study")
 
     def solve(self, n_steps: int | None = None, duration: float | None = None) -> TimeResults:
+        """Integrate in time (generalized-α, Newton for the geometric nonlinearity) for n_steps steps or a
+        duration [s]; returns TimeResults."""
         from loudpy.fem.assembly import cell_tabulation
         from loudpy.fem.kernels import boundary_load_kernel
         from loudpy.physics.structural import MecaAssemblerNL

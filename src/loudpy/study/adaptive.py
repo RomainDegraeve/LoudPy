@@ -227,6 +227,7 @@ class Adaptive:
 
     @property
     def converged(self) -> bool:
+        """True when the last estimate is at or below the target."""
         return bool(self.history) and self.history[-1]["estimate"] <= self.target
 
     def __repr__(self):

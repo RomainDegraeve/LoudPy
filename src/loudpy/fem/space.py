@@ -72,14 +72,17 @@ class Space:
 
     @property
     def n_nodes(self) -> int:
+        """Number of nodes of the space."""
         return len(self.tags)
 
     @property
     def n_dofs(self) -> int:
+        """Number of degrees of freedom (nodes × components)."""
         return self.n_nodes * self.components
 
     @property
     def n_cells(self) -> int:
+        """Number of cells over all cell sets."""
         return sum(len(c) for c in self.cell_nodes)
 
     def dofs_of(self, tags, component: int | None = None) -> np.ndarray:

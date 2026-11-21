@@ -34,6 +34,8 @@ def cell_tabulation(dim: int, n_nodes: int):
 
 
 class ElementAssembler(SparseAssemblerBase):
+    """Base of the 2D element assemblers: the cells of the parts, their coordinates and tabulated
+    basis, the CSR pattern built once (SparseAssemblerBase) and the scatter of element blocks."""
     PTS_PER_TRI = 6
     dofs_per_node = 1
 

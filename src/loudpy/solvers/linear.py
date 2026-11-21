@@ -70,6 +70,7 @@ class SweepSolver:
         self.reset()
 
     def reset(self):
+        """Forget the factorisation and the statistics."""
         self.lu, self.shape, self.x_prev = None, None, None
         self.n_factor, self.n_gmres, self.iters = 0, 0, 0
         self.fast_order, self.t_factor, self.t_reuse, self.n_try = None, None, 0.0, 0
@@ -91,6 +92,8 @@ class SweepSolver:
         return lu
 
     def solve(self, A, b):
+        """Solve A x = b, reusing the last LU as a GMRES preconditioner while it converges quickly, refactorising
+        otherwise."""
         A = sp.csc_matrix(A)
         if self.shape != A.shape:
             self.reset()

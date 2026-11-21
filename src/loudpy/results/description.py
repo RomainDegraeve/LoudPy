@@ -183,6 +183,7 @@ class ModelDescription:
         return self.data[key]
 
     def get(self, key, default=None):
+        """An entry of the description (dict.get)."""
         return self.data.get(key, default)
 
     def __contains__(self, key):
@@ -190,10 +191,12 @@ class ModelDescription:
 
     @property
     def tree(self) -> str:
+        """The model tree as printed when the results were computed."""
         return self.data.get("tree", "")
 
     @property
     def parameters(self) -> dict:
+        """The parameter values of the model."""
         return dict(self.data.get("parameters", {}))
 
     @property

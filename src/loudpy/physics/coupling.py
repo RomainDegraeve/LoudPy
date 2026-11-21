@@ -23,6 +23,8 @@ from loudpy.errors import StateError
 
 
 class FsiAssembler(SparseAssemblerBase):
+    """Assembler of the fluid–structure coupling Cam = ∫ N_u n N_p 2πr ds on the coupling edges, with the
+    normal of the adjacent air on every edge."""
     PTS_PER_EDGE = 3
     PTS_PER_TRI = 6
 
@@ -79,6 +81,7 @@ class FsiAssembler(SparseAssemblerBase):
         self._finalize_pattern(I, J, V_size, (n_dof_acou, n_dof_meca))
 
     def assemble(self):
+        """The coupling matrix (structure DOFs × air nodes)."""
         n_e, n_p = self.ec.shape[0], self.n_pts
         N, dN, w = cell_tabulation(1, n_p)
         out = np.empty((n_e, 2, n_p * n_p), dtype=np.float64)

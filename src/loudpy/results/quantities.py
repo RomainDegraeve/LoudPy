@@ -17,6 +17,7 @@ from dataclasses import dataclass, replace
 
 @dataclass(frozen=True)
 class Quantity:
+    """A physical quantity: name, label, symbol, unit, kind (colormap family) and whether it is complex."""
     name: str
     label: str
     symbol: str = ""
@@ -25,6 +26,7 @@ class Quantity:
     complex: bool = False               # values are complex amplitudes (harmonic)
 
     def axis_label(self) -> str:
+        """Axis label "Label $symbol$ [unit]"."""
         sym = f" ${self.symbol}$" if self.symbol else ""
         unit = f" [{self.unit}]" if self.unit else ""
         return f"{self.label}{sym}{unit}"

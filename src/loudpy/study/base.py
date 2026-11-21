@@ -14,6 +14,8 @@ from loudpy.errors import ModelError, StateError
 
 
 class Study:
+    """Base of the studies: the model (lp.Model, or lp.Scene for the studies that accept one), the results
+    and the settings recorded with them."""
     accepts_scene = False
 
     def __init__(self, model: Model):

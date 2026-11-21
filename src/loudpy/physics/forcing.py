@@ -15,6 +15,7 @@ from loudpy.physics.registry import select
 
 
 class ForceAssembler:
+    """Assembler of the coil force: a unit axial force shared over the coil edges (∫ N 2πr ds, normalised)."""
     PTS_PER_EDGE = 3
 
     def __init__(self, forced_boundaries, meca, dofs_per_node=2):
@@ -44,6 +45,7 @@ class ForceAssembler:
         self.IDX = np.concatenate(idx_list, axis=0)
 
     def assemble(self):
+        """The force vector on the structure DOFs."""
         n_pts = self.ec.shape[1]
         N, dN, w = cell_tabulation(1, n_pts)
         Fe = np.empty((self.ec.shape[0], n_pts), dtype=np.float64)

@@ -32,6 +32,7 @@ class Force:
 
     @property
     def is_signal(self) -> bool:
+        """True when the amplitude is a time signal (an array), for lp.Transient."""
         return np.ndim(self.amplitude) > 0
 
 

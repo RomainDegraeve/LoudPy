@@ -1,3 +1,7 @@
+"""
+loudpy.fem.indexing — Numba helpers filling the (row, column) index arrays of element blocks for the
+sparse assembly (square blocks, rectangular coupling blocks, DOF tables).
+"""
 from numba import njit, prange
 
 @njit(parallel=True, cache=True)

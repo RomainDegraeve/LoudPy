@@ -18,6 +18,7 @@ from loudpy.errors import MeshError
 
 
 def edge_key(a, b) -> tuple[int, int]:
+    """The edge (a, b) as a sorted tuple of node tags (the same key for both directions)."""
     a, b = int(a), int(b)
     return (a, b) if a < b else (b, a)
 

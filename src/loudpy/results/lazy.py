@@ -11,6 +11,7 @@ import numpy as np
 
 
 class LazyArray:
+    """A dataset of an HDF5 result file read on demand (rows, node subsets), shaped like a NumPy array."""
     def __init__(self, path, name):
         self.path, self.name = str(path), name
         with h5py.File(self.path, "r") as f:
@@ -19,10 +20,12 @@ class LazyArray:
 
     @property
     def ndim(self):
+        """Number of dimensions."""
         return len(self.shape)
 
     @property
     def size(self):
+        """Number of elements."""
         return int(np.prod(self.shape))
 
     def __len__(self):

@@ -30,6 +30,8 @@ _CORNERS = {3: 3, 6: 3, 10: 3, 4: 4, 9: 4}
 
 @dataclass(frozen=True)
 class MeshGroup:
+    """A named group of cells of one type: name, dimension, cell type ("tri6", "line3", "tet10"…) and
+    the cells as node tags (n_cells, nodes per cell)."""
     name: str
     dim: int
     cell_type: str
@@ -37,6 +39,7 @@ class MeshGroup:
 
     @property
     def node_tags(self) -> np.ndarray:
+        """Sorted node tags used by the cells of the group."""
         return np.unique(self.cells)
 
     def __len__(self):
@@ -45,6 +48,8 @@ class MeshGroup:
 
 @dataclass
 class Mesh:
+    """A mesh: node tags, coordinates (n, dim) and named cell groups (MeshGroup); `path` is the file it
+    was read from or written to."""
     node_tags: np.ndarray              # (n,)
     coords: np.ndarray                 # (n, dim)
     groups: dict[str, MeshGroup] = field(default_factory=dict)
@@ -52,13 +57,16 @@ class Mesh:
 
     @property
     def dim(self) -> int:
+        """Spatial dimension of the coordinates (2: r–z section, 3: 3D)."""
         return self.coords.shape[1]
 
     @property
     def n_nodes(self) -> int:
+        """Number of nodes."""
         return len(self.node_tags)
 
     def names(self, dim: int | None = None) -> list[str]:
+        """Names of the groups (of one dimension when dim is given)."""
         return [n for n, g in self.groups.items() if dim is None or g.dim == dim]
 
     def rows_of(self, tags) -> np.ndarray:
