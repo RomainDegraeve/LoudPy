@@ -8,7 +8,7 @@ DtN study (../FSI_DtN).
 
 What this produces
 ------------------
-    Results/Files/modes.h5   — frequencies, damping ratios, mode shapes (loudpy result format 2)
+    Results/Files/modes.h5   — frequencies, damping ratios, mode shapes (loudpy result format 3)
 
 Then run Loading_script.py.
 """

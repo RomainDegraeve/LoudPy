@@ -61,7 +61,7 @@ def test_sweep_equals_separate_runs(tmp_path):
     f = sweep.stack(lambda r: r.frequencies[:2])
     np.testing.assert_allclose(f[0] / f[1], np.sqrt(1.9 / 2.1), rtol=1e-9)          # f ∝ √E
     assert model.parameters["E"] == 2.1e11 and model["plate"].E == lp.P("E")
-    assert (tmp_path / "plate_E_1.9e+11.msh").exists()
+    assert not (tmp_path / "plate_E_1.9e+11.msh").exists()                       # E changes no mesh input: model mesh
 
 
 def test_geometric_sweep_with_a_builder(tmp_path):

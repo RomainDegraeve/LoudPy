@@ -118,7 +118,7 @@ The scene layer is built on :mod:`loudpy.physics.modal` (``DriverModes``, ``Mult
 ``CavityModes``, ``DriverCavityCoupling``) and :mod:`loudpy.physics.exterior` (``HalfSpaceDtN``,
 ``ExteriorFE``, ``coupled_sweep``, ``port_block``), with the meshing helpers of
 :mod:`loudpy.geometry.meshing3d`. Models outside the three configurations — e.g. the hybrid vented
-box of ``Driver_in_cavity`` (modal inside + 1D port + exterior FE) — use them directly.
+box in ``LoudPy_exemples/legacy/vented_hybrid`` (modal inside + 1D port + exterior FE) — use them directly.
 
 The model pattern in 3D
 -----------------------

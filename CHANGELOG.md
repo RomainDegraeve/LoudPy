@@ -13,6 +13,10 @@ versions follow [Semantic Versioning](https://semver.org/) (0.x: the API may sti
 - Multi-parameter sweeps: `lp.Sweep(study, {name: values, …}, combine="grid" | "zip")` (all combinations or pairs,
   as COMSOL's Parametric Sweep); geometry parameters from `DefineConstant[…]` of a `.geo` file (besides builders);
   `SweepResults.evaluate(fn)` → `lp.Data` over the parameters, `.table()`, `.at(**values)`, `.names`, `.runs`.
+- `Model.mesh_reusable(path)`; a sweep run that changes no mesh input (a material value…) uses the model's mesh.
+- Examples: `Sweep_study` (geometry sweep of a parametric plate `.geo`, material sweep of the driver), a README of the
+  examples folder; former scripts (solver benchmarks, mesh generator, hybrid vented model, STEP preparation) moved to
+  `LoudPy_exemples/legacy/`.
 - Exports: netCDF for labelled data (`data.export("x.nc")`, no extra package), `lp.load_data` (`.nc`, `.npz`);
   VTKHDF time series of fields (`res.export("x.vtkhdf")`, one HDF5 file for ParaView / VTK / pyvista).
 

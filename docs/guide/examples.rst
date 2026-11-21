@@ -25,6 +25,9 @@ The plotting scripts are short: they only use the result objects (``res.spl(at=â
 ``Frequency_study/FSI_elec``     the same, driven by a voltage (Re, Bl, semi-inductance): electrical
                                  impedance, coil current
 ``Time_study/Multitone``         nonlinear transient response to a multitone signal, spectra
+``Sweep_study``                  parametric sweeps: a geometry sweep (plate radius Ã— thickness from a
+                                 ``.geo`` with ``DefineConstant``, against Kirchhoff) and a material sweep
+                                 (surround Ã— spider stiffness of the driver: excursion, fs), netCDF exports
 ================================ ===================================================================
 
 3D (drivers in enclosures)
@@ -33,7 +36,7 @@ The plotting scripts are short: they only use the result objects (``res.spl(at=â
 ========================================== ===============================================================
 ``Coupling_3D/Driver_in_cavity``            HPNEW in a non-axisymmetric box: cavity modes (A), on a rigid
                                             ground with exterior radiation (B), vented box as one air
-                                            domain (C) and as a hybrid model (toolkit); the sealed box
+                                            domain (C); the sealed box
                                             with elastic MDF walls (``Running_walls.py``, shells);
                                             validations of the cavity FE and of the half-space DtN
 ``Coupling_3D/Labyrinth``                   folded transmission line ("labyrinth") on a rigid ground (C)
@@ -51,4 +54,5 @@ Their geometry lives in one module per example (``enclosure.py``, ``labyrinth.py
 ``column.py``): the dimensions, the cabinet builders and ``driver()``. The meshes are built on the
 first run and reused afterwards.
 
-Meshes of the 2D examples can be (re)built in one go: ``python3 LoudPy_exemples/generate_meshes.py``.
+``LoudPy_exemples/README.md`` lists the run times; ``LoudPy_exemples/legacy/`` keeps former scripts (solver
+benchmarks, the low-level hybrid model of the vented box).

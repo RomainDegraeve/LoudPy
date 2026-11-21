@@ -88,6 +88,7 @@ scripts (write `Results/Figures/`).
 | `Frequency_study/FSI` | Coupled structural–acoustic sweep, air remeshed per wavelength |
 | `Frequency_study/FSI_elec` | The same, voltage-driven (impedance, coil current) |
 | `Time_study/Multitone` | Nonlinear time-domain simulation, multi-tone |
+| `Sweep_study` | Parametric sweeps: geometry (plate radius × thickness) and materials (suspension stiffness) |
 | `Coupling_3D/Driver_in_cavity` | Driver in a 3D enclosure: cavity modes, radiation on a rigid ground, vented box, elastic MDF walls |
 | `Coupling_3D/Labyrinth` | Folded transmission line on a rigid ground |
 | `Coupling_3D/Column_labyrinth` | Three drivers in a column with a folded line (multi-driver) |

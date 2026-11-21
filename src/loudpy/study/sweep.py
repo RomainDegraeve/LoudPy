@@ -16,9 +16,9 @@ Parametric Sweep: the parameters are those of the model, lp.Parameters; geometry
     sweep.at(E=2.1e11, h=2e-3)            # one run's results
     sweep.save("sweep.h5")                # one file; lp.load gives the SweepResults back
 
-Each run uses model.with_parameters(**run): the user's model is not changed. Every variant is meshed next to the
-model's mesh (<mesh stem>_<name>_<value>….msh, reused while unchanged); a run that changes no mesh input gives
-the same mesh as the model. A scene (3D) is meshed in <scene folder>/<name>_<value>…/.
+Each run uses model.with_parameters(**run): the user's model is not changed. A run that changes no mesh input (a
+material value, a damping coefficient …) uses the model's own mesh; the others are meshed next to it
+(<mesh stem>_<name>_<value>….msh, reused while unchanged). A scene (3D) is meshed in <scene folder>/<name>_<value>…/.
 Geometry parameters: arguments of a builder builder(occ, p), and DefineConstant[…] entries of a .geo.
 """
 from __future__ import annotations
@@ -105,7 +105,12 @@ class Sweep:
         for k, run in enumerate(self.runs):
             log.info(f"sweep run {k + 1}/{len(self.runs)}: {run}")
             variant = self.study.model.with_parameters(**run)
-            variant.mesh(self._mesh_path(run))
+            base = getattr(self.study.model, "_mesh_path", None)
+            if (not getattr(self.study, "is_scene", False) and self.mesh_folder is None and base is not None
+                    and variant.mesh_reusable(base)):
+                variant.mesh(base)                     # the run changes no mesh input: the model's own mesh
+            else:
+                variant.mesh(self._mesh_path(run))
             study = copy.copy(self.study)
             study.model, study.results = variant, None
             results.append(study.solve(*args, **kwargs))

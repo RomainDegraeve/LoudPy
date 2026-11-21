@@ -135,9 +135,10 @@ values of every run in ``.meta["runs"]``.
     model = lp.Model("plate.geo", parameters=lp.Parameters(a=0.1))
     lp.Sweep(lp.Modes(model), "a", [0.08, 0.1, 0.12])
 
-Each run is the study on ``model.with_parameters(…)``, a copy: the model itself is not changed, and each
-variant is meshed next to the model's mesh (``disc_t_0.0015.msh``, ``plate_E_2.1e+11_a_0.08.msh`` …, reused while
-unchanged; the parameter values are part of the mesh signature). A sweep gives exactly the results of the separate
+Each run is the study on ``model.with_parameters(…)``, a copy: the model itself is not changed. A run that changes
+no mesh input (a material value, a damping coefficient …) uses the model's own mesh; the others are meshed next to
+it (``disc_t_0.0015.msh``, ``plate_E_2.1e+11_a_0.08.msh`` …, reused while unchanged; the parameter values are part of
+the mesh signature). A sweep gives exactly the results of the separate
 runs. Runs are computed one after the other.
 
 Adaptive meshing

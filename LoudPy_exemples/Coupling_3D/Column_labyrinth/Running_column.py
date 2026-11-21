@@ -18,7 +18,7 @@ Quick check of a few frequencies (separate column_test.h5):  python3 Running_col
 What this produces (Results/Files/)
 ------------------------------------
   - column.h5        : modal amplitudes, DtN coefficients and the pressure at every node, per
-                       frequency (loudpy result format 2; the field is written as the sweep goes)
+                       frequency (loudpy result format 3; the field is written as the sweep goes)
   - air_<f>Hz.msh    : the air mesh of each band
 Then run Loading_column.py and Plot_3D_column.py.
 """

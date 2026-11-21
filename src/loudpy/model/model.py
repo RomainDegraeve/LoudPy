@@ -299,6 +299,30 @@ class Model:
         with Model._Resolved(self):
             return self._mesh(path, reuse=reuse, deterministic=deterministic, show=show, size_field=size_field)
 
+    def _mesh_manager(self, deterministic: bool = True, size_field=None):
+        """The mesher of the model as it is (selection checked): (MeshManager, selection, kept boundary groups)."""
+        from loudpy.geometry.meshing2d import MeshManager, PMLBase
+        selection = self.selection()                            # checks the names first
+        kept = sorted({g for b in self.boundaries for g in selection[b.name]})
+        sizing = self._sizing()
+        plan, entries, self._plan_names = self._plan(selection, {sz.name: sz for sz in sizing})
+        sizing += [d.sizing for d in plan if not any(d.sizing is z for z in sizing)]   # lp.MeshSize overrides
+        pml = [PMLBase(sz, *self._pml_bases[sz.name]) for sz in sizing if sz.kind == "pml"]
+        mm = MeshManager(self.source, sizing, plan, mesh_order=self.mesh_order, grading=self.grading,
+                         interfaces=kept, deterministic=deterministic,
+                         groups={"domains": entries, "boundaries": kept}, pml=pml,
+                         size_field=None if size_field is None else str(size_field))
+        return mm, selection, kept
+
+    def mesh_reusable(self, path, deterministic: bool = True, size_field=None) -> bool:
+        """True when the saved mesh `path` was built from this model's geometry and mesh settings (model.mesh(path)
+        would load it instead of meshing), e.g. a parameter that changes no mesh input."""
+        if not Path(path).exists():
+            return False
+        with Model._Resolved(self):
+            mm, _, _ = self._mesh_manager(deterministic, size_field)
+            return bool(mm.can_reuse(str(path))[0])
+
     def _mesh(self, path=None, *, reuse: bool = True, deterministic: bool = True,
               show: bool = False, size_field=None) -> Mesh:
         """
@@ -311,20 +335,10 @@ class Model:
                         False: all threads (faster, the mesh may change from run to run)
         show          : open the gmsh window after meshing
         """
-        from loudpy.geometry.meshing2d import MeshManager, PMLBase
-        selection = self.selection()                            # checks the names first
         if path is None and self.source.path is None:
             raise ModelError("the geometry is a builder function: give the mesh file, model.mesh(path)")
         path = Path(path) if path is not None else self.source.path.with_suffix(".msh")
-        kept = sorted({g for b in self.boundaries for g in selection[b.name]})
-        sizing = self._sizing()
-        plan, entries, self._plan_names = self._plan(selection, {sz.name: sz for sz in sizing})
-        sizing += [d.sizing for d in plan if not any(d.sizing is z for z in sizing)]   # lp.MeshSize overrides
-        pml = [PMLBase(sz, *self._pml_bases[sz.name]) for sz in sizing if sz.kind == "pml"]
-        mm = MeshManager(self.source, sizing, plan, mesh_order=self.mesh_order, grading=self.grading,
-                         interfaces=kept, deterministic=deterministic,
-                         groups={"domains": entries, "boundaries": kept}, pml=pml,
-                         size_field=None if size_field is None else str(size_field))
+        mm, selection, kept = self._mesh_manager(deterministic, size_field)
         ok, why = mm.can_reuse(str(path)) if reuse else (False, "")
         if ok:
             log.info("mesh reused: %s", path)

@@ -10,7 +10,7 @@ thickness, element size and tuning follow the wavelength at the first frequency 
 
 What this produces
 ------------------
-    Results/Files/sweep.h5         — all frequencies, one block per mesh (loudpy result format 2)
+    Results/Files/sweep.h5         — all frequencies, one block per mesh (loudpy result format 3)
     Results/Files/mesh_<f>Hz.msh   — the mesh of each band (reused on reruns)
 
 Then run Loading_script.py.

@@ -25,7 +25,7 @@ GOAL receivers. Two families of modes come out:
 
 What this produces
 ------------------
-    Results/Files/modes.h5               — frequencies, ζ, s, u and p mode shapes (format 2)
+    Results/Files/modes.h5               — frequencies, ζ, s, u and p mode shapes (loudpy result format 3)
     Results/Files/fsi_dtn_checkpoint.h5  — the modes found so far, every CHECKPOINT_EVERY shifts
                                            (usable with lp.load if the run is stopped)
 Then run Loading_script.py.

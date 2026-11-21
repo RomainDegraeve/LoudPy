@@ -58,11 +58,10 @@ Check: at 50 Hz the far field is omnidirectional, and p·r is within 1.4 % of a 
 `Running_walls.py`: the sealed box of `Running_script.py` with MDF walls 12 mm thick (MITC3 shells on the walls of the cavity mesh, panel edges and the driver cut-out rim clamped, lp.Rayleigh damping of the MDF fit), coupled to the cavity air through their in-vacuo modes; the driver front and the outside of the walls are in vacuo. Writes `walls_modes.csv` (wall modes), `coupled_walls.h5` and `walls_response.png` (coil excursion with rigid / elastic walls; walls' volume velocity relative to the driver's rear volume velocity). `python3 Running_walls.py --smoke` runs 4 frequencies (about 7 min, mostly the cavity modes and the static correction).
 
 ## Vented box (bass reflex) on a rigid ground
-Walls 15 mm thick, a port of radius 20 mm and length 62 mm through the front face (its tube protrudes into the box). Two models:
+Walls 15 mm thick, a port of radius 20 mm and length 62 mm through the front face (its tube protrudes into the box).
 
 | command | model |
 |---|---|
-| `python3 Running_vented.py merged` | reference: `enclosure.vented_scene()`, ONE air domain (inside + port + outside, FE + half-space DtN), the driver wetted on both faces; the walls around the port are refined (`lp.Cabinet(opening_size=…)`). Writes `vented_merged.h5`. |
-| `python3 Running_vented.py hybrid` | fast, low-level toolkit: modal inside + 1D port (plane waves) + exterior FE/DtN. Needs `Build_vented.py` (hybrid meshes) and `Running_script.py` (drive). Writes `vented_hybrid.npz`. |
+| `Running_vented.py` | `enclosure.vented_scene()`: ONE air domain (inside + port + outside, FE + half-space DtN), the driver wetted on both faces; the walls around the port are refined (`lp.Cabinet(opening_size=…)`). Writes `vented_merged.h5` (about 40 min; `python3 Running_vented.py 50,500` for a quick test). |
 | `Loading_vented.py` | `vented_response.pdf`: vented vs sealed SPL at 1 m, excursion (port tuning), directivity maps and polars. |
 | `Plot_3D_vented.py` | `vented_views_3d.pdf`: the box cut through the driver and port axes, SPL inside and outside, deformed driver. |

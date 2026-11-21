@@ -7,7 +7,7 @@ load on the cone is negligible, or handled separately.
 
 What this produces
 ------------------
-    Results/Files/sweep.h5   — one entry per frequency (loudpy result format 2)
+    Results/Files/sweep.h5   — one entry per frequency (loudpy result format 3)
 
 Then run Loading_script.py.
 """

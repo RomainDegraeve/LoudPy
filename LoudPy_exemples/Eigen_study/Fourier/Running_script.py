@@ -20,7 +20,7 @@ condition ("_r_" on r = 0) is replaced automatically by the exact one of each m.
 
 What this produces
 ------------------
-    Results/Files/eigen_fourier.h5   — one mode set per order m (loudpy result format 2)
+    Results/Files/eigen_fourier.h5   — one mode set per order m (loudpy result format 3)
 
 Then run Loading_script.py and Plot_3D_modes.py.
 """

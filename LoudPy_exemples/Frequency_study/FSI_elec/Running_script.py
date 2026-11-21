@@ -8,7 +8,7 @@ the wavelength at the first frequency of each band.
 
 What this produces
 ------------------
-    Results/Files/sweep.h5         — all frequencies, one block per mesh (loudpy result format 2),
+    Results/Files/sweep.h5         — all frequencies, one block per mesh (loudpy result format 3),
                                      with the coil current I_coil per frequency
     Results/Files/mesh_<f>Hz.msh   — the mesh of each band (reused on reruns)
 

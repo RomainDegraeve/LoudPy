@@ -17,7 +17,7 @@ set F_MAX = 3000 on a larger machine), frequency steps below.
 What this produces (Results/Files/)
 ------------------------------------
   - labyrinth.h5            : driver modal amplitudes, DtN coefficients and the pressure at every
-                              node, per frequency (loudpy result format 2, streamed during the sweep)
+                              node, per frequency (loudpy result format 3, streamed during the sweep)
   - air_<f>Hz.msh           : the air mesh of each band
   - labyrinth_cabinet.step  : the cabinet (walls, panels, driver hole, mouth) for CAD
 Then run Loading_labyrinth.py and Plot_3D_labyrinth.py.
