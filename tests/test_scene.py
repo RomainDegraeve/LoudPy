@@ -212,6 +212,24 @@ def test_cavity_without_an_acoustic_mode_is_refused(driver, tmp_path):
         lp.FrequencyResponse(scene, drive=lp.Force(1.0)).solve([100.0])
 
 
+@pytest.mark.slow
+def test_scene_to_script_round_trip(driver, tmp_path):
+    """Driver.from_modes remembers its profiles; a scene with an lp.cabinets.Box is written as a script that builds
+    the same scene (cabinet, drivers and their modes, air, parameters)."""
+    import runpy
+    assert driver.source["rear"] is REAR and driver.source["front"] is FRONT
+    scene = lp.Scene(lp.cabinets.Box(W, H, D), [driver.place("main", at=(W / 2, H / 2))],
+                     parameters=lp.Parameters(k=1.0))
+    scene.cavity(f_max=1500.0, eta=0.02, mesh_size=(0.012, 0.03), cache_modes=False)
+    (tmp_path / "box.py").write_text(scene.to_script(tmp_path, title="box"))
+    again = runpy.run_path(str(tmp_path / "box.py"))["scene"]
+    assert again.cabinet == scene.cabinet and dict(again.parameters) == {"k": 1.0}
+    assert [tuple(d.frame.origin) for d in again.drivers] == [tuple(d.frame.origin) for d in scene.drivers]
+    assert len(again.drivers[0].driver.modes) == len(driver.modes) and again._cavity_spec == scene._cavity_spec
+    with pytest.raises(lp.errors.ModelError, match="builder"):
+        lp.Scene(box_cabinet, [driver.place("main", at=(W / 2, H / 2))]).to_script()
+
+
 def deep_box(occ, p):
     """The test box with a parameterised depth p["D"] (cabinet builder taking the parameters)."""
     inner = occ.addBox(0.0, 0.0, api.Z_B - p["D"], W, H, p["D"])

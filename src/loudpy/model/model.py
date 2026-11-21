@@ -314,6 +314,60 @@ class Model:
                          size_field=None if size_field is None else str(size_field))
         return mm, selection, kept
 
+    def geometry_size(self) -> float:
+        """The diagonal of the geometry's bounding box [m] (from gmsh, no mesh)."""
+        from loudpy.geometry.gmsh_session import gmsh_session
+        with gmsh_session() as gmsh:
+            self.source.load(gmsh)
+            x0, y0, z0, x1, y1, z1 = gmsh.model.getBoundingBox(-1, -1)
+        return float(np.linalg.norm([x1 - x0, y1 - y0, z1 - z0]))
+
+    def preview_mesh(self, path=None, elements: int = 60) -> Mesh:
+        """
+        A display mesh of the geometry alone (no region needed): every domain group meshed, elements of about
+        1/`elements` of the geometry's diagonal (thin parts keep a few elements across), on a copy of the model
+        with placeholder solids — the model itself is not changed. path: default <geometry>_preview.msh.
+            mesh = lp.Model("part.step").preview_mesh();  mesh.names(2)      # the domain groups
+        """
+        domains = self.groups("domain")
+        if not domains:
+            raise ModelError("the geometry has no surface (domain) group to mesh")
+        material = next((n for n, m in self.materials.items() if m.kind == "solid" and m.E), None)
+        if material is None:
+            raise ModelError("the material library has no solid material for the placeholder regions")
+        if path is None:
+            if self.source.path is None:
+                raise ModelError("the geometry is a builder function: give the mesh file, model.preview_mesh(path)")
+            path = self.source.path.with_name(self.source.path.stem + "_preview.msh")
+        h = self.geometry_size() / int(elements)
+        twin = self.copy()
+        twin.regions, twin.boundaries, twin.mesh_controls = [], [], []
+        twin.add(*[Solid(g, material, mesh_size=h) for g in domains])
+        return twin.mesh(path)
+
+    def to_script(self, folder=None, title: str | None = None) -> str:
+        """The model as Python code that builds it again (loudpy.model.script); folder: where the script will be
+        (paths written relative to it), title: its first docstring line."""
+        from loudpy.model.script import model_script
+        return model_script(self, folder, title)
+
+    def uses(self, name: str) -> list[str]:
+        """What refers to parameter `name`: the items (lp.P(name) in their fields, found by resolving them without
+        it) and "geometry" when it sets a DefineConstant of the .geo."""
+        from loudpy.model.parameters import has_references
+        rest = Parameters(**{k: float(v) for k, v in self.parameters.items() if k != name})
+        out = []
+        for it in list(self.regions) + list(self.boundaries) + list(self.mesh_controls):
+            if not has_references(it):
+                continue
+            try:
+                resolve(it, rest)
+            except ModelError:
+                out.append(it.name or repr(it))
+        if name in self.source.geo_constants:
+            out.append("geometry")
+        return out
+
     def mesh_reusable(self, path, deterministic: bool = True, size_field=None) -> bool:
         """True when the saved mesh `path` was built from this model's geometry and mesh settings (model.mesh(path)
         would load it instead of meshing), e.g. a parameter that changes no mesh input."""
@@ -337,6 +391,9 @@ class Model:
         """
         if path is None and self.source.path is None:
             raise ModelError("the geometry is a builder function: give the mesh file, model.mesh(path)")
+        if not self.regions:
+            raise ModelError("the model has no region to mesh: add regions (lp.Solid, lp.Air, lp.PML …); to look at "
+                             "the geometry alone, model.preview_mesh()")
         path = Path(path) if path is not None else self.source.path.with_suffix(".msh")
         mm, selection, kept = self._mesh_manager(deterministic, size_field)
         ok, why = mm.can_reuse(str(path)) if reuse else (False, "")

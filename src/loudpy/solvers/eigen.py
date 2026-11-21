@@ -286,7 +286,9 @@ def multishift(K, M, C, f_targets, n_modes_per_shift,
           f"{[f'{f:.0f}' for f in f_targets]} Hz")
 
     s_all, phi_all = [], []
-    for ft in f_targets:
+    from loudpy import progress
+    for k_t, ft in enumerate(f_targets):
+        progress.step("modes: shift", k_t + 1, len(f_targets))
         try:
             if C is not None:
                 s_v, phi_v = solve_qep(K, M, C, n_modes_per_shift, ft)
@@ -406,6 +408,8 @@ def covering(K, M, C, f_min, f_max, n_modes_per_shift,
             continue
         r = np.max(np.abs(s_v - sigma))
         shifts.append((sigma, r))
+        from loudpy import progress
+        progress.step("modes: shift", len(shifts), 0)
         if near_piles:
             # covered: g(z) = Π|z − p_i| / |z − σ|^m above tau (margin: overlap)
             m = len(near_piles)

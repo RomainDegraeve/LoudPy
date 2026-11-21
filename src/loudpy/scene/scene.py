@@ -493,6 +493,12 @@ class Scene:
         g.clear()
 
     # ── the model pattern (as lp.Model) ────────────────────────────────────
+    def to_script(self, folder=None, title: str | None = None) -> str:
+        """The scene as Python code that builds it again (loudpy.model.script): an lp.cabinets.Box / Step cabinet and
+        drivers made by lp.Driver.from_modes; folder: where the script will be (paths relative to it)."""
+        from loudpy.model.script import scene_script
+        return scene_script(self, folder, title)
+
     def copy(self) -> "Scene":
         """A new, unmeshed scene with the same cabinet, drivers, air, parameters and settings."""
         import copy as _copy

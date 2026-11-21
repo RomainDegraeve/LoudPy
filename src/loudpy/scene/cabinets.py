@@ -139,12 +139,35 @@ class Box:
 
     # the front planes come from the drivers
     def for_drivers(self, drivers) -> "Box":
-        """The box with its front planes taken from the placed drivers (called by lp.Scene)."""
+        """The box with its front planes taken from the placed drivers (called by lp.Scene); the drivers must lie on
+        the front face and overlap neither each other nor a port."""
         zb, zf = _front_planes(drivers)
+        self._check_drivers(drivers)
         for given, z, what in ((self.front, zb, "front (rear baffle plane)"), (self.front_face, zf, "front_face")):
             if given is not None and abs(given - z) > 1e-9:
                 raise ModelError(f"lp.cabinets.Box: {what} = {given} m, but the drivers' plane is z = {z} m")
         return replace(self, front=zb, front_face=zf)
+
+    def _check_drivers(self, drivers):
+        from loudpy.model.parameters import has_references
+        if has_references(self):                                  # lp.P: checked once resolved
+            return
+        circles = []
+        for d in drivers:
+            r = float(max(d.driver.r_front if d.driver.front else 0.0, d.driver.r_rear))
+            c = np.asarray(d.frame.origin, float)[:2]
+            if c[0] - r < -1e-12 or c[0] + r > self.width + 1e-12 or c[1] - r < self.bottom - 1e-12 \
+                    or c[1] + r > self.bottom + self.height + 1e-12:
+                raise ModelError(f"lp.cabinets.Box: driver {d.name!r} (radius {r * 1e3:.0f} mm at x = {c[0]:g}, "
+                                 f"y = {c[1]:g} m) is not on the front face ({self.width:g} × {self.height:g} m)")
+            circles.append((d.name, c, r))
+        for i, (a, ca, ra) in enumerate(circles):
+            for b, cb, rb in circles[i + 1:]:
+                if np.linalg.norm(ca - cb) < ra + rb - 1e-12:
+                    raise ModelError(f"lp.cabinets.Box: drivers {a!r} and {b!r} overlap")
+            for p in self.ports:
+                if np.linalg.norm(ca - np.asarray(p.at, float)) < ra + p.radius + p.wall - 1e-12:
+                    raise ModelError(f"lp.cabinets.Box: driver {a!r} overlaps the port at {p.at}")
 
     def _planes(self):
         if self.front is None or self.front_face is None:

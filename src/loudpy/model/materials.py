@@ -241,6 +241,17 @@ class MaterialLibrary(Mapping):
     def __len__(self):
         return len(self._m)
 
+    def with_(self, *materials: Material, path=None) -> "MaterialLibrary":
+        """A new library with these materials added or replaced (by name); path: where save() writes it by
+        default (the library itself is read-only).
+            mine = lp.materials.with_(dataclasses.replace(lp.materials["Paper"], E=4.2e9), path="my.json")"""
+        lib = dict(self._m)
+        for m in materials:
+            if not isinstance(m, Material):
+                raise MaterialError(f"MaterialLibrary.with_: lp.Material objects, got {type(m).__name__}")
+            lib[m.name] = m
+        return MaterialLibrary(lib, path if path is not None else self.path)
+
     def resolve(self, material: "str | Material") -> Material:
         """The Material itself, or the library's material of that name."""
         return material if isinstance(material, Material) else self[material]

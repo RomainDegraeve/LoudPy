@@ -90,6 +90,21 @@ class GeometrySource:
             names += re.findall(r"(?:^|,)\s*([A-Za-z_]\w*)\s*=", block)
         return list(dict.fromkeys(names))
 
+    @property
+    def geo_defaults(self) -> dict:
+        """{name: default value} of the DefineConstant[…] entries of a .geo that are plain numbers."""
+        if self.path is None or self.path.suffix.lower() != ".geo":
+            return {}
+        text = re.sub(r"//[^\n]*", "", self.path.read_text())
+        out = {}
+        for block in re.findall(r"DefineConstant\s*\[(.*?)\]\s*;", text, re.S):
+            for name, value in re.findall(r"(?:^|,)\s*([A-Za-z_]\w*)\s*=\s*([-+0-9.eE]+)", block):
+                try:
+                    out[name] = float(value)
+                except ValueError:
+                    continue
+        return out
+
     def geo_values(self) -> dict:
         """{name: value} of the model parameters that set a DefineConstant of the .geo."""
         params = self.parameters or {}

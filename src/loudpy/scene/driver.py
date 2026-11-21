@@ -223,7 +223,7 @@ class Driver:
             raise ModelError(f"no node of the boundary {coil!r} on the modal mesh of {path}")
         return cls(modes, rear.sample(geometry), front.sample(geometry) if front else None, coil_nodes,
                    name or "driver", source=dict(path=str(path), orders=list(orders), f_max=f_max,
-                                                 geometry=str(geometry)))
+                                                 geometry=str(geometry), rear=rear, front=front, coil=coil))
 
     @property
     def rear_cutout(self) -> list[np.ndarray]:

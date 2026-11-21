@@ -27,6 +27,14 @@ versions follow [Semantic Versioning](https://semver.org/) (0.x: the API may sti
   other frequencies than a one-mesh one); for modes, per mode set as before.
 
 ### Added
+- `lp.progress`: a callback reporting the steps of long computations (frequencies, time steps, mode shifts, sweep
+  runs), silent unless set.
+- `lp.signals`: drive signals for lp.Transient — `sine`, `multitone` (Schroeder phases), `wav` (a WAV file).
+- `Model.preview_mesh()` (a display mesh of a bare geometry, no region needed), `Model.geometry_size()`,
+  `Model.uses(name)` (what refers to a parameter), `GeometrySource.geo_defaults` (DefineConstant defaults of a .geo),
+  `MaterialLibrary.with_(*materials, path=…)`.
+- `Model.to_script()` / `Scene.to_script()`: a model or a scene written back as Python code that builds it again;
+  `lp.Driver.from_modes` keeps its profiles and coil in `driver.source` for that.
 - `tests/test_feature_matrix.py`: features × studies (remeshed × drive × output control × save / load on boundary
   integrals, Thiele–Small, probes, derived fields; modes, transient and remeshed voltage sweeps × output / storage).
 - `lp.load(path, rename={old: new})` / `loudpy.results.io.rename_groups`: group and item names renamed on read.
@@ -58,6 +66,10 @@ versions follow [Semantic Versioning](https://semver.org/) (0.x: the API may sti
   `res.boundaries_of(block)`).
 
 ### Fixed
+- `Model.mesh()` without any region failed deep in the mesher (a NumPy error); it now says to add regions (or to
+  use `model.preview_mesh()`).
+- `lp.cabinets.Box` accepted drivers off its front face, overlapping each other or a port (found later as a broken
+  mesh); `for_drivers` (called by lp.Scene) now refuses them with the reason.
 - A scene cavity whose f_max is below its first acoustic mode (only the constant mode kept) crashed with an
   IndexError in the static correction of the driver coupling; it now raises a ModelError saying to raise the
   cavity's f_max.

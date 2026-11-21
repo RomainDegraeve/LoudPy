@@ -102,7 +102,9 @@ class Sweep:
         import logging
         log = logging.getLogger("loudpy")
         results = []
+        from loudpy import progress
         for k, run in enumerate(self.runs):
+            progress.step("sweep run", k + 1, len(self.runs))
             log.info(f"sweep run {k + 1}/{len(self.runs)}: {run}")
             variant = self.study.model.with_parameters(**run)
             base = getattr(self.study.model, "_mesh_path", None)

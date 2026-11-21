@@ -117,7 +117,9 @@ class FrequencyResponse(Study):
         solver.reuse = self.reuse_factorization and solver.reuse
         d = self.drive
         U, P, attrs = [], [], []
-        for f in np.asarray(freqs, float):
+        from loudpy import progress
+        for k_f, f in enumerate(np.asarray(freqs, float)):
+            progress.step("frequency", k_f + 1, len(freqs))
             w = 2 * np.pi * f
             z = 1j * w
             x = builder.split(solver.solve(builder.at(z), builder.rhs(z)))

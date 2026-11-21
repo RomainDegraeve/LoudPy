@@ -98,7 +98,9 @@ def generalized_alpha_newton(tangent, M_red, reduce, free, n_dof, F_base, signal
     results_a = [np.zeros(n_dof, dtype=np.float64)]
     time_array = [0.0]
 
+    from loudpy import progress
     for step in range(n_steps):
+        progress.step("time step", step + 1, n_steps)
         t_n1 = (step + 1) * dt
 
         F_ext_n = F_base * float(np.real(signal[step]))

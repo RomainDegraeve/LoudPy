@@ -30,7 +30,7 @@ from .study import (Modes, FrequencyResponse, PerWavelength, Transient, Sweep, S
                     Convergence, convergence)
 from .scene import Driver, Profile, Scene, Cabinet, cabinets
 
-from . import errors
+from . import errors, progress, signals
 from ._log import set_verbosity
 
 __version__ = "0.2.0"
@@ -60,5 +60,5 @@ __all__ = [
     "load", "load_data", "spl", "compare", "read_comsol", "Output", "Results", "FrequencyResults", "ModeResults", "TimeResults", "Data", "Field",
     "Point", "Points", "Polar", "Arc", "Line",
     # messages and errors, lazily imported plotting
-    "set_verbosity", "errors", "plot",
+    "set_verbosity", "errors", "progress", "signals", "plot",
 ]
