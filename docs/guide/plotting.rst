@@ -68,6 +68,33 @@ drivers at one instant and one scale, from several :class:`lp.plot.Camera <loudp
 The building blocks (``view3d.tet_grid``, ``tri_surface``, ``clip``, ``isolines``, ``edges``,
 ``dashed``) are in :mod:`loudpy.plot.view3d`.
 
+Selections
+----------
+
+``lp.plot.selection(model, selector)`` shows what a selector selects on the mesh, as the solver sees it: on a
+meshed 2D model the selected domain groups are filled and the selected edges drawn thick (``kind="domain"`` or
+``"boundary"`` for one of them); on a meshed ``lp.Scene`` the selector names surface groups of its meshes
+(``"walls"``, ``"interface_driver"``, ``"dtn"``, ``"ground"``…; ``mesh="cavity"`` or the index of a band mesh); a
+3D ``lp.Mesh`` works the same way. The 3D views use matplotlib's 3D axes (no OpenGL needed).
+
+.. code-block:: python
+
+    lp.plot.selection(model, lp.Interface("coil", "former"))
+    lp.plot.selection(scene, ["walls", "interface_driver"])
+
+Interactive viewer
+------------------
+
+``lp.plot.html(field, "x.html")`` (or ``field.export("x.html")``) writes one self-contained HTML file — no
+server, no internet connection, no extra package: the surface of a 3D field (outer faces of the tetrahedra, shell
+and wall groups) or the r–z section of a 2D one (``mirror=True`` for −r … r), coloured with the quantity's
+colormap. Drag to rotate, wheel to zoom, shift-drag to pan, double-click to reset. A list of fields on one mesh
+gives frames with a slider and one colour range:
+
+.. code-block:: python
+
+    lp.plot.html([res.field("p", f=f) for f in (200, 500, 1000)], "Results/Figures/p.html")
+
 The loudpy style
 ----------------
 

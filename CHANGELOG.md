@@ -8,6 +8,11 @@ versions follow [Semantic Versioning](https://semver.org/) (0.x: the API may sti
 The roadmap of this work is in `docs/ROADMAP.md`.
 
 ### Added
+- `lp.plot.selection(model | scene | mesh, selector)`: what a selector selects, on the mesh (2D domains and
+  edges; 3D surface groups). `lp.plot.html(field(s), path)` / `Field.export("x.html")`: an interactive viewer in
+  one self-contained HTML file (WebGL, frames with a slider). Image-comparison tests of the plots
+  (`tests/reference/images`, `--update-reference`) and a test that no lp.plot function changes the global
+  matplotlib settings.
 - Shells (`loudpy.fem.shell`): flat Reissner–Mindlin MITC3 triangles and MITC4 quadrilaterals in 3D, six DOFs per
   node (drilling rotation tied to the in-plane rotation), warped quadrilaterals linked to their mean plane;
   `shell_matrices`, `modes` (symmetric-mode sparse LU), `fixed_dofs`, `feature_nodes`.

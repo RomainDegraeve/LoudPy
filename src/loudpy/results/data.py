@@ -559,11 +559,15 @@ class Field:
 
     def export(self, path):
         """
-        Write by extension: .vtu / .vtk (ParaView: mesh + values), .csv (one row per node: coordinates,
+        Write by extension: .vtu / .vtk (ParaView: mesh + values), .html (interactive viewer, lp.plot.html),
+        .csv (one row per node: coordinates,
         values, re/im for complex), .mat (MATLAB: coordinates, triangles, values), .npz (NumPy).
         """
         path = Path(path)
         suffix = path.suffix.lower()
+        if suffix in (".html", ".htm"):
+            from loudpy.plot.html import html
+            return html(self, path)
         if suffix in (".vtu", ".vtk"):
             return _write_atomic(path, lambda tmp: self.to_pyvista().cast_to_unstructured_grid().save(tmp))
         cols = self._arrays()
@@ -582,7 +586,7 @@ class Field:
             return _write_atomic(path, lambda tmp: np.savez(tmp, values=self.values, coords=self.mesh.coords,
                                                             triangles=tri, node_tags=self.mesh.node_tags,
                                                             header=np.array(json.dumps(self._header()))))
-        raise ValueError(f"unknown export format {suffix!r}: use .vtu, .csv, .mat or .npz")
+        raise ValueError(f"unknown export format {suffix!r}: use .vtu, .html, .csv, .mat or .npz")
 
     # ── plot ───────────────────────────────────────────────────────────────
     def plot(self, show: str | None = None, ax=None, **kwargs):

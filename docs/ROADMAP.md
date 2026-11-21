@@ -33,7 +33,7 @@ Cost unit: one *session* ≈ one long working block (3–5 h). Status: ✅ done 
 | G | Results format 3: one results family, self-contained files (with the model description and parameters), public arrays, derived fields (stress, strain, velocity, intensity) and values (power, volume velocity, impedance, SPL, Thiele–Small parameters), interpolation in tetrahedra, ParaView series | 3 | ✅ |
 | H | Error estimation and adaptivity: recovery and residual indicators, `lp.Adaptive`, `lp.convergence` | 3 | ✅ |
 | I | Shells: MITC3/MITC4 Reissner–Mindlin, direct coupling to the 3D air, wall-mode study, elastic-wall enclosure example | 4 | ✅ |
-| J | Plotting: scoped style everywhere, selections in 3D views, interactive HTML viewer, image-comparison tests | 1.5 | ○ |
+| J | Plotting: scoped style everywhere, selections in 3D views, interactive HTML viewer, image-comparison tests | 1.5 | ✅ |
 | K | Verification and validation pipeline: manufactured solutions, analytical benchmarks, COMSOL harness, generated verification report | 3 (spread) | ◐ |
 | L | Code quality and documentation: no private cross-imports, 100 % public docstrings, mypy, theory and verification manuals | 2 | ○ |
 | M | Full re-run of every example (incl. the coupled 2D ones, whose stored results predate the C1 coupling fix and the damping refits), comparison table, version 0.2.0 | 2 + ~6 h compute | ○ |
@@ -750,3 +750,33 @@ Not done in I, proposed for later: walls radiating outside (configurations exter
 not conforming to the inner shells; a projection like the driver fronts' would do), shell offset (mid-surface vs
 inner face), orthotropic walls (plywood), MITC3+ (bubble-enriched triangle without the thin-limit locking), residual
 flexibility of the wall modes (point loads converge slowly), walls in 2D axisymmetric models.
+
+## Phase J — done (gate report at the end of this section)
+
+- **Scoped style everywhere**: matplotlib is used only in `loudpy.plot` (checked: no `pyplot` elsewhere in the
+  package); every public drawing function is `@style.styled`. New test `test_global_style_untouched`: line, field
+  (2D), boundary, modes, figure, selection, html, save called in a row, then `matplotlib.rcParams` compared key by
+  key with the state before: no change, and the loudpy style is not left active.
+- **Selections** (`plot/selection.py`, `lp.plot.selection`; the deferred item of F): 2D models — the selected
+  domain groups filled, the selected edges (node tags of `model.select`, corner–mid–corner polylines, any order)
+  drawn thick over the mesh; scenes — the named surface groups of the cavity or a band mesh; 3D `lp.Mesh` —
+  its surface groups. 3D through matplotlib's 3D axes, so it runs without OpenGL (CI). An empty selection raises.
+- **Interactive HTML viewer** (`plot/html.py`, `lp.plot.html`, `Field.export(".html")`): one file with the
+  geometry and values as base64 arrays and ~90 lines of inline WebGL 1 (no CDN, no package): outer faces of the
+  tetrahedra plus surface groups in 3D, r–z section (optionally mirrored) in 2D, the quantity's colormap, a common
+  range over frames, slider, orbit / zoom / pan, light and dark page. Checked by decoding the embedded arrays
+  (sizes, value range, closed box surface = every boundary face once); **not yet looked at in a browser** (the
+  session had no browser access while the user was away; the shader was reviewed by hand for GLSL ES 1.00 — one
+  `mat3(mat4)` cast, not allowed there, was replaced).
+- **Image-comparison tests** (`tests/test_plots.py`): curve, map, polar, 2D field on the deformed structure, mode
+  grid, 2D selection, saved at 50 dpi with every text hidden (fonts differ between machines) and compared with
+  `tests/reference/images/*.png` by matplotlib's RMS measure (tolerance 6 / 255); baselines written with
+  `--update-reference` (a missing baseline fails).
+
+**Gate J report.**
+
+| Gate item | Result |
+|---|---|
+| image tests | 6 baselines, RMS comparison with texts hidden; pass locally (the Linux CI run decides the cross-machine tolerance) |
+| HTML export | `lp.plot.html` / `Field.export(".html")`: self-contained (no external script), arrays decode to the mesh and values, frames share one range; visual check in a browser still to do |
+| global matplotlib style untouched | `test_global_style_untouched`: rcParams identical before / after every lp.plot function |
