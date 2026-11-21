@@ -81,9 +81,9 @@ class Transient(Study):
         N, dN, w = cell_tabulation(1, edges.shape[1])
         fe = np.empty(edges.shape)
         boundary_load_kernel(ec, N, dN, w, np.ones((len(ec), len(w))), True, fe)   # ∫ N 2πr ds
-        for edge, f_edge in zip(edges, fe):
+        for i, edge in enumerate(edges):
             for k, t in enumerate(edge):
-                F[2 * nl.tag_to_local[int(t)] + comp] += f_edge[k]
+                F[2 * nl.tag_to_local[int(t)] + comp] += fe[i, k]
         F_red = F[free] / F[free].sum()
 
         def tangent(u_full):

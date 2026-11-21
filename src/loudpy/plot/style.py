@@ -106,7 +106,7 @@ RC = {
 
 def use() -> None:
     """Apply the loudpy style to every figure created afterwards."""
-    mpl.rcParams.update(RC)
+    mpl.rcParams.update(RC)  # type: ignore   # newer matplotlib stubs type the keys as literals
 
 
 def reset() -> None:
@@ -117,7 +117,7 @@ def reset() -> None:
 @contextmanager
 def context():
     """with lp.plot.style.context(): … — the loudpy style inside the block only."""
-    with mpl.rc_context(RC):
+    with mpl.rc_context(RC):  # type: ignore
         yield
 
 
@@ -138,7 +138,7 @@ def styled(fn):
     def wrapper(*args, **kwargs):
         if is_active():
             return fn(*args, **kwargs)
-        with mpl.rc_context(RC):
+        with mpl.rc_context(RC):  # type: ignore
             out = fn(*args, **kwargs)
             fig = getattr(out, "figure", None) if not hasattr(out, "savefig") else out
             if isinstance(out, tuple) and out and hasattr(out[0], "savefig"):
