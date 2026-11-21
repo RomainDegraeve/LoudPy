@@ -33,7 +33,7 @@ from .scene import Driver, Profile, Scene, Cabinet
 from . import errors
 from ._log import set_verbosity
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 
 def __getattr__(name):

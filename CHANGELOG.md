@@ -3,9 +3,12 @@
 All notable changes to loudpy. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/) (0.x: the API may still change between minor versions).
 
-## [Unreleased] — branch `api-refresh`
+## [0.2.0] — 2026-11-21
 
-The roadmap of this work is in `docs/ROADMAP.md`.
+The API refresh (branch `api-refresh`, phases A–M of `docs/ROADMAP.md`): own generic FE core, physics on one
+system builder, one model pattern in 2D and 3D, result format 3, error estimation and adaptivity, shells, plotting,
+the verification pipeline, code quality; every example re-run with this version (comparison with the former outputs
+in the phase M section of the roadmap).
 
 ### Added
 - Type checking: `mypy` configuration in `pyproject.toml` and a CI job; the package passes it.

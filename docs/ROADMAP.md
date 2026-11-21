@@ -36,7 +36,7 @@ Cost unit: one *session* ≈ one long working block (3–5 h). Status: ✅ done 
 | J | Plotting: scoped style everywhere, selections in 3D views, interactive HTML viewer, image-comparison tests | 1.5 | ✅ |
 | K | Verification and validation pipeline: manufactured solutions, analytical benchmarks, COMSOL harness, generated verification report | 3 (spread) | ✅ (COMSOL reference numbers later) |
 | L | Code quality and documentation: no private cross-imports, 100 % public docstrings, mypy, theory and verification manuals | 2 | ✅ |
-| M | Full re-run of every example (incl. the coupled 2D ones, whose stored results predate the C1 coupling fix and the damping refits), comparison table, version 0.2.0 | 2 + ~6 h compute | ○ |
+| M | Full re-run of every example (incl. the coupled 2D ones, whose stored results predate the C1 coupling fix and the damping refits), comparison table, version 0.2.0 | 2 + ~6 h compute | ✅ |
 
 Gates (each phase is committed and pushed only when its gate passes):
 
@@ -865,3 +865,45 @@ phase's notes). Phase K adds what turns them into a pipeline:
 | docstring and private-import tests | `tests/test_code_quality.py`: no private name imported across modules (AST scan); 847 / 847 public objects documented (runtime count, inherited docstrings allowed) |
 | docs build without warnings | yes, locally and on CI (`sphinx -W`), with the theory manual, the verification manual and the generated report |
 | mypy | clean (96 source files, default strictness), CI job `types` |
+
+## Phase M — done (gate report at the end of this section)
+
+- **Re-run.** Every Running script (2D eigen, Fourier, FSI_DtN, frequency Meca / FSI / FSI_elec, transient; 3D
+  cavity, walls, exterior, vented (merged), labyrinth, column), every Loading script and the three validation
+  scripts, at full size and unmodified (the scripts are those of phases F / I), one after the other with
+  `tests/tools/run_examples.py` (untracked): 28 / 28 steps, 167 min in all, peak memory 3.0 GB (3D column). The
+  outputs before the re-run (the Loading CSVs and small result files) were kept in `Results/Files/before_M/`
+  (git-ignored, local) and compared with `tests/tools/m_compare.py`. Validations: rectangular cavity 43 modes within
+  0.021 %; DtN hemisphere 0.6 % at 1 kHz, ≤ 1.4 % at 3 kHz (as before).
+- **Comparison table** (before → after; modes matched by index within a set, structural family for the coupled
+  sets; curves on their common frequencies):
+
+| example | output | change | explained by |
+|---|---|---|---|
+| Eigen Meca / Fourier | modes (m = 0…4, 20 each) | f ≤ 8.1e-4; ζ of the high spider modes halves (0.189 → 0.096 at 2986 Hz) | PhenolicCloth refit: β 2.0e-5 → 1.0e-5, ζ ≈ βω/2 (0.188 → 0.095); non-proportional damping moves f slightly |
+| Frequency Meca | tip displacement (3000 f) | ≤ 1.9 % of the peak, at 115 Hz; median 0.25 % | Rubber refit (η at 115 Hz 0.079 → 0.134) at the surround-dominated resonance |
+| Frequency FSI | SPL at 0.3 m (307 f) | median 0.33 dB; ≤ 6.2 dB below 1 kHz, ≤ 1.9 dB at 1–5 kHz, ≤ 8.8 dB above (20 kHz) | C1 coupling fix (rear air with the right sign: up to ±6 dB near 200 Hz in the C1 notes) and the refits (sharper high-frequency peaks) |
+| Frequency FSI_elec | SPL at 0.3 m (347 f) | median 0.43 dB; ≤ 4.6 / 1.5 / 11.8 dB (same bands) | same |
+| Frequency FSI_elec | impedance | resonance 114.7 → 112.1 Hz, peak 79.8 → 75.8 Ω (−30 % of the peak on the flank) | C1 fix (rear-air loading) + Rubber refit; 112.1 Hz = phase G's Thiele–Small fs 112.2 Hz |
+| Eigen FSI_DtN | coupled structural modes | ≤ 4.5 % (211.6 → 202.2 Hz); ζ of spider modes falls | C1 fix (coupling signs of the symmetric form) + refits |
+| Time Multitone | tip signal | not comparable | the stored run was a 720-step (15 ms) test run with its window over 15 ms (start-up ratio 4600 ≈ (1 s / 15 ms)²); the full 48 000-step run is the new reference |
+| 3D cavity | coupled modes (20) | f ≤ 6.4e-4; ζ ≤ 0.027 lower | the air of phase B (c +6.85e-4: the expected +0.06 %) and the refits |
+| 3D exterior | SPL at 1 m (299 f) | median 0.14 dB, max 3.2 dB at 210 Hz | 212 Hz driver mode damping 0.029 → 0.022 (spider refit) |
+| 3D exterior | horizontal directivity | median 0.02 dB; one point 8.1 dB (2510 Hz) | a directivity null (relative dB of a near-zero) |
+| 3D walls | wall modes | identical | same code (phase I) |
+| 3D vented (merged) | SPL at 1 m (411 f) | median 0.14 dB; 19 isolated points > 3 dB (max 27.8 dB at 970 Hz), the neighbours within 0.1 dB | single grid points on very sharp resonances of the undamped merged air: a 0.07 % shift of the air moves a peak on / off a 10 Hz grid point (hypothesis, not checked by a finer grid) |
+| 3D labyrinth | SPL at 1 m (311 f) | median 0.11 dB; max 11 dB at 1250 Hz (isolated) | same as vented |
+| 3D column | SPL at 1 m (211 f) | median 0.14 dB, max 3.2 dB at 210 Hz | the 212 Hz mode, as the exterior case |
+| 3D column | vertical directivity | median 0.02 dB; one point 9.9 dB (570 Hz) | a directivity null |
+
+- **Found**: the transient example stores u, v and a at every node for its 48 000 steps: an 8.7 GB result file in
+  the (iCloud-synced) examples folder; to be addressed (storing every n-th step / only probes).
+- Example figures (tracked PDFs) regenerated; the 3D Plot scripts (untracked PNG / PDF series) were not re-run.
+- **Version 0.2.0** (`loudpy.__version__`, CITATION.cff, CHANGELOG).
+
+**Gate M report.**
+
+| Gate item | Result |
+|---|---|
+| all examples at full size | 28 / 28 steps (13 Running, 12 Loading, 3 validations), as committed |
+| differences explained | yes, by the C1 coupling fix (coupled 2D), the damping refits (every damped result), the phase B air (3D: +0.06 % on the frequencies, as expected); two items are hypotheses: isolated grid points of the undamped merged air (vented, labyrinth), and directivity nulls; the transient had no comparable stored run |
