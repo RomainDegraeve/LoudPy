@@ -117,3 +117,6 @@ def test_box_refuses_drivers_off_its_front_face():
         box.for_drivers([hp.place("main", at=(0.09, 0.09))])
     with pytest.raises(lp.errors.ModelError, match="not on the front face"):
         lp.Scene.vented_box(box, hp, at=(0.30, 0.12))                                     # through lp.Scene too
+    deep = lp.cabinets.Box(0.26, 0.2, lp.P("D"), wall=0.015, ports=[port])               # a parametric depth
+    with pytest.raises(lp.errors.ModelError, match="not on the front face"):
+        deep.for_drivers([hp.place("main", at=(0.24, 0.12))])

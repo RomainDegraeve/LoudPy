@@ -149,9 +149,10 @@ class Box:
         return replace(self, front=zb, front_face=zf)
 
     def _check_drivers(self, drivers):
-        from loudpy.model.parameters import has_references
-        if has_references(self):                                  # lp.P: checked once resolved
-            return
+        from loudpy.model.parameters import P
+        if any(isinstance(getattr(self, n), P) for n in ("width", "height", "bottom")):
+            return                                                # the face is a parameter: checked once resolved
+        ports = [p for p in self.ports if not any(isinstance(v, P) for v in (p.radius, p.wall, *p.at))]
         circles = []
         for d in drivers:
             r = float(max(d.driver.r_front if d.driver.front else 0.0, d.driver.r_rear))
@@ -165,7 +166,7 @@ class Box:
             for b, cb, rb in circles[i + 1:]:
                 if np.linalg.norm(ca - cb) < ra + rb - 1e-12:
                     raise ModelError(f"lp.cabinets.Box: drivers {a!r} and {b!r} overlap")
-            for p in self.ports:
+            for p in ports:
                 if np.linalg.norm(ca - np.asarray(p.at, float)) < ra + p.radius + p.wall - 1e-12:
                     raise ModelError(f"lp.cabinets.Box: driver {a!r} overlaps the port at {p.at}")
 
