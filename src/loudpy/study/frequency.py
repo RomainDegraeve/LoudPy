@@ -141,13 +141,16 @@ class FrequencyResponse(Study):
             model.boundary_nodes()
 
     # ── public ─────────────────────────────────────────────────────────────
-    def solve(self, freqs, remesh: PerWavelength | None = None, store=None, **options) -> FrequencyResults:
+    def solve(self, freqs, remesh: PerWavelength | None = None, store=None, output=None, **options) -> FrequencyResults:
         """
         Response at every frequency of `freqs` [Hz] (one block per mesh).
-        Scene: store= the result file the 3D pressure field is streamed to (format 2); without it
+        Scene: store= the result file the 3D pressure field is streamed to (format 3); without it
         only the driver amplitudes, DtN coefficients and cavity pressures are kept.
+        output: an lp.Output (fields kept, every n-th frequency, full-rate probes); 2D models.
         """
         if self.is_scene:
+            if output is not None:
+                raise ModelError("output= is for 2D models (a scene streams its 3D field with store=)")
             from loudpy.study import scene_response
             self.results = scene_response.solve(self, freqs, store=store, **options)
             return self.results
@@ -160,7 +163,8 @@ class FrequencyResponse(Study):
             blocks = [block]
         else:
             blocks, bounds = self._solve_remeshed(freqs, remesh)
-        self.results = self._finish(FrequencyResults(blocks, meta, bounds))
+        from loudpy.results.output import apply
+        self.results = self._finish(apply(FrequencyResults(blocks, meta, bounds), output))
         return self.results
 
     def _solve_remeshed(self, freqs, rule: PerWavelength):

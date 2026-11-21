@@ -3,6 +3,14 @@
 All notable changes to loudpy. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/) (0.x: the API may still change between minor versions).
 
+## [Unreleased]
+
+### Added
+- Output control: `lp.Output(fields=…, every=n, probes={name: point})` on `solve(output=…)` of `lp.Modes`,
+  `lp.FrequencyResponse` and `lp.Transient` (2D models): fields kept, every n-th entry, full-rate probe signals saved
+  with the results (`res.probe_signal(name, field, component)`, `res.probe_names`). The multitone example uses it
+  (its result file: 8.7 GB → about 70 MB).
+
 ## [0.2.0] — 2026-11-21
 
 The API refresh (branch `api-refresh`, phases A–M of `docs/ROADMAP.md`): own generic FE core, physics on one

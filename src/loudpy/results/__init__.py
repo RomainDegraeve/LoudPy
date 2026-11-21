@@ -14,11 +14,12 @@ loudpy.results — the outcome of a study, independent of how it was computed.
 """
 from loudpy.results.comsol import ComsolTable, Comparison, compare, read_comsol
 from loudpy.results.data import Data, Field, spl
+from loudpy.results.output import Output
 from loudpy.results.io import load
 from loudpy.results.quantities import Quantity, quantity
 from loudpy.results.results import Block, FrequencyResults, ModeResults, Results, TimeResults
 from loudpy.results.selection import Arc, Line, Point, Points, Polar
 from loudpy.results.sweep import SweepResults
 
-__all__ = ["read_comsol", "compare", "ComsolTable", "Comparison", "load", "SweepResults", "Results", "FrequencyResults", "ModeResults", "TimeResults", "Block", "Data", "Field",
+__all__ = ["Output", "read_comsol", "compare", "ComsolTable", "Comparison", "load", "SweepResults", "Results", "FrequencyResults", "ModeResults", "TimeResults", "Block", "Data", "Field",
            "Quantity", "quantity", "Point", "Points", "Polar", "Arc", "Line", "spl"]

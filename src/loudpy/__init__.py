@@ -24,7 +24,7 @@ from .model import (
     Material, MaterialLibrary, air, load_materials, materials,
 )
 from .geometry import Frame, Mesh, Group, Box, Near, Interface, BoundaryOf
-from .results import (load, spl, compare, read_comsol, Results, FrequencyResults, ModeResults, TimeResults, Data, Field,
+from .results import (load, spl, compare, read_comsol, Output, Results, FrequencyResults, ModeResults, TimeResults, Data, Field,
                       Point, Points, Polar, Arc, Line)
 from .study import (Modes, FrequencyResponse, PerWavelength, Transient, Sweep, SweepResults, Adaptive,
                     Convergence, convergence)
@@ -57,7 +57,7 @@ __all__ = [
     # 3D scenes
     "Driver", "Profile", "Scene", "Cabinet",
     # results and evaluation
-    "load", "spl", "compare", "read_comsol", "Results", "FrequencyResults", "ModeResults", "TimeResults", "Data", "Field",
+    "load", "spl", "compare", "read_comsol", "Output", "Results", "FrequencyResults", "ModeResults", "TimeResults", "Data", "Field",
     "Point", "Points", "Polar", "Arc", "Line",
     # messages and errors, lazily imported plotting
     "set_verbosity", "errors", "plot",

@@ -42,9 +42,9 @@ class Transient(Study):
                              f"exists only in frequency-domain studies; use lp.Rayleigh() (the material's fit) or "
                              f"lp.Rayleigh.from_loss_factor(eta) for a transient study")
 
-    def solve(self, n_steps: int | None = None, duration: float | None = None) -> TimeResults:
+    def solve(self, n_steps: int | None = None, duration: float | None = None, output=None) -> TimeResults:
         """Integrate in time (generalized-α, Newton for the geometric nonlinearity) for n_steps steps or a
-        duration [s]; returns TimeResults."""
+        duration [s]; returns TimeResults. output: an lp.Output (fields kept, every n-th step, full-rate probes)."""
         from loudpy.fem.assembly import cell_tabulation
         from loudpy.fem.kernels import boundary_load_kernel
         from loudpy.physics.structural import MecaAssemblerNL
@@ -101,5 +101,6 @@ class Transient(Study):
         block = Block(meshes(System(nl, None, None, None), parts), np.asarray(t), fields, extra, params, "run0")
         meta = {"study": "Transient", "fs": float(self.drive.fs),  # type: ignore[arg-type]
                 "geometry": str(self.model.geometry)}
-        self.results = self._finish(TimeResults([block], meta, self.model.boundary_nodes()))
+        from loudpy.results.output import apply
+        self.results = self._finish(apply(TimeResults([block], meta, self.model.boundary_nodes()), output))
         return self.results

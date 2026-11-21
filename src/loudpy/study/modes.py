@@ -65,9 +65,11 @@ class Modes(Study):
         self.physics = physics
 
     def solve(self, f_max: float, f_min: float = 20.0, *, orders=None, method: str = "multishift",
-              n_per_shift: int = 20, n_modes: int = 30, f_target: float = 100.0, **options) -> ModeResults:
+              n_per_shift: int = 20, n_modes: int = 30, f_target: float = 100.0, output=None,
+              **options) -> ModeResults:
         """
         f_min, f_max : band of the modes [Hz]
+        output       : an lp.Output (fields kept, every n-th mode, probes over the modes); 2D models
         orders       : azimuthal orders m (structure only; None: the axisymmetric modes, m = 0)
         method       : "multishift" (shifts over the band, n_per_shift modes each) or "arpack"
                        (n_modes around f_target)
@@ -81,6 +83,8 @@ class Modes(Study):
         if f_min >= f_max:
             raise ModelError(f"Modes.solve: f_min = {f_min:g} Hz must be below f_max = {f_max:g} Hz")
         if self.is_scene:                       # drivers + cavity modes (scene configuration "cavity")
+            if output is not None:
+                raise ModelError("output= is for 2D models (scene results keep modal coordinates only)")
             from loudpy.study import scene_response
             if self.physics == "walls":
                 self.results = self._finish(scene_response.wall_modes(self, f_max=f_max))
@@ -105,7 +109,8 @@ class Modes(Study):
         else:
             blocks = [acoustic_modes(parts, n_modes, f_min, f_max, f_target)]
         blocks.sort(key=lambda b: (0, b.meta["order"]) if "order" in b.meta else (1, b.label))
-        self.results = self._finish(ModeResults(blocks, self._meta(), self.model.boundary_nodes()))
+        from loudpy.results.output import apply
+        self.results = self._finish(apply(ModeResults(blocks, self._meta(), self.model.boundary_nodes()), output))
         return self.results
 
     def _meta(self):

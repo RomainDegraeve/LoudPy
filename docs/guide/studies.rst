@@ -52,6 +52,28 @@ Transient
 Generalised-α time integration (``rho_inf``: high-frequency damping), Newton–Raphson iterations
 for the nonlinear coil (``nonlinear=True``).
 
+What a study keeps: lp.Output
+-----------------------------
+
+By default a study keeps every field at every entry (time step, frequency, mode). ``output=lp.Output(…)`` on
+``solve`` (2D models) chooses what the results and the file hold:
+
+.. code-block:: python
+
+   out = lp.Output(fields=["u"], every=40, probes={"tip": (0.0, 0.0)})
+   res = lp.Transient(model, drive=lp.Force(signal, fs=48000)).solve(output=out)
+
+   res.times                              # every 40th step: the stored fields
+   res.probe_signal("tip", "u", "z")      # u_z at the tip at every step (full rate), an lp.Data
+   res.probe_signal("tip", "a")           # every component ("component" dimension)
+   res.probe_names                        # ["tip"]
+
+``fields`` keeps only the named fields, ``every`` keeps every n-th entry (per mesh block), and ``probes`` evaluates
+every field at the given points for **every** entry before the fields are thinned (the probes are saved with the
+results). The settings are recorded in ``res.meta["output"]``. The multitone example stores the cone tip at 48 kHz
+and the displacement field at 1.2 kHz: about 70 MB instead of 8.7 GB. A 3D scene streams its field to a file
+instead (``store=``).
+
 Studies on a 3D scene
 ---------------------
 

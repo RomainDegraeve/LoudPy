@@ -284,6 +284,18 @@ class Results:
             return self.probe("a", at, component)
         return self.displacement(at, component).acceleration()
 
+    # ── full-rate probes (lp.Output(probes=…)) ─────────────────────────────
+    @property
+    def probe_names(self) -> list[str]:
+        """Names of the probes recorded with the results (lp.Output(probes=…))."""
+        from loudpy.results.output import probe_names
+        return probe_names(self)
+
+    def probe_signal(self, name: str, field: str = "u", component: str | None = None) -> Data:
+        """A field at a recorded probe for every computed entry (full rate, whatever Output(every=…) kept)."""
+        from loudpy.results.output import probe_signal
+        return probe_signal(self, name, field, component)
+
     # ── plain arrays ───────────────────────────────────────────────────────
     def arrays(self, block: int | None = None, fields=None):
         """
