@@ -58,6 +58,9 @@ versions follow [Semantic Versioning](https://semver.org/) (0.x: the API may sti
   `res.boundaries_of(block)`).
 
 ### Fixed
+- A scene cavity whose f_max is below its first acoustic mode (only the constant mode kept) crashed with an
+  IndexError in the static correction of the driver coupling; it now raises a ModelError saying to raise the
+  cavity's f_max.
 - `res.thiele_small()`, `volume_velocity` and `radiated_power(on=…)` on sweeps remeshed per wavelength (one mesh per
   band): the boundaries were stored once (the last band's node tags) — the integrals failed and the coil velocity used
   for Sd was read at wrong nodes on the other bands. Result files written before are read correctly: each boundary is

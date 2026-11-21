@@ -201,6 +201,17 @@ def test_open_scene_matches_toolkit(driver, mesh_dir, tmp_path, kind, reference)
 
 
 # ── F3: the scene follows the model pattern ─────────────────────────────────
+@pytest.mark.slow
+def test_cavity_without_an_acoustic_mode_is_refused(driver, tmp_path):
+    """A cavity whose f_max is below its first acoustic mode keeps only the constant mode: loudpy says to raise the
+    cavity's f_max (it raised an IndexError in the static correction)."""
+    scene = lp.Scene(box_cabinet, [driver.place("main", at=(W / 2, H / 2))])
+    scene.cavity(f_max=300.0, eta=0.02, mesh_size=(0.012, 0.03), cache_modes=False)       # first mode ≈ 660 Hz
+    scene.mesh(tmp_path)
+    with pytest.raises(lp.errors.ModelError, match="constant mode"):
+        lp.FrequencyResponse(scene, drive=lp.Force(1.0)).solve([100.0])
+
+
 def deep_box(occ, p):
     """The test box with a parameterised depth p["D"] (cabinet builder taking the parameters)."""
     inner = occ.addBox(0.0, 0.0, api.Z_B - p["D"], W, H, p["D"])

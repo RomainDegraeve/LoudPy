@@ -132,6 +132,10 @@ class CavityModes:
             self.assemble()
         psi0 = np.full(len(self.nodes), 1.0 / np.sqrt(self.volume))
         if getattr(self, "_lu", None) is None:
+            if len(self.kappa2) < 2:
+                from loudpy.errors import ModelError
+                raise ModelError("the cavity keeps only its constant mode below its f_max: raise the cavity's f_max "
+                                 "(scene.cavity(f_max=…)) above its first acoustic mode")
             eps = 1e-8 * self.kappa2[1]
             self._lu = spla.splu((self._K + eps * self._M).tocsc())
         lu = self._lu
