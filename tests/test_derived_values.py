@@ -32,18 +32,20 @@ def test_volume_velocity_of_a_rigid_translation(coupled):
         assert Q == pytest.approx(sign * np.pi * r_max ** 2, rel=1e-12)
 
 
-def test_radiated_power_two_ways(coupled, mesh_dir):
+def test_radiated_power_two_ways(coupled, mesh_dir, verify):
     """Power into the front air: through the fluid–structure boundary (u and p) = the coupling operator's
     power of the C1 energy check (round-off) = the intensity flux through a sphere in the front air (p only)."""
     on_boundary = coupled.radiated_power(on=FRONT).values
     energy = api.speaker_fsi_energy(mesh_dir, [300.0, 1000.0])
     np.testing.assert_allclose(on_boundary, energy["P_air"][FRONT], rtol=1e-9)
     sphere = coupled.radiated_power(radius=0.15, center=(0.0, 0.032), baffle=0.032).values
+    verify("Results", "Radiated power of the speaker, two ways", "flux through a sphere vs through the boundary",
+           np.abs(sphere / on_boundary - 1).max(), bound=1e-3, reference="power through the fluid–structure boundary")
     np.testing.assert_allclose(sphere, on_boundary, rtol=1e-3)
     assert (on_boundary > 0).all()
 
 
-def test_thiele_small_of_a_lumped_driver():
+def test_thiele_small_of_a_lumped_driver(verify):
     """A driver that is exactly one moving mass: the parameters are recovered from its impedance."""
     Re, Le, Bl, Mms, Cms, Rms = 5.6, 2e-4, 6.5, 0.012, 2.4e-4, 0.9
     f = np.linspace(20.0, 400.0, 400)
@@ -55,6 +57,8 @@ def test_thiele_small_of_a_lumped_driver():
     ts = res.thiele_small()
     ws = 1 / np.sqrt(Mms * Cms)
     exact = dict(fs=ws / (2 * np.pi), Mms=Mms, Cms=Cms, Rms=Rms, Qms=ws * Mms / Rms, Qes=ws * Mms * Re / Bl ** 2)
+    verify("Results", "Thiele–Small parameters of a lumped driver", "max relative error (fs, Mms, Cms, Rms, Qms, Qes)",
+           max(abs(ts[k] / v - 1) for k, v in exact.items()), bound=1e-9, reference="the lumped model's own values")
     for k, v in exact.items():
         assert ts[k] == pytest.approx(v, rel=1e-9), k
 

@@ -93,18 +93,26 @@ def test_patch_tests(tri):
     assert np.abs(r[inner]).max() < 1e-10 * scale
 
 
-def test_simply_supported_plate_modes():
+def test_simply_supported_plate_modes(verify):
     """Gate I: hard simply supported square plate vs the exact Mindlin frequencies (h/a = 0.01 and 0.1):
     MITC4 within 0.5 % (32 × 32), order 2; MITC3 on an unstructured mesh within 0.5 % for the first mode."""
     for h in (0.01, 0.1):
         exact = np.array(sorted(mindlin_ss(1, 1, h, m, n) for m in range(1, 4) for n in range(1, 4))[:4])
         err = [np.abs(ss_plate(*grid(n), h) / exact - 1) for n in (8, 16, 32)]
-        assert err[-1].max() < 0.005, (h, err[-1])
+        case = "Simply supported square plate, MITC4 shells vs exact Mindlin"
+        verify("Shells", case, f"max error of the first 4 modes, 32 × 32, h/a = {h:g}", err[-1].max(), bound=0.005,
+               reference="exact Mindlin frequencies (3 × 3 eigenproblem per (m, n))")
         order = np.log2(err[1][0] / err[2][0])
+        verify("Shells", case, f"observed order (16 → 32), h/a = {h:g}", order, bound=(1.9, 2.1))
+        assert err[-1].max() < 0.005, (h, err[-1])
         assert 1.9 < order < 2.1, order
     exact = np.array(sorted(mindlin_ss(1, 1, 0.01, m, n) for m in range(1, 4) for n in range(1, 4))[:4])
     f3 = ss_plate(*shell_surface("rectangle", 1 / 32), 0.01)
     e3 = np.abs(f3 / exact - 1)
+    verify("Shells", "Simply supported square plate, MITC3 unstructured (a/32) vs exact Mindlin",
+           "error of the first mode, h/a = 0.01", e3[0], bound=0.005, reference="exact Mindlin frequencies")
+    verify("Shells", "Simply supported square plate, MITC3 unstructured (a/32) vs exact Mindlin",
+           "max error of the first 4 modes", e3.max(), bound=0.01)
     assert e3[0] < 0.005 and e3.max() < 0.01, e3
 
 
@@ -115,7 +123,7 @@ def test_no_shear_locking_mitc4():
         assert abs(e[1] - e[0]) < 2e-4, e
 
 
-def test_clamped_circular_plate():
+def test_clamped_circular_plate(verify):
     """Clamped disk (MITC4 and MITC3, unstructured) vs Kirchhoff λ² = 10.2158, 39.771 (h/R = 0.005): 0.02 % / 0.14 % at R/50."""
     R, h = 0.5, 0.0025
     D = E * h ** 3 / (12 * (1 - NU ** 2))
@@ -126,6 +134,9 @@ def test_clamped_circular_plate():
         rim = np.where(np.isclose(np.hypot(nodes[:, 0], nodes[:, 1]), R, atol=1e-9))[0]
         f = lowest(K, M, fixed_dofs(rim), 8)
         f = np.array([f[0], f[5]])                         # (0, 1) and (0, 2) axisymmetric modes
+        for k, mode in enumerate(("(0,1)", "(0,2)")):
+            verify("Shells", "Clamped disk (h/R = 0.005) vs Kirchhoff", f"{'MITC4' if quads else 'MITC3'} {mode} error",
+                   abs(f[k] / exact[k] - 1), bound=0.005, reference="Leissa, λ² = 10.2158, 39.771")
         assert np.all(np.abs(f / exact - 1) < 0.005), (quads, f / exact - 1)
 
 

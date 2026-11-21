@@ -74,7 +74,7 @@ def solve(m):
     return sp, solve_poisson(sp, lambda x: 0 * x[:, 0], exact, m["boundary_tags"])
 
 
-def test_adaptive_beats_uniform(tmp_path):
+def test_adaptive_beats_uniform(tmp_path, verify):
     uniform = []
     for h in (0.2, 0.1, 0.05):
         sp, U = solve(l_shape(h))
@@ -92,6 +92,9 @@ def test_adaptive_beats_uniform(tmp_path):
     n_a, e_a = adaptive[-1]
     assert n_a < n_u[-1] and e_a < 0.2 * e_u[-1], (adaptive, uniform)    # fewer DOFs, 5× smaller error
     e_u_same = np.exp(np.interp(np.log(n_a), np.log(n_u), np.log(e_u)))
+    verify("Error estimation", "Adaptive vs uniform refinement, L-shape r^(2/3) sin(2θ/3), P2",
+           "adaptive / uniform energy error at the same DOFs", e_a / e_u_same, bound=0.15,
+           reference="exact singular solution")
     assert e_a < 0.15 * e_u_same, (adaptive, uniform)                       # at the same number of DOFs
     rate = -np.log(adaptive[-1][1] / adaptive[-3][1]) / np.log(adaptive[-1][0] / adaptive[-3][0])
     assert rate > 0.8                                                       # → N^(-p/2) = N^(-1); uniform N^(-1/3)

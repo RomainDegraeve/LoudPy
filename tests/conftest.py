@@ -7,6 +7,8 @@ the model, results and plotting layers.
     pytest --slow                 all of them, with the 3D coupling (~30 s)
     pytest -m slow                only the slow ones
     pytest --update-reference     (re)write the reference files from the current code
+    pytest --slow --verification-report docs/guide/verification_report.rst
+                                  write the verification report from the numbers the tests measured
 
 References live in tests/reference/<test name>.npz and are committed. Only update them on
 purpose (a deliberate change of the numerics), never to make a failing test pass.
@@ -24,6 +26,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import pytest  # noqa: E402
 
 from support.reference import ReferenceStore  # noqa: E402
+from support.verification import Recorder  # noqa: E402
+
+RECORDER = Recorder()
 
 
 def pytest_addoption(parser):
@@ -31,6 +36,8 @@ def pytest_addoption(parser):
                      help="write the reference files from the current code instead of comparing")
     parser.addoption("--slow", action="store_true", default=False,
                      help="also run the slow tests (3D coupling)")
+    parser.addoption("--verification-report", default=None, metavar="PATH",
+                     help="write the verification report (reStructuredText) from the measured numbers")
 
 
 def pytest_configure(config):
@@ -110,8 +117,30 @@ def reference(request):
     store.finish()
 
 
+@pytest.fixture
+def verify(request):
+    """verify(area, case, quantity, value, bound=None, kind="max", reference="", unit="", note=""): record a
+    measured number for the verification report (support/verification.py)."""
+    def record(*args, **kwargs):
+        RECORDER.add(request.node.nodeid, *args, **kwargs)
+    return record
+
+
+def pytest_sessionfinish(session, exitstatus):
+    if not RECORDER.records:
+        return
+    RECORDER.save_json(ROOT / "tests" / ".cache" / "verification.json")
+    out = session.config.getoption("--verification-report")
+    if out:
+        path = Path(out) if Path(out).is_absolute() else ROOT / out
+        path.write_text(RECORDER.rst())
+
+
 def pytest_runtest_logreport(report):
-    """On GitHub Actions, report each failing test as an annotation (readable without the job log)."""
+    """Keep each test's outcome for the verification report; on GitHub Actions, report each failing test as an
+    annotation (readable without the job log)."""
+    if report.when == "call" or (report.when == "setup" and report.outcome != "passed"):
+        RECORDER.set_outcome(report.nodeid, report.outcome)
     if os.environ.get("GITHUB_ACTIONS") != "true" or not report.failed:
         return
     path, line, _ = report.location

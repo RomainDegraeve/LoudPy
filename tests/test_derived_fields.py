@@ -58,7 +58,7 @@ def test_von_mises_of_an_amplitude_is_its_maximum_over_the_cycle():
     np.testing.assert_allclose(vm, brute, rtol=1e-7)
 
 
-def test_particle_velocity_and_intensity():
+def test_particle_velocity_and_intensity(verify):
     c, rho, f = 343.0, 1.2, 500.0
     w, k = 2 * np.pi * f, 2 * np.pi * f / c
     mesh = square(6, 2, 0.5, "air")
@@ -70,6 +70,8 @@ def test_particle_velocity_and_intensity():
     fine = square(30, 2, 0.5, "air")
     wave = lp.Field("p", fine, np.exp(-1j * k * fine.coords[:, 1]), f)                         # plane wave along z
     inten = derived.intensity(wave, {"air": {"rho": rho}})
+    verify("Results", "Active intensity of a plane wave (P2, kh = 0.08)", "max relative error vs |p|²/(2ρc)",
+           np.abs(inten.values[:, 1] * 2 * rho * c - 1).max(), bound=3e-3, reference="plane wave")
     np.testing.assert_allclose(inten.values[:, 1], 1 / (2 * rho * c), rtol=3e-3)               # |p|² / (2ρc)
     np.testing.assert_allclose(inten.values[:, 0], 0.0, atol=1e-12)
 

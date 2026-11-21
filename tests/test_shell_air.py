@@ -35,7 +35,7 @@ def test_coupling_identities():
     assert np.isclose(f, -V, rtol=1e-12)
 
 
-def test_cavity_backed_panel_air_spring():
+def test_cavity_backed_panel_air_spring(verify):
     """Simply supported steel panel (2 mm, 0.3 × 0.3 m) on a rigid 0.1 m deep box: the first coupled mode is the
     in-vacuo panel mode stiffened by the air, f² ≈ f_p² + f_air², f_air² = 64 ρc² / (π⁴ ρ_s h L) / (2π)²
     (uniform pressure, ≪ the first cavity mode at 572 Hz); the remaining −0.15 % is the air's added mass."""
@@ -50,13 +50,16 @@ def test_cavity_backed_panel_air_spring():
     f_air = np.sqrt(64 * RHO * C ** 2 / (np.pi ** 4 * steel.rho * h * L)) / (2 * np.pi)
     f, d, p = direct_modes(shell, walls.coupling(len(nodes)), H, Ma, RHO, C, 3)
     expected = np.hypot(f_vac, f_air)
+    verify("Shells", "Cavity-backed panel: air spring (direct shell–air coupling)",
+           "f₁ / √(f_vacuo² + f_air²) − 1", f[0] / expected - 1, bound=(-0.004, 0.0),
+           reference="uniform-pressure air spring 64ρc²/(π⁴ρ_s h L)", note="The remainder is the air's added mass.")
     assert -0.004 < f[0] / expected - 1 < 0.0, (f[0], expected)
     # the panel moves into the air where the pressure is high: the pressure is uniform to a few % at 117 Hz
     pm = p[0] * np.sign(p[0][np.argmax(np.abs(p[0]))])
     assert pm.min() > 0.9 * pm.max()
 
 
-def test_rigid_wall_limit():
+def test_rigid_wall_limit(verify):
     """Gate I: all six walls elastic (MDF, 18 mm, clamped panel edges, first panel mode 1.08 kHz): the four
     lowest non-uniform cavity modes (572–894 Hz) move by up to 3.3e-3; with E × 10 and × 100 they approach the
     rigid-wall modes of the same air mesh as 1/E (1.4e-4, 1.3e-5)."""
@@ -75,6 +78,10 @@ def test_rigid_wall_limit():
         f, _, _ = direct_modes(shell, A, H, Ma, RHO, C, 12, f_shift=0.5 * f_rigid[0])
         near = np.array([f[np.argmin(np.abs(f - fr))] for fr in f_rigid])
         dev.append(np.abs(near / f_rigid - 1).max())
+    for scale, d in zip((1, 10, 100), dev):
+        verify("Shells", "Rigid-wall limit: six MDF walls on a box cavity", f"max cavity-mode shift, E × {scale}", d,
+               bound=2e-5 if scale == 100 else None, reference="rigid-wall modes of the same air mesh",
+               note="Expected to fall as 1/E.")
     assert 1e-3 < dev[0] < 1e-2 and dev[2] < 2e-5, dev
     assert 9 < dev[1] / dev[2] < 11, dev
 

@@ -39,7 +39,7 @@ MESHES = {"tri": lambda n, p: fm.unit_square(n, p), "quad": lambda n, p: fm.unit
 
 @pytest.mark.parametrize("mesh, p", [("tri", 1), ("tri", 2), ("tri", 3), ("quad", 1), ("quad", 2),
                                      ("curved", 1), ("curved", 2), ("curved", 3)])
-def test_recovery_effectivity(mesh, p):
+def test_recovery_effectivity(mesh, p, verify):
     eff, ratio = [], []
     for n in (8, 16):
         m = MESHES[mesh](n, p)
@@ -48,6 +48,9 @@ def test_recovery_effectivity(mesh, p):
         e = energy_error(sp, U, du2)
         eff.append(np.sqrt(est.recovery_indicator(sp, U).sum()) / e)
         ratio.append(np.sqrt(est.residual_indicator(sp, U, f2).sum()) / e)
+    verify("Error estimation", "Recovery estimator effectivity (estimate / true energy error)",
+           f"{mesh} P{p}" if mesh != "quad" else f"quad Q{p}", eff[-1], bound=(0.8, 1.5),
+           reference="manufactured Poisson solution", note="n = 16 cells per side (curved: quarter annulus).")
     assert 0.8 <= eff[-1] <= 1.5, eff
     assert abs(eff[-1] - 1) <= abs(eff[0] - 1) + 0.02, eff                  # towards 1 as h → 0
     if mesh != "curved" or p < 3:                                          # residual: the error's rate

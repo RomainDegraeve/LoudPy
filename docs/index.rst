@@ -51,6 +51,7 @@ NumPy, pandas and files.
    guide/file_format
    guide/architecture
    guide/elements
+   guide/verification_report
    guide/conventions
 
 Indices

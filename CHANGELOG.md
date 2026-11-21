@@ -8,6 +8,9 @@ versions follow [Semantic Versioning](https://semver.org/) (0.x: the API may sti
 The roadmap of this work is in `docs/ROADMAP.md`.
 
 ### Added
+- `lp.read_comsol(path)` (COMSOL text exports → `ComsolTable`, `.data(x, y)`) and `lp.compare(ours, reference,
+  rtol=…, metric=…)` (interpolated comparison, maximum error and where). Verification report generated from the
+  tests' own measurements: `pytest --slow --verification-report docs/guide/verification_report.rst`.
 - `lp.plot.selection(model | scene | mesh, selector)`: what a selector selects, on the mesh (2D domains and
   edges; 3D surface groups). `lp.plot.html(field(s), path)` / `Field.export("x.html")`: an interactive viewer in
   one self-contained HTML file (WebGL, frames with a slider). Image-comparison tests of the plots

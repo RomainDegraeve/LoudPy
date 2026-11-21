@@ -34,7 +34,7 @@ Cost unit: one *session* ≈ one long working block (3–5 h). Status: ✅ done 
 | H | Error estimation and adaptivity: recovery and residual indicators, `lp.Adaptive`, `lp.convergence` | 3 | ✅ |
 | I | Shells: MITC3/MITC4 Reissner–Mindlin, direct coupling to the 3D air, wall-mode study, elastic-wall enclosure example | 4 | ✅ |
 | J | Plotting: scoped style everywhere, selections in 3D views, interactive HTML viewer, image-comparison tests | 1.5 | ✅ |
-| K | Verification and validation pipeline: manufactured solutions, analytical benchmarks, COMSOL harness, generated verification report | 3 (spread) | ◐ |
+| K | Verification and validation pipeline: manufactured solutions, analytical benchmarks, COMSOL harness, generated verification report | 3 (spread) | ✅ (COMSOL reference numbers later) |
 | L | Code quality and documentation: no private cross-imports, 100 % public docstrings, mypy, theory and verification manuals | 2 | ○ |
 | M | Full re-run of every example (incl. the coupled 2D ones, whose stored results predate the C1 coupling fix and the damping refits), comparison table, version 0.2.0 | 2 + ~6 h compute | ○ |
 
@@ -780,3 +780,36 @@ flexibility of the wall modes (point loads converge slowly), walls in 2D axisymm
 | image tests | 6 baselines, RMS comparison with texts hidden; pass locally (the Linux CI run decides the cross-machine tolerance) |
 | HTML export | `lp.plot.html` / `Field.export(".html")`: self-contained (no external script), arrays decode to the mesh and values, frames share one range; visual check in a browser still to do |
 | global matplotlib style untouched | `test_global_style_untouched`: rcParams identical before / after every lp.plot function |
+
+## Phase K — done (gate report at the end of this section)
+
+The manufactured solutions and the analytical benchmarks were built phase by phase (A, D, G, H, I: listed in each
+phase's notes). Phase K adds what turns them into a pipeline:
+
+- **Recorded measurements** (`tests/support/verification.py`, fixture `verify` in `tests/conftest.py`): a
+  verification test records each number it measures (area, case, quantity, value, its own bound, reference, note);
+  the outcome of the test is attached at the end of the run; every run writes `tests/.cache/verification.json`.
+  Recorded in 12 test files: Kirchhoff plate, rectangular cavity (errors and order), pulsating hemisphere, swept
+  volume, energy balance, air vs Cramer; MMS orders (P1–P3, Q1–Q2, axisymmetric, tetrahedra); recovery
+  effectivities; adaptive vs uniform; shells (SS plate MITC4 / MITC3, orders, clamped disk, air spring,
+  rigid-wall limit); 2D far field of monopoles; radiated power two ways; Thiele–Small; plane-wave intensity.
+- **Generated report**: `pytest --slow --verification-report docs/guide/verification_report.rst` writes the
+  report (reStructuredText, in the docs under "Verification report"): per area and case the reference, notes and
+  a table value / bound / status / test, plus versions, machine and date. Committed from this phase's run:
+  **66 measured quantities from 38 tests, all passed** (macOS arm64). Regenerate it at each release (phase M).
+- **COMSOL harness** (`loudpy.results.comsol`, `lp.read_comsol`, `lp.compare`): reads COMSOL text exports (`%`
+  headers with model / version / date, column names with units, complex `a+bi`, any separator; columns found by
+  name, name without unit, or unique word), `ComsolTable.data(x, y)` → `lp.Data`; `lp.compare(ours, reference,
+  rtol, metric="relative" | "pointwise" | "db")` interpolates the reference on loudpy's points (log f for
+  frequencies, complex parts separately) and returns the maximum error, where, and the verdict. Reference cases:
+  `tests/test_comsol.py::CASES` with `tests/data/comsol/README.md` (what to export); a case whose export is
+  missing is skipped — the reference numbers are to come later, as decided in the plan.
+
+**Gate K report** (no gate was set in the plan; checked against the row's content):
+
+| Item | Result |
+|---|---|
+| manufactured solutions | orders recorded for P1–P3, Q1–Q2 (Poisson, Helmholtz, axisymmetric) and P1–P3 tetrahedra, each against its bound |
+| analytical benchmarks | plates (3D elasticity, MITC3 / MITC4), cavity, hemisphere, air, monopole far field, plane-wave intensity, air spring, rigid-wall limit, energy balance, swept volume |
+| COMSOL harness | reader + comparison tested on synthetic exports; reference cases registered, skipped until the exports exist |
+| generated verification report | `docs/guide/verification_report.rst`, 66 quantities / 38 tests, built by the docs |

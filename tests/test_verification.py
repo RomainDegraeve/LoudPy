@@ -31,7 +31,7 @@ def _bending(modes_of_order, m):
     return np.sort(modes_of_order.frequencies if m == 0 else modes_of_order.frequencies[bend])
 
 
-def test_clamped_plate_matches_kirchhoff(tmp_path):
+def test_clamped_plate_matches_kirchhoff(tmp_path, verify):
     """
     3D elasticity (no plate assumption) on an h/a = 0.02 plate: within 0.5 % of Kirchhoff and below it
     (shear and rotary inertia lower the frequencies; the mesh is converged to 0.02 % here).
@@ -44,6 +44,10 @@ def test_clamped_plate_matches_kirchhoff(tmp_path):
     scale = np.sqrt(E * H ** 3 / (12 * (1 - NU ** 2)) / (RHO * H)) / (2 * np.pi * A ** 2)
     for (m, n), lam in LAMBDA2.items():
         f_fe, f_ex = _bending(modes.order(m), m)[n - 1], lam * scale
+        verify("Structure", "Clamped circular plate, 3D elasticity vs Kirchhoff", f"f({m},{n}) relative error",
+               (f_fe - f_ex) / f_ex, bound=(-0.005, 0.0), reference="Leissa, NASA SP-160 (1969), table 2.1",
+               note="Axisymmetric P2 elasticity with Fourier orders m = 0–2, h/a = 0.02 (below Kirchhoff: shear "
+                    "and rotary inertia).")
         assert -0.005 < (f_fe - f_ex) / f_ex < 0.0, (m, n, f_fe, f_ex)
 
 
@@ -59,18 +63,24 @@ def _cavity_error(tmp_path, h):
     return np.max(np.abs(freqs[1:] - exact[1:]) / exact[1:])
 
 
-def test_rect_cavity_modes_converge_at_order_four(tmp_path):
+def test_rect_cavity_modes_converge_at_order_four(tmp_path, verify):
     """
     P2 tetrahedra: eigenvalue errors O(h^{2p}) = O(h^4). Observed order > 3.3 between h = 3 cm and 2 cm,
     and every mode below 1.5 kHz within 2e-4 at h = 2 cm.
     """
     e1, e2 = _cavity_error(tmp_path, 0.03), _cavity_error(tmp_path, 0.02)
     order = np.log(e1 / e2) / np.log(0.03 / 0.02)
+    case = "Rigid rectangular cavity, 3D P2 acoustics"
+    kw = dict(reference="exact modes c/2 √((i/lx)² + (j/ly)² + (k/lz)²)",
+              note="0.30 × 0.20 × 0.14 m, every mode below 1.5 kHz; expected order 2p = 4.")
+    verify("Acoustics", case, "max relative error, h = 3 cm", e1, **kw)
+    verify("Acoustics", case, "max relative error, h = 2 cm", e2, bound=2e-4, **kw)
+    verify("Acoustics", case, "observed order", order, bound=3.3, kind="min", **kw)
     assert e2 < 2e-4 and order > 3.3, (e1, e2, order)
 
 
 # ── pulsating hemisphere on a rigid ground ───────────────────────────────────
-def test_pulsating_hemisphere_radiation(tmp_path):
+def test_pulsating_hemisphere_radiation(tmp_path, verify):
     """
     Exterior FE + exact half-space DtN against the analytical monopole field at 1 m, on isoparametric
     P2 tetrahedra (gmsh's mid-edge nodes on the spheres). The former straight-sided cells (faceted
@@ -85,6 +95,11 @@ def test_pulsating_hemisphere_radiation(tmp_path):
         fe, exact = api.hemisphere_radiation(d, [200.0, 1000.0], h=h, curved=True)
         errs.append(np.linalg.norm(fe - exact, axis=1) / np.linalg.norm(exact, axis=1))
     coarse, fine = errs
+    for h, e in zip((0.05, 0.035), errs):
+        for f, v in zip((200, 1000), e):
+            verify("Acoustics", "Pulsating hemisphere on a rigid ground, exterior FE + half-space DtN",
+                   f"relative error at 1 m, {f} Hz, h = {h * 100:g} cm", v, bound=1e-3 if h == 0.035 else None,
+                   reference="analytical monopole field", note="Curved (isoparametric) P2 tetrahedra.")
     assert fine.max() < coarse.max() and fine.max() < 1e-3, (coarse, fine)
 
 
@@ -94,7 +109,7 @@ def fsi_energy(mesh_dir):
     return api.speaker_fsi_energy(mesh_dir, [50.0, 300.0, 2000.0])
 
 
-def test_coupling_sweeps_the_right_volume(fsi_energy):
+def test_coupling_sweeps_the_right_volume(fsi_energy, verify):
     """
     A unit rigid axial translation of the structure sweeps π r_max² through each interface (both
     span from the axis to r_max): front +, rear − (n_s points into the front / rear air). Checks the
@@ -102,11 +117,13 @@ def test_coupling_sweeps_the_right_volume(fsi_energy):
     """
     for name, V in fsi_energy["swept"].items():
         exact = np.pi * fsi_energy["r_max"][name] ** 2
+        verify("Coupling", "Swept volume of a rigid translation (2D speaker)", f"relative error, {name}",
+               abs(abs(V) - exact) / exact, bound=1e-9, reference="π r_max²")
         assert abs(abs(V) - exact) < 1e-9 * exact, (name, V, exact)
         assert np.sign(V) == (1 if "front" in name else -1), name
 
 
-def test_coupled_energy_balance(fsi_energy):
+def test_coupled_energy_balance(fsi_energy, verify):
     """
     Power given by the coil = power dissipated in the structure + power radiated into each air
     region, each radiated power positive (the PML absorbs it). Exact for the discrete system when
@@ -118,6 +135,9 @@ def test_coupled_energy_balance(fsi_energy):
         radiated = [P[k] for P in e["P_air"].values()]
         assert all(P > 0 for P in radiated), (f, radiated)
         residual = e["P_in"][k] - e["P_diss"][k] - sum(radiated)
+        verify("Coupling", "Energy balance of the coupled speaker (coil = losses + radiated)",
+               f"relative residual, {f:g} Hz", abs(residual) / e["P_in"][k], bound=1e-8,
+               reference="exact for the discrete system")
         assert abs(residual) < 1e-8 * e["P_in"][k], (f, residual / e["P_in"][k])
 
 
@@ -144,7 +164,7 @@ def _cramer_c(t, p, rh, xc=4e-4):
             + a[12] * xw ** 2 + a[13] * p ** 2 + a[14] * xc ** 2 + a[15] * xw * p * xc)
 
 
-def test_air_matches_cramer():
+def test_air_matches_cramer(verify):
     """
     Speed of sound of lp.air within 0.06 % of Cramer over 0–40 °C, 80–101 kPa, 0–100 % RH (measured
     0.048 %; the ideal-gas model ignores the small dispersion of γ with temperature and the CO2).
@@ -153,6 +173,8 @@ def test_air_matches_cramer():
     for t, p, rh in itertools.product(range(0, 41, 5), (80e3, 90e3, 101325.0), (0.0, 0.25, 0.5, 0.75, 1.0)):
         ours, ref = lp.air(t + 273.15, p, rh).c, _cramer_c(t, p, rh)
         worst = max(worst, abs(ours - ref) / ref)
+    verify("Materials", "Speed of sound of lp.air", "max relative difference, 0–40 °C, 80–101 kPa, 0–100 % RH",
+           worst, bound=6e-4, reference="Cramer, JASA 93 (1993) 2510")
     assert worst < 6e-4, worst
 
 

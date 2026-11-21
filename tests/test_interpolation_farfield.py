@@ -98,7 +98,7 @@ def annulus(r_in, r_out, h, baffled):
 
 
 @pytest.mark.parametrize("baffled", [False, True])
-def test_far_field_of_monopoles_from_the_file(tmp_path, baffled):
+def test_far_field_of_monopoles_from_the_file(tmp_path, baffled, verify):
     """Analytical monopole (above a rigid baffle: plus its image) on the nodes of an air mesh, saved and read
     back: the Kirchhoff–Helmholtz far field at 3 m equals the analytical field."""
     c, f = 343.0, np.array([200.0, 1000.0])
@@ -115,6 +115,10 @@ def test_far_field_of_monopoles_from_the_file(tmp_path, baffled):
     ff = np.asarray(res.far_field(arc, radius=0.3, baffle=0.0 if baffled else None, c=c))
     exact = p(arc.points(2))
     err = np.abs(ff - exact).max(axis=1) / np.abs(exact).max(axis=1)
+    for fr, e, b in zip(f, err, (1e-4, 1e-3)):
+        verify("Results", "2D far field (Kirchhoff–Helmholtz) of monopoles, from a saved file",
+               f"{'baffled' if baffled else 'free field'}, {fr:g} Hz, max error at 3 m", e, bound=b,
+               reference="analytical monopole (and its image)", note="P2 air mesh, h = 1 cm, sphere R = 0.3 m.")
     assert err[0] < 1e-4 and err[1] < 1e-3, err
     with pytest.raises(lp.errors.SelectionError, match="outside the integration sphere"):
         res.far_field([(0.0, 0.2)], radius=0.3, c=c)

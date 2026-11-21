@@ -171,7 +171,7 @@ def f2(x, k2=0.0):
 
 
 @pytest.mark.parametrize("quads,p", [(False, 1), (False, 2), (False, 3), (True, 1), (True, 2)])
-def test_convergence_2d(quads, p):
+def test_convergence_2d(quads, p, verify):
     """Poisson and Helmholtz (k² = 4): L2 error order p + 1 on structured meshes."""
     hs, e_poisson, e_helm = [], [], []
     for n in (4, 8, 16):
@@ -181,7 +181,10 @@ def test_convergence_2d(quads, p):
         e_poisson.append(l2_error(sp, solve_poisson(sp, f2, u2, m["boundary_tags"]), u2))
         U = solve_poisson(sp, lambda x: f2(x, 4.0), u2, m["boundary_tags"], k2=4.0)
         e_helm.append(l2_error(sp, U, u2))
-    for e in (e_poisson, e_helm):
+    cell = f"{'Q' if quads else 'P'}{p}"
+    for what, e in (("Poisson", e_poisson), ("Helmholtz k² = 4", e_helm)):
+        verify("FE core", "Convergence orders, manufactured solutions (L2 error, expected p + 1)",
+               f"{cell} {what}, structured 2D", order(e, hs), bound=p + 1 - 0.15, kind="min", reference="u = exact")
         assert order(e, hs) > p + 1 - 0.15, (p, quads, e)
 
 
@@ -195,7 +198,7 @@ def f_axi(x):
 
 
 @pytest.mark.parametrize("quads,p", [(False, 1), (False, 2), (False, 3), (True, 1), (True, 2)])
-def test_convergence_axisymmetric(quads, p):
+def test_convergence_axisymmetric(quads, p, verify):
     """−(1/r)(r u_r)_r − u_zz = f on [0,1]²: natural condition on the axis, order p + 1."""
     hs, errs = [], []
     for n in (4, 8, 16):
@@ -207,6 +210,9 @@ def test_convergence_axisymmetric(quads, p):
         U = solve_poisson(sp, f_axi, u_axi, sp.tags[bd_rows], axisym=True)
         hs.append(1.0 / n)
         errs.append(l2_error(sp, U, u_axi, axisym=True))
+    verify("FE core", "Convergence orders, manufactured solutions (L2 error, expected p + 1)",
+           f"{'Q' if quads else 'P'}{p} axisymmetric", order(errs, hs), bound=p + 1 - 0.15, kind="min",
+           reference="u = exact")
     assert order(errs, hs) > p + 1 - 0.15, (p, quads, errs)
 
 
@@ -215,7 +221,7 @@ def u3(x):
 
 
 @pytest.mark.parametrize("p", [1, 2, 3])
-def test_convergence_3d(p):
+def test_convergence_3d(p, verify):
     """Tetrahedra P1–P3: −Δu = −1.5 u on unstructured meshes; h_eff = n_cells^(−1/3) (orders within 0.3)."""
     errs, hs = [], []
     for h in (0.25, 0.18):
@@ -223,6 +229,8 @@ def test_convergence_3d(p):
         sp = make_space(m)
         hs.append(len(m["cells"]) ** (-1 / 3))
         errs.append(l2_error(sp, solve_poisson(sp, lambda x: -1.5 * u3(x), u3, m["boundary_tags"]), u3))
+    verify("FE core", "Convergence orders, manufactured solutions (L2 error, expected p + 1)",
+           f"P{p} tetrahedra, unstructured", order(errs, hs), bound=p + 1 - 0.3, kind="min", reference="u = exact")
     assert order(errs, hs) > p + 1 - 0.3, (p, errs)
 
 
