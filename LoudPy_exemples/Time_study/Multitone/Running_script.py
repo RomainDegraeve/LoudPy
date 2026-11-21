@@ -7,8 +7,9 @@ the steady-state block (after the ramp) then has no leakage.
 
 What this produces
 ------------------
-    Results/Files/time.h5   — u, v, a at every node and time step (loudpy result format 2), with the
-                        signal parameters in its metadata (t_ramp, freqs_tones, …)
+    Results/Files/time.h5   — u, v, a at the cone tip at every step (full rate, a probe) and u on the mesh every
+                        STORE_EVERY steps (loudpy result format 3), with the signal parameters in its metadata
+                        (t_ramp, freqs_tones, …). Storing u, v, a at every node and step would take 8.7 GB.
 
 Then run Loading_script.py.
 """
@@ -91,7 +92,9 @@ model.mesh(mesh_path)
 
 # ── Solve ──────────────────────────────────────────────────────────────────────
 study = lp.Transient(model, drive=lp.Force(signal, fs=FS), rho_inf=0.98, nr_tol=1e-6, nr_max_iter=10)
-res = study.solve()
+STORE_EVERY = 40               # fields every 40 steps (1.2 kHz): enough for the snapshots and the animation
+output = lp.Output(fields=["u"], every=STORE_EVERY, probes={"tip": (0.0, 0.0)})     # tip: full rate (48 kHz)
+res = study.solve(output=output)
 print(res)
 study.save(out_path, case="multitone", f_min=F_MIN, f_max=F_MAX, freqs_tones=freqs,
            t_total=T_RAMP + T_BLOCK, t_ramp=T_RAMP, seed=SEED, force_amplitude=FORCE_AMPLITUDE)

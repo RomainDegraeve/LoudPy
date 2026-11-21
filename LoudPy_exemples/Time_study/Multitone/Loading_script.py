@@ -25,9 +25,8 @@ res = lp.load(here / "Files/time.h5")
 print(res)
 t_ramp = res.meta.get("t_ramp")                          # steady state after the ramp
 tones = np.asarray(res.meta.get("freqs_tones", []), float)
-tip = (0.0, 0.0)
-u, v, a = res.displacement(tip, "z"), res.velocity(tip, "z"), res.acceleration(tip, "z")
-np.savetxt(here / "Files/tip.csv", np.column_stack([res.times, u, v, a]), delimiter=",",
+u, v, a = (res.probe_signal("tip", f, "z") for f in ("u", "v", "a"))    # full rate (lp.Output probe)
+np.savetxt(here / "Files/tip.csv", np.column_stack([u.coords["t"], u, v, a]), delimiter=",",
            header="t [s],u_z [m],v_z [m/s],a_z [m/s²]")
 
 fig, ax = lp.plot.figure("tall", 3, 1, sharex=True)

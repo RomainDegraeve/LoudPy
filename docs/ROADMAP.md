@@ -907,3 +907,16 @@ phase's notes). Phase K adds what turns them into a pipeline:
 |---|---|
 | all examples at full size | 28 / 28 steps (13 Running, 12 Loading, 3 validations), as committed |
 | differences explained | yes, by the C1 coupling fix (coupled 2D), the damping refits (every damped result), the phase B air (3D: +0.06 % on the frequencies, as expected); two items are hypotheses: isolated grid points of the undamped merged air (vented, labyrinth), and directivity nulls; the transient had no comparable stored run |
+
+## After 0.2.0
+
+- **Output control** (`a42ef75`, first item of `docs/REVIEW-0.2.0.md`): `lp.Output(fields=…, every=n, probes={name: point})`
+  on `solve(output=…)` of `lp.Modes`, `lp.FrequencyResponse` and `lp.Transient` (2D models; scenes stream with
+  `store=`). Probes are evaluated on every field at every entry before the fields are thinned and saved with the
+  results (attachment "probes"); `res.probe_signal(name, field, component)`, `res.probe_names`. Tests
+  (`tests/test_output.py`): thinned fields equal the full ones at the kept entries, probes equal the full results'
+  evaluation exactly (transient) and to the solver's round-off between two runs (frequency, 1.7e-8), file round
+  trip, checks. The multitone example now keeps u every 40 steps (1.2 kHz, Nyquist 600 Hz: snapshots and animation)
+  and the tip at every step (48 kHz): its file went from 8.7 GB to 76 MB, and the tip signal (u, v, a over 48 000
+  steps) is bit-identical to the full-field run. The fields were already gzip-compressed in the writer, so
+  compression was not the issue.
