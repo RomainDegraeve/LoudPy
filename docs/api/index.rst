@@ -111,6 +111,27 @@ Evaluated data and selections
    Line
    results.Quantity
 
+Describing a simulation (lp.schema)
+-----------------------------------
+
+Every building block with its parameters, for programs (the interface's forms): :doc:`../guide/building_blocks`.
+
+.. autosummary::
+   :toctree: generated
+   :nosignatures:
+
+   schema.catalog
+   schema.block
+   schema.blocks
+   schema.defaults
+   schema.describe
+   schema.check
+   schema.build
+   schema.to_value
+   schema.from_value
+   schema.reference_rst
+   schema.Param
+
 Plotting
 --------
 

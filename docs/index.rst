@@ -49,6 +49,7 @@ NumPy, pandas and files.
    :caption: Reference
 
    api/index
+   guide/building_blocks
    guide/file_format
    guide/architecture
    guide/theory

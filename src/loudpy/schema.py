@@ -1,0 +1,834 @@
+"""
+What a simulation is made of, described for programs (the interface, checks, documentation): every building block a
+script composes — model, regions, boundaries, mesh controls, materials, damping, drives, selectors, studies and their
+options, transient signals, a 3D scene's cabinet, drivers and air — with its parameters: kind of value, unit, help,
+choices, limits, default and the form group it is shown in. The defaults are read from the code (the signatures), and
+the tests check that every parameter of every block is described and every public building block is in the catalog:
+the description cannot drift from the API without a test failing.
+
+    lp.schema.blocks("regions")              [Block Solid, Block Air, Block PML]
+    b = lp.schema.block("PML")               b.params: (Param name, Param on, …, Param thickness [m], …)
+    node = lp.schema.defaults("Solid")       {"type": "Solid", "params": {"name": "solid", "material": …}}
+    node = lp.schema.describe(lp.Solid("cone", "Paper", mesh_size=1e-3))
+                                             {"type": "Solid", "params": {"name": "cone", "material": "Paper",
+                                              "mesh_size": 0.001}}       (what differs from the defaults)
+    lp.schema.check(node)                    [] or the problems ("Solid.mesh_size: > 0, got -1")
+    obj = lp.schema.build(node)              lp.Solid("cone", "Paper", mesh_size=0.001) again
+    study, solve_kwargs = lp.schema.build(fr_node, model=model)       a study: its object and what .solve takes
+
+A node is plain data (JSON): {"type": <block type>, "params": {name: value}}. Values: numbers, strings, booleans, None,
+lists, nested nodes (a damping, a drive, a selector, a profile …), {"P": "h", "scale": …, "offset": …} for a parameter
+reference lp.P, {"complex": [re, im]} for a complex amplitude. Block types are written as in a script after `lp.`:
+"Solid", "cabinets.Box", "Scene.cavity", "Driver.from_modes", "signals.sine".
+
+Sections (where a block goes): model, materials, regions, boundaries, mesh_controls, damping, drives,
+selectors, profiles, studies, study_options, signals, scene, scene.cabinet, scene.cabinet_parts, scene.drivers,
+scene.placement, scene.air, scene.walls.
+"""
+from __future__ import annotations
+
+import dataclasses
+import inspect
+from dataclasses import dataclass, field, replace
+from pathlib import Path
+from typing import Any, Callable
+
+import numpy as np
+
+from loudpy.errors import ModelError
+
+
+class SchemaError(ModelError):
+    """A node that does not describe a building block (unknown type or parameter, a value of the wrong kind)."""
+
+
+REQUIRED = inspect.Parameter.empty                     # the default of a parameter without one
+
+KINDS = {
+    "text": "a string", "number": "a real number", "integer": "an integer", "bool": "true / false",
+    "choice": "one of the choices", "complex": "a real or complex number ({'complex': [re, im]})",
+    "file": "a file path", "point": "coordinates (a list of numbers)", "pair": "two numbers",
+    "range": "a number or two numbers (min, max)", "numbers": "a list of numbers", "integers": "a list of integers",
+    "texts": "a list of strings", "pairs": "a list of number pairs", "mapping": "a mapping name → value",
+    "selection": "a group name or a selector node", "material": "a library name or a Material node",
+    "block": "a node of the section `of`", "blocks": "a list of nodes of the section `of`",
+    "frequencies": "a list of frequencies [Hz]", "signal": "a list of samples or a signals node",
+}
+_TUPLE_KINDS = {"point", "pair", "range"}
+
+
+@dataclass(frozen=True)
+class Param:
+    """One parameter of a block. kind: KINDS; unit: SI unit of the value; group: the form section it is shown in;
+    optional: None is allowed (an override: "the material's"); min: values must be > min (≥ with min_inclusive);
+    of: for kind "block" / "blocks", the section of the nested nodes; stage: "solve" for an argument of a study's
+    .solve(); default: from the code (REQUIRED: none)."""
+    name: str
+    kind: str
+    unit: str = ""
+    help: str = ""
+    group: str = ""
+    choices: tuple = ()
+    min: float | None = None
+    min_inclusive: bool = False
+    optional: bool = False
+    of: str = ""
+    stage: str = ""
+    default: Any = REQUIRED
+
+    @property
+    def required(self) -> bool:
+        """True when the code gives it no default (a value must be given)."""
+        return self.default is REQUIRED
+
+    def label(self) -> str:
+        """"thickness [m]": the name and the unit."""
+        return self.name.replace("_", " ") + (f" [{self.unit}]" if self.unit else "")
+
+
+@dataclass(frozen=True)
+class Block:
+    """A building block: its type (as written after `lp.`), section, summary, parameters and how it is made.
+    context: arguments the surroundings give (the model a study runs on, the scene a setting applies to);
+    code_only: arguments a script can give that the description leaves out, with why."""
+    type: str
+    section: str
+    summary: str
+    params: tuple[Param, ...]
+    target: Callable = field(repr=False, compare=False)
+    context: tuple[str, ...] = ()
+    code_only: dict = field(default_factory=dict)
+    solve: Callable | None = field(default=None, repr=False, compare=False)
+    varargs: str = ""                                  # a parameter passed as *args (Group(*labels))
+
+    def param(self, name: str) -> Param:
+        """The parameter called `name` (SchemaError if there is none)."""
+        for p in self.params:
+            if p.name == name:
+                return p
+        raise SchemaError(f"{self.type} has no parameter {name!r}: {[p.name for p in self.params]}")
+
+    def groups(self) -> list[str]:
+        """The form groups of its parameters, in order."""
+        out: list[str] = []
+        for p in self.params:
+            if p.group and p.group not in out:
+                out.append(p.group)
+        return out
+
+
+def _p(name, kind, unit="", help="", group="", **kw) -> Param:
+    return Param(name, kind, unit, help, group, **kw)
+
+
+def _signature(fn) -> dict:
+    """{name: inspect.Parameter} of a callable (a dataclass: its fields, default factories called)."""
+    sig = dict(inspect.signature(fn).parameters)
+    sig.pop("self", None)
+    if inspect.isclass(fn) and dataclasses.is_dataclass(fn):
+        for f in dataclasses.fields(fn):
+            if f.name in sig and f.default_factory is not dataclasses.MISSING:  # type: ignore[misc]
+                sig[f.name] = sig[f.name].replace(default=f.default_factory())  # type: ignore[misc]
+    return sig
+
+
+def _make(type_, section, target, params, *, context=(), code_only=None, solve=None, signature=None,
+          varargs="") -> Block:
+    sig = _signature(signature or target)
+    solve_sig = _signature(solve) if solve is not None else {}
+    filled = []
+    for p in params:
+        src = solve_sig if p.stage == "solve" else sig
+        par = src.get(p.name)
+        if par is None:
+            raise SchemaError(f"{type_}.{p.name} is described but not in the code's signature")
+        d = par.default
+        filled.append(replace(p, default=REQUIRED if d is inspect.Parameter.empty or par.kind is
+                              inspect.Parameter.VAR_POSITIONAL else d))
+    summary = (inspect.getdoc(target) or "").strip().split("\n\n")[0].replace("\n", " ")
+    return Block(type_, section, summary, tuple(filled), target, tuple(context), dict(code_only or {}), solve,
+                 varargs)
+
+
+# ── the catalog ────────────────────────────────────────────────────────────────────────────────────────────────────
+def _catalog() -> dict[str, Block]:
+    import loudpy as lp
+    from loudpy.geometry import selectors as sel
+    from loudpy.scene import cabinets as cab
+
+    NAME = _p("name", "text", help="a label: nothing physical is read from it", group="Identity")
+    ON = _p("on", "selection", help="the groups (or a selector) it applies to; default: the groups named like it",
+            group="Selection", optional=True)
+    ON_CURVES = replace(ON, help="the curves (groups or a selector) it applies to; default: the groups named like it")
+    MATERIAL = _p("material", "material", help="a name of the material library, or a Material", group="Material")
+    MESH = _p("mesh_size", "number", "m", "largest element size in these domains", "Mesh", min=0)
+    RHO = _p("rho", "number", "kg/m³", "density; empty: the material's", "Overrides", optional=True, min=0)
+    C = _p("c", "number", "m/s", "speed of sound; empty: the material's", "Overrides", optional=True, min=0)
+    OUTPUT = _p("output", "block", help="what the study keeps: fields, every n-th entry, probes", group="Output",
+                optional=True, of="study_options", stage="solve")
+    GROUND = ("x", "y", "z")
+
+    def open_air(type_, method, what):
+        return _make(type_, "scene.air", method, [
+            _p("ground", "choice", help="the axis normal to the rigid ground", group="Ground", choices=GROUND),
+            _p("level", "number", "m", "the ground's coordinate along that axis", "Ground"),
+            _p("margin", "number", "m", "hemisphere radius beyond the structure", "DtN hemisphere", min=0),
+            _p("bands", "pairs", "Hz", f"frequency bands (f_lo, f_hi): one {what} mesh each, sized for f_hi",
+               "Bands"),
+            _p("points_per_wavelength", "number", help="elements per wavelength at the band's f_hi", group="Mesh",
+               min=0),
+            _p("max_size", "number", "m", "largest element", "Mesh", min=0),
+            _p("driver_size", "number", "m", "element size on the drivers", "Mesh", min=0),
+            _p("near", "pair", "m", "size ramp distances from the drivers (start, end)", "Mesh"),
+            _p("plug_from", "number", "m", "local z where the driver plug starts", "Mesh"),
+            _p("file", "text", help="mesh file name pattern ({kind}, {f_hi})", group="Files")],
+            context=("scene",))
+
+    blocks = [
+        # model
+        _make("Model", "model", lp.Model, [
+            _p("geometry", "file", help="the geometry file (.geo, .step, .stp, .iges, .brep)", group="Geometry"),
+            _p("materials", "file", help="a material library file (JSON); empty: loudpy's library",
+               group="Materials", optional=True),
+            _p("mesh_order", "choice", help="element order: 2 (P2, curved) or 1", group="Mesh", choices=(1, 2)),
+            _p("grading", "number", help="element size growth away from small features (empty: gmsh's)",
+               group="Mesh", optional=True, min=0),
+            _p("parameters", "mapping", help="named values the items refer to with lp.P('name')",
+               group="Parameters", optional=True)],
+            signature=lp.Model.__init__,
+            code_only={"dim": "dim=3 gives a 3D scene: see Scene", "geometry (builder)": "a Python builder function"}),
+        # regions
+        _make("Solid", "regions", lp.Solid, [
+            NAME, ON, MATERIAL,
+            _p("damping", "block", help="Rayleigh: fitted to the material's loss factor · Hysteretic · Undamped",
+               group="Material", of="damping"),
+            MESH,
+            RHO, _p("E", "number", "Pa", "Young's modulus; empty: the material's", "Overrides", optional=True, min=0),
+            _p("nu", "number", help="Poisson's ratio; empty: the material's", group="Overrides", optional=True)]),
+        _make("Air", "regions", lp.Air, [NAME, ON, MATERIAL, MESH, RHO, C]),
+        _make("PML", "regions", lp.PML, [
+            NAME, replace(ON_CURVES, help="the base curves it grows from (straight lines r = const or z = const), "
+                                          "outward from the air; default: the groups named like it"),
+            MATERIAL,
+            _p("thickness", "number", "m", "layer thickness (a quarter wavelength at tuned_to is plenty)", "Layer",
+               min=0),
+            MESH,
+            _p("tuned_to", "number", "Hz", "the frequency the absorption is tuned to (empty: the study's)",
+               "Absorption", optional=True, min=0),
+            _p("order", "number", help="absorption profile: 1 linear, 2 quadratic", group="Absorption", min=0),
+            _p("strength", "number", help="absorption strength (larger: shorter decay, more reflection)",
+               group="Absorption", min=0),
+            RHO, C]),
+        # boundaries
+        _make("Clamped", "boundaries", lp.Clamped, [
+            NAME, ON_CURVES, _p("dofs", "choice", help="rz clamped · r radial only (the axis) · z axial only",
+                                group="Condition", choices=("rz", "r", "z"))]),
+        _make("Coil", "boundaries", lp.Coil, [
+            NAME, ON_CURVES, _p("direction", "choice", help="the coil's force direction", group="Condition",
+                                choices=("z", "r"))]),
+        _make("FluidStructure", "boundaries", lp.FluidStructure, [NAME, ON_CURVES]),
+        _make("Radiation", "boundaries", lp.Radiation, [NAME, ON_CURVES]),
+        # mesh controls
+        _make("MeshSize", "mesh_controls", lp.MeshSize, [
+            replace(ON, optional=False, help="the domain groups (or a selector)"),
+            _p("size", "number", "m", "element size there (overrides the regions' mesh_size)", "Mesh", min=0),
+            replace(NAME, optional=True)]),
+        # materials
+        _make("Material", "materials", lp.Material, [
+            replace(NAME, help="its name in the library"),
+            _p("kind", "choice", help="solid or fluid", group="Identity", choices=("solid", "fluid")),
+            _p("rho", "number", "kg/m³", "density", "Properties", optional=True, min=0),
+            _p("E", "number", "Pa", "Young's modulus (solid)", "Properties", optional=True, min=0),
+            _p("nu", "number", help="Poisson's ratio (solid)", group="Properties", optional=True),
+            _p("c", "number", "m/s", "speed of sound (fluid)", "Properties", optional=True, min=0),
+            _p("rayleigh", "pair", help="default Rayleigh fit (alpha [1/s], beta [s]): C = alpha M + beta K",
+               group="Damping", optional=True),
+            _p("loss_factor", "number", help="default hysteretic loss factor eta (solid)", group="Damping",
+               optional=True, min=0, min_inclusive=True),
+            _p("temperature", "number", "K", "reference temperature of the values", "Conditions", optional=True,
+               min=0),
+            _p("pressure", "number", "Pa", "static pressure (a gas from lp.air())", "Conditions", optional=True,
+               min=0),
+            _p("humidity", "number", help="relative humidity 0–1 (a gas from lp.air())", group="Conditions",
+               optional=True, min=0, min_inclusive=True),
+            _p("source", "text", help="where the values come from", group="Identity")]),
+        # damping
+        _make("Rayleigh", "damping", lp.Rayleigh, [
+            _p("alpha", "number", "1/s", "mass-proportional term (empty: the material's fit)", optional=True),
+            _p("beta", "number", "s", "stiffness-proportional term (empty: the material's fit)", optional=True)]),
+        _make("Hysteretic", "damping", lp.Hysteretic, [
+            _p("eta", "number", help="loss factor: K (1 + i eta) (empty: the material's)", optional=True, min=0,
+               min_inclusive=True)]),
+        _make("Undamped", "damping", lp.Undamped, []),
+        # drives
+        _make("Force", "drives", lp.Force, [
+            _p("amplitude", "complex", "N", "harmonic: a (complex) amplitude; transient: the force signal",
+               "Drive"),
+            _p("fs", "number", "Hz", "sampling rate of a force signal (transient)", "Drive", optional=True, min=0)]),
+        _make("Voltage", "drives", lp.Voltage, [
+            _p("amplitude", "complex", "V", "voltage amplitude on the coil", "Drive"),
+            _p("Re", "number", "Ω", "coil resistance", "Coil", min=0, min_inclusive=True),
+            _p("Bl", "number", "T·m", "force factor", "Coil"),
+            _p("Le", "number", "H", "coil (semi-)inductance", "Coil", min=0, min_inclusive=True),
+            _p("n", "number", help="semi-inductance exponent: Z_L = Le (jω)^n (1: a plain inductance)",
+               group="Coil", min=0)]),
+        # selectors
+        _make("Group", "selectors", sel.Group, [
+            _p("labels", "texts", help="names of physical groups of the geometry")], varargs="labels"),
+        _make("Box", "selectors", sel.Box, [
+            _p("r", "range", "m", "r = value, or min ≤ r ≤ max (2D)", optional=True),
+            _p("z", "range", "m", "z = value, or min ≤ z ≤ max (2D)", optional=True),
+            _p("x", "range", "m", "x = value, or a range (3D)", optional=True),
+            _p("y", "range", "m", "y = value, or a range (3D)", optional=True),
+            _p("tol", "number", "m", "tolerance (empty: relative to the geometry)", optional=True, min=0)]),
+        _make("Near", "selectors", sel.Near, [_p("point", "point", "m", "the entity nearest this point")]),
+        _make("Interface", "selectors", sel.Interface, [
+            _p("a", "selection", help="one side"), _p("b", "selection", help="the other side")]),
+        _make("BoundaryOf", "selectors", sel.BoundaryOf, [_p("a", "selection", help="the domains")]),
+        _make("Union", "selectors", sel._Union, [_p("a", "selection", help="a selection (either)"),
+                                                       _p("b", "selection", help="another selection")],
+              code_only={"syntax": "a | b"}),
+        _make("Intersection", "selectors", sel._Intersection, [_p("a", "selection", help="a selection (both)"),
+                                                       _p("b", "selection", help="another selection")],
+              code_only={"syntax": "a & b"}),
+        _make("Difference", "selectors", sel._Difference, [_p("a", "selection", help="a selection (the first without the second)"),
+                                                       _p("b", "selection", help="another selection")],
+              code_only={"syntax": "a - b"}),
+        _make("Item", "selectors", sel._Item, [], context=("item",),
+              code_only={"syntax": "a model item (region or boundary) used as a selector: what it covers"}),
+        # profiles (a driver's wet surfaces)
+        _make("Profile", "profiles", lp.Profile, [
+            _p("on", "selection", help="the curves of the driver's 2D geometry (a selector, or gmsh curve tags)"),
+            _p("start", "point", "m", "(r, z) on the baffle where the profile starts (empty: the chain's end "
+               "farthest from the axis)", optional=True),
+            _p("end", "point", "m", "(r, z) where it ends (empty: the chain's other end)", optional=True)]),
+        # studies
+        _make("Modes", "studies", lp.Modes, [
+            _p("physics", "choice", help="structure · acoustic · coupled (2D) · walls (a scene's elastic walls)",
+               group="Study", choices=("structure", "acoustic", "coupled", "walls")),
+            _p("f_max", "number", "Hz", "highest mode frequency", "Frequencies", min=0, stage="solve"),
+            _p("f_min", "number", "Hz", "lowest mode frequency", "Frequencies", min=0, min_inclusive=True,
+               stage="solve"),
+            _p("orders", "integers", help="azimuthal orders m (empty: the axisymmetric modes, m = 0)",
+               group="Frequencies", optional=True, stage="solve"),
+            _p("method", "choice", help="multishift: shifts over the band · arpack: n_modes around f_target",
+               group="Solver", choices=("multishift", "arpack"), stage="solve"),
+            _p("n_per_shift", "integer", help="modes per shift (multishift)", group="Solver", min=0,
+               stage="solve"),
+            _p("n_modes", "integer", help="modes around f_target (arpack)", group="Solver", min=0, stage="solve"),
+            _p("f_target", "number", "Hz", "centre of the arpack search", "Solver", min=0, stage="solve"),
+            OUTPUT],
+            context=("model",), solve=lp.Modes.solve,
+            code_only={"options": "solver options (f_targets, mac_tol, coupled-mode covering …): see Modes.solve"}),
+        _make("FrequencyResponse", "studies", lp.FrequencyResponse, [
+            _p("drive", "block", help="Force or Voltage on the coil (a scene: a Force, or one per driver)",
+               group="Drive", of="drives", optional=True),
+            _p("coupled", "bool", help="structure + air (empty: coupled when the model has air)", group="Study",
+               optional=True),
+            _p("reuse_factorization", "bool", help="reuse the factorization between close frequencies",
+               group="Solver"),
+            _p("freqs", "frequencies", "Hz", "the frequencies", "Frequencies", stage="solve"),
+            _p("remesh", "block", help="air and PML meshes per frequency band (PerWavelength)", group="Mesh",
+               of="study_options", optional=True, stage="solve"),
+            _p("store", "file", help="a scene's result file the 3D field is streamed to", group="Output",
+               optional=True, stage="solve"),
+            OUTPUT],
+            context=("model",), solve=lp.FrequencyResponse.solve,
+            code_only={"options": "solver options: see FrequencyResponse.solve",
+                       "drive (per driver)": "a scene's {driver name: Force}"}),
+        _make("Transient", "studies", lp.Transient, [
+            _p("drive", "block", help="a Force signal on the coil", group="Drive", of="drives"),
+            _p("nonlinear", "bool", help="the coil's geometric nonlinearity (Newton–Raphson)", group="Solver"),
+            _p("rho_inf", "number", help="generalised-α high-frequency dissipation (0–1)", group="Solver", min=0,
+               min_inclusive=True),
+            _p("nr_tol", "number", help="Newton–Raphson tolerance", group="Solver", min=0),
+            _p("nr_max_iter", "integer", help="Newton–Raphson iterations at most", group="Solver", min=0),
+            _p("n_steps", "integer", help="time steps (or a duration)", group="Time", optional=True, min=0,
+               stage="solve"),
+            _p("duration", "number", "s", "simulated time (or n_steps)", "Time", optional=True, min=0,
+               stage="solve"),
+            OUTPUT],
+            context=("model",), solve=lp.Transient.solve),
+        _make("Sweep", "studies", lp.Sweep, [
+            _p("parameters", "mapping", help="{parameter: values} (or one name, with values)", group="Sweep"),
+            _p("values", "numbers", help="the values of a single swept parameter", group="Sweep", optional=True),
+            _p("mesh_folder", "file", help="where each run's mesh goes", group="Files", optional=True),
+            _p("combine", "choice", help="grid: every combination · zip: the i-th values together", group="Sweep",
+               choices=("grid", "zip"))],
+            context=("study",), code_only={"solve arguments": "those of the wrapped study"}),
+        _make("Adaptive", "studies", lp.Adaptive, [
+            _p("target", "number", help="relative error estimate to reach", group="Adaptive", min=0),
+            _p("max_iterations", "integer", help="adaptation rounds at most", group="Adaptive", min=0),
+            _p("folder", "file", help="where the adapted meshes go", group="Files", optional=True)],
+            context=("study",), code_only={"solve arguments": "those of the wrapped study"}),
+        # study options
+        _make("PerWavelength", "study_options", lp.PerWavelength, [
+            _p("bands", "numbers", "Hz", "frequencies where a new band (and mesh) starts", "Bands"),
+            _p("every", "integer", help="or: a new mesh every `every` frequencies", group="Bands", optional=True,
+               min=0),
+            _p("air_elements", "number", help="air elements per wavelength λ = c / f0", group="Air", min=0),
+            _p("air_max_size", "number", "m", "largest air element (empty: the Air region's mesh_size)", "Air",
+               optional=True, min=0),
+            _p("pml_thickness", "number", help="PML thickness in wavelengths", group="PML", min=0),
+            _p("pml_elements", "number", help="elements across the PML", group="PML", min=0),
+            _p("c", "number", "m/s", "speed of sound for λ (empty: the Air material's)", "Air", optional=True,
+               min=0),
+            _p("folder", "file", help="where the band meshes go (empty: next to the geometry)", group="Files",
+               optional=True)]),
+        _make("Output", "study_options", lp.Output, [
+            _p("fields", "texts", help="fields kept (empty: all)", optional=True),
+            _p("every", "integer", help="keep every n-th entry", min=0),
+            _p("probes", "mapping", "m", "{name: point}: recorded at every entry", optional=True)]),
+        # transient signals
+        _make("signals.sine", "signals", lp.signals.sine, [
+            _p("f", "number", "Hz", "frequency", min=0),
+            _p("periods", "number", help="periods (with a raised-cosine start)", min=0),
+            _p("fs", "number", "Hz", "sampling rate", min=0),
+            _p("amplitude", "number", help="peak value (N for a Force)"),
+            _p("duration", "number", "s", "length (empty: periods / f)", optional=True, min=0)]),
+        _make("signals.multitone", "signals", lp.signals.multitone, [
+            _p("freqs", "numbers", "Hz", "the tones (Schroeder phases)"),
+            _p("duration", "number", "s", "length (empty: periods of the lowest tone)", optional=True, min=0),
+            _p("fs", "number", "Hz", "sampling rate", min=0),
+            _p("amplitude", "number", help="peak value (N for a Force)"),
+            _p("periods", "number", help="periods of the lowest tone", min=0)]),
+        _make("signals.wav", "signals", lp.signals.wav, [
+            _p("path", "file", help="a WAV file"),
+            _p("duration", "number", "s", "length kept (empty: all)", optional=True, min=0),
+            _p("amplitude", "number", help="peak value after scaling (N for a Force)")]),
+        # a 3D scene
+        _make("Scene", "scene", lp.Scene, [
+            _p("cabinet", "block", help="a parametric Box or a CAD (STEP) cabinet", group="Cabinet",
+               of="scene.cabinet"),
+            _p("air", "material", help="the air's material", group="Air"),
+            _p("parameters", "mapping", help="named values the cabinet and settings refer to (lp.P)",
+               group="Parameters", optional=True)],
+            context=("drivers",),
+            code_only={"cabinet (builder)": "a Python function returning an lp.Cabinet (gmsh OCC)"}),
+        _make("cabinets.Box", "scene.cabinet", cab.Box, [
+            _p("width", "number", "m", "inner width (x)", "Size", min=0),
+            _p("height", "number", "m", "inner height (y, from bottom)", "Size", min=0),
+            _p("depth", "number", "m", "inner depth (z, back to front, at the bottom)", "Size", min=0),
+            _p("depth_top", "number", "m", "depth at the top (a slanted back; empty: depth)", "Size",
+               optional=True, min=0),
+            _p("wall", "number", "m", "thickness of the sides, top and back (0: the inside up to the front)",
+               "Walls", min=0, min_inclusive=True),
+            _p("bottom", "number", "m", "thickness of the bottom (0: the inside air stands on the ground)",
+               "Walls", min=0, min_inclusive=True),
+            _p("braces", "blocks", help="horizontal shelves across the width, from the back", group="Inside",
+               of="scene.cabinet_parts"),
+            _p("ports", "blocks", help="round tubes through the front", group="Inside", of="scene.cabinet_parts"),
+            _p("port_size", "number", "m", "mesh size on the port walls (empty: the default sizes)", "Mesh",
+               optional=True, min=0),
+            _p("front", "number", "m", "z of the inner front plane (empty: the drivers' baffle plane)", "Size",
+               optional=True),
+            _p("front_face", "number", "m", "z of the outer front face (empty: the drivers' front plane)",
+               "Size", optional=True)]),
+        _make("cabinets.Step", "scene.cabinet", cab.Step, [
+            _p("path", "file", help="the cabinet as built: STEP / IGES / BREP, any unit (read in metres)",
+               group="File"),
+            _p("openings", "blocks", help="port bores: a Port, or a point inside the bore's solid", group="Inside",
+               of="scene.cabinet_parts"),
+            _p("inner", "point", "m", "a point inside the cabinet's air (empty: the closed void found)",
+               "Inside", optional=True),
+            _p("scale", "number", help="scale applied to the file", group="Placement", min=0),
+            _p("translate", "point", "m", "translation applied to the file", "Placement"),
+            _p("port_size", "number", "m", "mesh size on the port walls (empty: the default sizes)", "Mesh",
+               optional=True, min=0),
+            _p("plug_drivers", "bool", help="close the driver holes between their baffle and front planes",
+               group="Inside"),
+            _p("ground", "number", "m", "y of the ground that closes a box without bottom (empty: the file is "
+               "closed)", "Placement", optional=True),
+            _p("drivers", "blocks", help="the drivers the file was drawn for (hole checks)", group="Inside",
+               of="scene.drivers")]),
+        _make("cabinets.Brace", "scene.cabinet_parts", cab.Brace, [
+            _p("y", "number", "m", "height from the inner bottom"),
+            _p("thickness", "number", "m", "shelf thickness", min=0),
+            _p("depth", "number", "m", "depth from the back", min=0)]),
+        _make("cabinets.Port", "scene.cabinet_parts", cab.Port, [
+            _p("at", "point", "m", "(x, y) of the port's axis on the front face"),
+            _p("radius", "number", "m", "bore radius", min=0),
+            _p("length", "number", "m", "length from the front face inwards", min=0),
+            _p("wall", "number", "m", "tube wall thickness inside the box (0: a plain hole)", min=0,
+               min_inclusive=True)]),
+        _make("Driver.from_modes", "scene.drivers", lp.Driver.from_modes, [
+            _p("path", "file", help="the eigen result file of the driver's axisymmetric model", group="Modes"),
+            _p("orders", "integers", help="azimuthal orders kept (0: piston-like, 1: rocking)", group="Modes"),
+            _p("f_max", "number", "Hz", "modes kept up to (empty: all in the file)", "Modes", optional=True,
+               min=0),
+            _p("geometry", "file", help="the driver's 2D geometry (or its model)", group="Geometry"),
+            _p("rear", "block", help="the wet profile on the cabinet side", group="Wet surfaces", of="profiles"),
+            _p("front", "block", help="the wet profile on the outside (empty: the rear one)",
+               group="Wet surfaces", of="profiles", optional=True),
+            _p("coil", "text", help="the coil boundary's name (empty: the model's lp.Coil item)", group="Coil",
+               optional=True),
+            _p("name", "text", help="the driver's name (empty: the file's)", group="Identity", optional=True)],
+            code_only={"geometry (builder or model)": "a builder function or its lp.Model"}),
+        _make("Driver.place", "scene.placement", lp.Driver.place, [
+            NAME,
+            _p("at", "point", "m", "where its axis meets the front: (x, y) on the front face, or (x, y, z)",
+               "Placement"),
+            _p("axis", "point", help="its axis direction (empty: +z, facing the front)", group="Placement",
+               optional=True),
+            _p("ref", "point", help="a direction fixing its rotation about the axis (empty: any)",
+               group="Placement", optional=True)],
+            context=("driver",)),
+        _make("Scene.cavity", "scene.air", lp.Scene.cavity, [
+            _p("mesh_size", "pair", "m", "element size (near the drivers, far)", "Mesh"),
+            _p("f_max", "number", "Hz", "cavity modes kept up to", "Modes", min=0),
+            _p("eta", "number", help="modal loss factor of the cavity air", group="Modes", min=0,
+               min_inclusive=True),
+            _p("near", "pair", "m", "size ramp distances from the drivers (start, end)", "Mesh"),
+            _p("file", "text", help="the cavity mesh file name", group="Files"),
+            _p("cache_modes", "bool", help="keep the cavity modes next to the mesh", group="Files")],
+            context=("scene",)),
+        _make("Scene.walls", "scene.walls", lp.Scene.walls, [
+            _p("material", "material", help="the walls' material (solid)", group="Material"),
+            _p("thickness", "number", "m", "shell thickness", "Material", min=0),
+            _p("damping", "block", help="empty: Rayleigh fitted to the material", group="Material",
+               of="damping", optional=True),
+            _p("fixed", "choice", help="edges: the panel edges and the driver cut-out rims are clamped",
+               group="Supports", choices=("edges",)),
+            _p("f_max", "number", "Hz", "wall modes kept up to (empty: the cavity's)", "Modes", optional=True,
+               min=0),
+            _p("angle", "number", "°", "a fold sharper than this is a panel edge", "Supports", min=0)],
+            context=("scene",), code_only={"fixed (function)": "f(points) → mask of the clamped nodes"}),
+        open_air("Scene.exterior", lp.Scene.exterior, "exterior"),
+        open_air("Scene.merged", lp.Scene.merged, "air"),
+    ]
+    return {b.type: b for b in blocks}
+
+
+_CATALOG: dict[str, Block] | None = None
+SECTIONS = ("model", "materials", "regions", "boundaries", "mesh_controls", "damping", "drives",
+            "selectors", "profiles", "studies", "study_options", "signals", "scene", "scene.cabinet",
+            "scene.cabinet_parts", "scene.drivers", "scene.placement", "scene.air", "scene.walls")
+
+# Public names of loudpy that are not building blocks of a simulation, and why (the completeness test reads this).
+NOT_BLOCKS = {
+    "Parameters": "the model's `parameters` mapping (Model / Scene parameter)",
+    "P": "a value: a reference to a parameter ({'P': name})",
+    "MaterialLibrary": "a collection: its materials are Material blocks",
+    "materials": "loudpy's default material library (a collection)",
+    "load_materials": "reads a library file (the Model's `materials`)",
+    "air": "computes an air Material from conditions: described as the Material it returns",
+    "Frame": "a driver's placement, made by Driver.place",
+    "Driver": "made by Driver.from_modes (and placed by Driver.place)",
+    "Cabinet": "what a Python cabinet builder returns: code only (cabinets.Box / Step are the blocks)",
+    "Mesh": "the result of meshing",
+    "Convergence": "the result of an Adaptive study", "convergence": "the result of an Adaptive study",
+    "Results": "results", "FrequencyResults": "results", "ModeResults": "results", "TimeResults": "results",
+    "SweepResults": "results", "Data": "results", "Field": "results",
+    "Point": "evaluation of results", "Points": "evaluation of results", "Polar": "evaluation of results",
+    "Arc": "evaluation of results", "Line": "evaluation of results", "spl": "evaluation of results",
+    "load": "reads results", "load_data": "reads results", "compare": "compares results",
+    "read_comsol": "reads COMSOL tables", "set_verbosity": "logging",
+    "cabinets": "module: cabinets.Box / Step / Brace / Port are blocks", "signals": "module: signals.* are blocks",
+    "errors": "module", "progress": "module", "plot": "module", "schema": "module: this description",
+}
+
+
+def catalog() -> dict[str, Block]:
+    """{type: Block} of every building block."""
+    global _CATALOG
+    if _CATALOG is None:
+        _CATALOG = _catalog()
+    return _CATALOG
+
+
+def block(type_: str) -> Block:
+    """The Block of a type ("Solid", "cabinets.Box", "Scene.cavity" …)."""
+    try:
+        return catalog()[type_]
+    except KeyError:
+        raise SchemaError(f"no building block {type_!r}; known: {sorted(catalog())}") from None
+
+
+def blocks(section: str | None = None) -> list[Block]:
+    """The blocks of a section (all of them without one), in catalog order."""
+    if section is not None and section not in SECTIONS:
+        raise SchemaError(f"no section {section!r}; sections: {list(SECTIONS)}")
+    return [b for b in catalog().values() if section is None or b.section == section]
+
+
+# ── values ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+def to_value(x) -> Any:
+    """A value as plain data (JSON-able): numbers, strings, lists, None; lp.P as {"P": …}; complex as {"complex":
+    [re, im]}; a building block as its node."""
+    from loudpy.model.parameters import P
+    if x is None or isinstance(x, (bool, str)):
+        return x
+    if isinstance(x, (int, float)) and not isinstance(x, bool):
+        return x
+    if isinstance(x, np.generic):
+        return to_value(x.item())
+    if isinstance(x, complex):
+        return {"complex": [x.real, x.imag]} if x.imag else x.real
+    if isinstance(x, np.ndarray):
+        return [to_value(v) for v in x.tolist()]
+    if isinstance(x, Path):
+        return str(x)
+    if isinstance(x, P):
+        out: dict = {"P": x.name}
+        if x.scale != 1.0:
+            out["scale"] = x.scale
+        if x.offset != 0.0:
+            out["offset"] = x.offset
+        return out
+    if isinstance(x, (list, tuple)):
+        return [to_value(v) for v in x]
+    if isinstance(x, dict):
+        return {str(k): to_value(v) for k, v in x.items()}
+    return describe(x)
+
+
+def from_value(v, p: Param | None = None, **context) -> Any:
+    """The object a plain value stands for (to_value's inverse), shaped for the parameter p (tuples where the code
+    keeps tuples)."""
+    from loudpy.model.parameters import P
+    if isinstance(v, dict):
+        if "type" in v:
+            return build(v, **context)
+        if "P" in v:
+            return P(v["P"], float(v.get("scale", 1.0)), float(v.get("offset", 0.0)))
+        if "complex" in v:
+            re, im = v["complex"]
+            return complex(re, im)
+        return {k: from_value(x, None, **context) for k, x in v.items()}
+    if isinstance(v, list):
+        items = [from_value(x, None, **context) for x in v]
+        if p is not None and p.kind == "pairs":
+            items = [tuple(i) if isinstance(i, list) else i for i in items]
+        tuple_ = p is not None and (p.kind in _TUPLE_KINDS or isinstance(p.default, tuple))
+        return tuple(items) if tuple_ else items
+    return v
+
+
+# ── nodes ──────────────────────────────────────────────────────────────────────────────────────────────────────────
+def defaults(type_: str) -> dict:
+    """A node of this type with its defaults (required parameters: a placeholder of their kind)."""
+    b = block(type_)
+    placeholder = {"text": type_.split(".")[-1].lower(), "number": 0.0, "file": "", "selection": "",
+                   "material": "Air" if b.type in ("Air", "PML") else "", "texts": [], "numbers": [], "integers": [],
+                   "point": [0.0, 0.0], "complex": 1.0, "mapping": {}, "block": None}
+    params = {}
+    for p in b.params:
+        if p.stage == "solve" and not p.required:
+            params[p.name] = to_value(p.default)
+        elif p.required:
+            params[p.name] = placeholder.get(p.kind)
+        else:
+            params[p.name] = to_value(p.default)
+    return {"type": b.type, "params": params}
+
+
+_SELECTOR_TYPES = {"_Union": "Union", "_Intersection": "Intersection", "_Difference": "Difference", "_Item": "Item"}
+
+
+def _type_of(obj) -> str:
+    name = type(obj).__name__
+    mod = type(obj).__module__
+    if name in _SELECTOR_TYPES:
+        return _SELECTOR_TYPES[name]
+    if mod.endswith("scene.cabinets"):
+        return f"cabinets.{name}"
+    return name
+
+
+def describe(obj) -> dict:
+    """The node of a building block object (its parameters that differ from the defaults; required ones always).
+    Studies, scenes, models and drivers are described by the simulation document, not here."""
+    t = _type_of(obj)
+    b = catalog().get(t)
+    if b is None or b.section in ("studies", "scene", "model", "signals", "scene.air", "scene.walls",
+                                  "scene.drivers", "scene.placement"):
+        raise SchemaError(f"cannot describe a {type(obj).__name__} as a node (not a value block)")
+    if t == "Group":
+        return {"type": t, "params": {"labels": list(obj.labels_)}}
+    if t == "Box":
+        vals = {k: (list(v) if v[0] != v[1] else v[0]) for k, v in obj.bounds.items()}
+        if obj.tol is not None:
+            vals["tol"] = obj.tol
+        return {"type": t, "params": vals}
+    if t == "Near":
+        return {"type": t, "params": {"point": to_value(np.asarray(obj.point))}}
+    if t == "Item":
+        return {"type": t, "params": {"name": obj.item.name}}
+    params = {}
+    for p in b.params:
+        v = getattr(obj, p.name)
+        if p.required or not _same(v, p.default):
+            params[p.name] = to_value(v)
+    return {"type": t, "params": params}
+
+
+def _same(a, b) -> bool:
+    try:
+        return bool(np.all(to_value(a) == to_value(b))) if not isinstance(to_value(a), (dict, list)) else \
+            to_value(a) == to_value(b)
+    except SchemaError:
+        return a is b
+
+
+def build(node: dict, **context):
+    """The object of a node (a study: (study, solve kwargs); context: what its block's context names — the model a
+    study runs on, the study a Sweep wraps, the scene a setting applies to, the items an Item selects by name)."""
+    if not isinstance(node, dict) or "type" not in node:
+        raise SchemaError(f"a node is {{'type': …, 'params': {{…}}}}, got {node!r}")
+    b = block(node["type"])
+    given = dict(node.get("params") or {})
+    unknown = set(given) - {p.name for p in b.params}
+    if b.type == "Item":
+        unknown -= {"name"}
+    if unknown:
+        raise SchemaError(f"{b.type}: unknown parameter(s) {sorted(unknown)}; parameters: "
+                          f"{[p.name for p in b.params]}")
+    if b.type == "Item":
+        items = context.get("items") or {}
+        if given.get("name") not in items:
+            raise SchemaError(f"Item {given.get('name')!r}: give the model's items (build(node, items={{name: "
+                              "item}}))")
+        return b.target(items[given["name"]])
+    values = {p.name: from_value(given[p.name], p, **context) for p in b.params if p.name in given}
+    missing = [p.name for p in b.params if p.required and p.name not in values]
+    if missing:
+        raise SchemaError(f"{b.type}: missing {missing}")
+    args = [context[c] for c in b.context if c in context]
+    missing_ctx = [c for c in b.context if c not in context]
+    if missing_ctx:
+        raise SchemaError(f"{b.type} needs {missing_ctx} (build(node, {missing_ctx[0]}=…))")
+    if b.varargs:
+        return b.target(*args, *values.pop(b.varargs, ()), **values)
+    if b.type in ("Union", "Intersection", "Difference"):
+        from loudpy.geometry.selectors import as_selector
+        return b.target(as_selector(values["a"]), as_selector(values["b"]))
+    if b.solve is not None:
+        solve = {k: v for k, v in values.items() if b.param(k).stage == "solve"}
+        init = {k: v for k, v in values.items() if k not in solve}
+        return b.target(*args, **init), solve
+    return b.target(*args, **values)
+
+
+def check(node: dict) -> list[str]:
+    """The problems of a node's values against its description (kinds, choices, limits, required parameters, nested
+    nodes), before building it; [] when none. The block's own checks still run when it is built."""
+    try:
+        b = block(node.get("type", "")) if isinstance(node, dict) else None
+    except SchemaError as e:
+        return [str(e)]
+    if b is None:
+        return [f"a node is {{'type': …, 'params': {{…}}}}, got {node!r}"]
+    out = []
+    given = node.get("params") or {}
+    for name in given:
+        if name not in {p.name for p in b.params} and not (b.type == "Item" and name == "name"):
+            out.append(f"{b.type}: unknown parameter {name!r}")
+    for p in b.params:
+        if p.name not in given:
+            if p.required:
+                out.append(f"{b.type}.{p.name}: required")
+            continue
+        out += [f"{b.type}.{p.name}: {e}" for e in _check_value(given[p.name], p)]
+    return out
+
+
+def _check_value(v, p: Param) -> list[str]:
+    if v is None:
+        return [] if p.optional or p.default is None else ["a value is needed"]
+    if isinstance(v, dict) and "P" in v:
+        return [] if p.kind in ("number", "integer", "complex", "pair", "point", "range") else \
+            ["a parameter reference only replaces a number"]
+    if isinstance(v, dict) and "type" in v:
+        problems = check(v)
+        if p.kind in ("block", "blocks") and p.of and block(v["type"]).section != p.of and not problems:
+            problems.append(f"a {block(v['type']).section} block where a {p.of} block goes")
+        return problems
+    k = p.kind
+    if k in ("number", "integer"):
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or (k == "integer" and int(v) != v):
+            return [f"{KINDS[k]}, got {v!r}"]
+        if p.min is not None and (v < p.min or (v == p.min and not p.min_inclusive)):
+            return [f"{'≥' if p.min_inclusive else '>'} {p.min:g}, got {v!r}"]
+        return []
+    if k == "complex":
+        ok = (isinstance(v, (int, float)) and not isinstance(v, bool)) or (isinstance(v, dict) and "complex" in v) \
+            or isinstance(v, list)                                                   # a force signal
+        return [] if ok else [f"{KINDS[k]}, got {v!r}"]
+    if k == "choice":
+        return [] if v in p.choices else [f"one of {list(p.choices)}, got {v!r}"]
+    if k == "bool":
+        return [] if isinstance(v, bool) else [f"true or false, got {v!r}"]
+    if k in ("text", "file"):
+        return [] if isinstance(v, str) else [f"{KINDS[k]}, got {v!r}"]
+    if k in ("selection", "material"):
+        return [] if isinstance(v, str) else [f"{KINDS[k]}, got {v!r}"]
+    if k == "pair":
+        return [] if isinstance(v, list) and len(v) == 2 else [f"two numbers, got {v!r}"]
+    if k == "range":
+        return [] if isinstance(v, (int, float)) or (isinstance(v, list) and len(v) == 2) else \
+            [f"{KINDS[k]}, got {v!r}"]
+    if k in ("point", "numbers", "integers", "texts", "pairs", "frequencies", "signal", "blocks"):
+        if not isinstance(v, list):
+            return [f"{KINDS[k]}, got {v!r}"]
+        if k == "blocks":
+            return [e for x in v for e in _check_value(x, replace(p, kind="block"))]
+        return []
+    if k == "mapping":
+        return [] if isinstance(v, (dict, str)) else [f"{KINDS[k]}, got {v!r}"]
+    if k == "block":
+        return [f"a node of section {p.of!r}, got {v!r}"]
+    return []
+
+
+SECTION_TITLES = {
+    "model": "Model", "materials": "Materials", "regions": "Regions", "boundaries": "Boundaries",
+    "mesh_controls": "Mesh controls", "damping": "Damping", "drives": "Drives", "selectors": "Selectors",
+    "profiles": "Wet profiles of a driver", "studies": "Studies", "study_options": "Study options",
+    "signals": "Transient signals", "scene": "3D scene", "scene.cabinet": "Cabinets",
+    "scene.cabinet_parts": "Cabinet parts", "scene.drivers": "Drivers", "scene.placement": "Driver placement",
+    "scene.air": "Scene air", "scene.walls": "Elastic walls"}
+
+
+def reference_rst() -> str:
+    """The building blocks as a reStructuredText page (docs/guide/building_blocks.rst is this text; a test checks it
+    is up to date)."""
+    def cell(x) -> str:
+        return str(x).replace("\n", " ").replace("|", "\\|")
+
+    out = ["Building blocks", "===============", "",
+           ".. This page is generated by loudpy.schema.reference_rst(): do not edit it by hand.", "",
+           "Every block a simulation is made of, with its parameters as ``lp.schema`` describes them for programs (the",
+           "interface draws its forms from this description). *value*: the kind of value (``lp.schema.KINDS``); a",
+           "*block* parameter takes a block of the section named after it. Defaults come from the code.", ""]
+    for sec in SECTIONS:
+        bs = blocks(sec)
+        if not bs:
+            continue
+        title = SECTION_TITLES.get(sec, sec)
+        out += [title, "-" * len(title), ""]
+        for b in bs:
+            out += [f"``{'lp.' + b.type}``", "^" * (len(b.type) + 7), "", cell(b.summary) or "(no summary)", ""]
+            if b.context:
+                out += [f"Given by the context: {', '.join(b.context)}.", ""]
+            if b.params:
+                out += [".. list-table::", "   :header-rows: 1", "   :widths: 18 14 8 16 44", "",
+                        "   * - parameter", "     - value", "     - unit", "     - default", "     - meaning"]
+                for p in b.params:
+                    kind = p.kind + (f" ({p.of})" if p.of else "") + (", in .solve()" if p.stage == "solve" else "")
+                    default = "required" if p.required else f"``{p.default!r}``"
+                    extra = f" Choices: {', '.join(str(c) for c in p.choices)}." if p.choices and \
+                        len(p.choices) > 1 else ""
+                    out += [f"   * - ``{p.name}``", f"     - {cell(kind)}", f"     - {cell(p.unit)}",
+                            f"     - {cell(default)}", f"     - {cell(p.help)}{cell(extra)}"]
+                out.append("")
+            if b.code_only:
+                out += ["Only in a script: " + "; ".join(f"{k}: {cell(v)}" for k, v in b.code_only.items()) + ".",
+                        ""]
+    out += ["Not building blocks", "-------------------", "",
+            "Public names of loudpy that a simulation is not made of:", ""]
+    out += [f"- ``{k}``: {cell(v)}" for k, v in NOT_BLOCKS.items()]
+    return "\n".join(out) + "\n"
+
+
+__all__ = ["Block", "Param", "SchemaError", "KINDS", "SECTIONS", "NOT_BLOCKS", "catalog", "block", "blocks",
+           "defaults", "describe", "build", "check", "to_value", "from_value", "reference_rst"]
