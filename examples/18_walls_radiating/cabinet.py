@@ -30,6 +30,8 @@ UPPER, LOWER = BOTTOM + 0.150, BOTTOM + 0.080 # the boards' lower faces (y) [m]
 SLOT = (0.10, BOTTOM + 0.015, 0.08, 0.04)     # the opening in the front: x, y, width, height [m]
 DRIVER_Y = BOTTOM + 0.232                     # the driver's axis (y) [m]: above the upper board
 OPENING = (SLOT[0] + SLOT[2] / 2, SLOT[1] + SLOT[3] / 2, (Z_B + Z_F) / 2)   # a point of the opening's air
+PANEL_NAMES = {0: "bottom", 1: "left", 2: "right", 3: "top", 4: "back", 5: "front", 6: "upper board",
+               7: "lower board"}                # the STEP solids (labels for the figures only)
 
 
 def write_step(path=STEP):

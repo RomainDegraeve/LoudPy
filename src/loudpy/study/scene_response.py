@@ -135,11 +135,17 @@ def cavity_coupling(scene, drivers, cav):
 
 def _wall_attachment(walls, offset):
     """What the results keep of the walls: shell mesh, modal basis (translations), offset in q."""
-    return dict(nodes=walls.walls.nodes, cells=walls.walls.cells, rows=walls.walls.rows, freq=walls.freq,
+    extra = {}
+    if walls.labels is not None:
+        extra["panel"] = np.asarray(walls.labels).astype("S")
+    if not isinstance(walls.shell.thickness, dict):
+        extra["thickness"] = np.broadcast_to(np.asarray(walls.shell.thickness, float),
+                                             (len(walls.walls.cells),)).copy()
+    return dict(**extra, nodes=walls.walls.nodes, cells=walls.walls.cells, rows=walls.walls.rows, freq=walls.freq,
                 zeta=walls.zeta, U=walls.translations().astype(np.float32),
                 U_n=walls.normal().astype(np.float32), volume_disp=walls.volume_disp,
                 meta=dict(offset=int(offset), material=walls.shell.material.name,
-                          thickness=float(np.mean(walls.shell.thickness))))
+                          thickness=float(np.mean(extra["thickness"])) if "thickness" in extra else None))
 
 
 def _attachments(scene, drivers, extra=None):
@@ -167,6 +173,18 @@ def _fe_mesh(ext) -> Mesh:
         if len(tris):
             groups[name] = MeshGroup(name, 2, "tri6", np.asarray(tris))
     return Mesh(np.arange(len(ext.nodes)), np.asarray(ext.nodes), groups)
+
+
+def _driver_volume_disp(scene, drivers, mesh_path):
+    """∫ φ·n dS of the driver modes on their rear patches of an inside-air mesh (merged air: the walls mesh)."""
+    from loudpy.geometry.meshing3d import read_p2_mesh
+    from loudpy.physics.modal import couple_drivers
+    names = ["interface_driver"] if len(scene.drivers) == 1 else \
+        [f"interface_driver_{j}" for j in range(len(scene.drivers))]
+    nodes, _, faces = read_p2_mesh(mesh_path, names)
+    _, Bc, _, _ = couple_drivers(nodes, [faces[n] for n in names], drivers, [d.driver.rear for d in scene.drivers],
+                                 5e-4)
+    return np.asarray(Bc).sum(axis=0)
 
 
 def solve(study, freqs, store=None, chunk_hz=50.0, rtol=1e-7, log=None):
@@ -208,6 +226,10 @@ def solve(study, freqs, store=None, chunk_hz=50.0, rtol=1e-7, log=None):
     attachments = _attachments(scene, drivers, att_extra)
     if walls_m is not None:
         attachments["walls"] = _wall_attachment(walls_m, len(drivers))
+        try:
+            attachments["drive_volume_disp"] = dict(V=_driver_volume_disp(scene, drivers, scene.walls_mesh))
+        except Exception as e:                                       # noqa: BLE001  (a diagnostic only)
+            log(f"  (no driver volume displacement: {e})")
     attachments["drive"] = dict(F=np.asarray(F, complex))                # modal force, stacked drivers
     if cav is not None:
         attachments["cavity"] = dict(nodes=cav.nodes, tets=cav.tets, psi=cav.psi.astype(np.float32), kappa2=cav.kappa2,

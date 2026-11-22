@@ -11,7 +11,8 @@ cabinet.py                 the cabinet's solids → cabinet.step (0 bottom, 1 le
                            6 upper board, 7 lower board, 8 the slot's air)
 run.py                     the scene; python3 run.py meshes, computes the wall modes and the response with elastic
                            and with rigid walls (Results/Files/)
-plot.py                    SPL 1 m ahead, coil excursion, walls / driver volume velocity, a 3D view
+plot.py                    SPL 1 m ahead, coil excursion, walls / driver volume velocity, RMS normal displacement
+                           of each panel, a 3D view
 18_walls_radiating.loudpy.json   the same simulation for the interface (python -m loudpy.ui on this folder)
 ```
 
@@ -24,6 +25,13 @@ scene.walls("MDF", thickness=None,                                 # each panel'
 
 Panels found on the inside air (checked, not run): bottom 18, left / right / top 15, back 22 mm (plywood), front 18 mm
 (given: 1 mm in the file, the driver's flange planes), upper and lower boards 12 mm; inside air 10.15 L.
+
+Why the front is only 1 mm thick in the file: the driver's model (02) is an axisymmetric 2D model whose air
+couples to the cabinet's on two planes, its rear baffle plane Z_B = 31 mm and the box's front face Z_F = 32 mm. The
+front panel must lie between them, so its solid is 1 mm thick. The shell does not care (a shell is a mid-surface: its
+thickness only sets its mass and stiffness, here 18 mm), but the air sees a 1 mm front: the slot is a hole, not an
+18 mm deep duct (a little less air mass in the opening). A driver model with its baffle planes 18 mm apart would let
+the front be drawn 18 mm thick.
 
 How the walls are coupled (docs: guide/shells): one shell per panel on its inner face (a board: on one side); every
 other wet face (the outer face, the board's other side) moves with the shell at its nearest point — rigid through

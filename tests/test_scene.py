@@ -119,8 +119,17 @@ def test_cavity_elastic_walls(driver, mesh_dir, tmp_path):
     assert Q.dims == ("f",) and np.all(np.abs(Q.values) > 0)
     u = res.wall_field(FREQS[2])
     assert u.values.shape == (u.mesh.n_nodes,)
+    assert res.wall_panels == ["walls"]                       # uniform walls: one panel
+    Qp = res.wall_volume_velocity(panel="walls")              # from the shell (P1 normals) vs the coupling (P2)
+    np.testing.assert_allclose(Qp.values, Q.values, rtol=0.05)
+    u_rms = res.wall_displacement()
+    assert u_rms.dims == ("f",) and np.all(u_rms.values > 0) and np.isrealobj(u_rms.values)
+    with pytest.raises(lp.errors.SelectionError, match="no wall panel"):
+        res.wall_displacement(panel="back")
     back = lp.load(tmp_path / "walls.h5")
     np.testing.assert_allclose(back.wall_volume_velocity().values, Q.values)
+    np.testing.assert_allclose(back.wall_displacement().values, u_rms.values)
+    assert back.attachments["walls"]["thickness"] == pytest.approx(0.018)
     modes = lp.Modes(scene).solve(f_max=1500.0)
     assert len(modes.frequencies) >= len(_ref("test_driver_in_box")._get("coupled"))
 
@@ -464,3 +473,17 @@ def test_walls_in_a_merged_air_domain(driver, tmp_path):
     p_in = 0.5 * np.real(np.conj(F)[None, :] * 1j * w[:, None] * soft.q).sum(axis=1)
     p_d = 0.5 * np.sum(2 * zeta * w_s * (w[:, None] * np.abs(soft.q)) ** 2, axis=1)
     np.testing.assert_allclose(p_in, p_d + _radiated_power(soft, scene), rtol=1e-4)
+
+    soft.save(tmp_path / "soft.h5")                               # the panels in the results, read back
+    back = lp.load(tmp_path / "soft.h5")
+    assert back.wall_panels == ["back", "front", "left", "right", "top"]
+    assert {f"panel {p}" for p in back.wall_panels} <= set(back.wall_mesh().groups)
+    th = dict(zip(back._wall_labels(), back.attachments["walls"]["thickness"]))
+    assert th["front"] == pytest.approx(0.012) and th["left"] == pytest.approx(0.012, abs=1e-6)
+    Q = back.wall_volume_velocity()                              # the panels' shells add up to the walls (no board)
+    Qp = sum(back.wall_volume_velocity(panel=p).values for p in back.wall_panels)
+    np.testing.assert_allclose(Qp, Q.values, rtol=0.05)
+    u2 = sum(back.wall_displacement(panel=p).values ** 2 * back._wall_cells(p)[1].sum() for p in back.wall_panels)
+    np.testing.assert_allclose(u2 / back._wall_cells()[1].sum(), back.wall_displacement().values ** 2, rtol=1e-10)
+    Qd = back.driver_volume_velocity()                           # merged air: the drivers' rear patches
+    assert np.all(np.abs(Qd.values) > 0) and np.all(np.abs(Q.values / Qd.values) < 0.5)

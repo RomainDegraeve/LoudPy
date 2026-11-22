@@ -255,14 +255,53 @@ class SceneResults(FrequencyResults):
         return np.asarray(self._walls()["freq"])
 
     def wall_mesh(self):
-        """The shell mesh of the walls (geometry.Mesh, TRI3 group "walls")."""
+        """The shell mesh of the walls (geometry.Mesh, TRI3 group "walls"; and one group "panel <key>" per panel)."""
         from loudpy.geometry.mesh import Mesh, MeshGroup
         if "_wall_mesh" not in self.__dict__:
             w = self._walls()
             nodes = np.asarray(w["nodes"], float)
-            self._wall_mesh = Mesh(np.arange(len(nodes)), nodes,
-                                   {"walls": MeshGroup("walls", 2, "tri3", np.asarray(w["cells"]))})
+            cells = np.asarray(w["cells"])
+            groups = {"walls": MeshGroup("walls", 2, "tri3", cells)}
+            lab = self._wall_labels()
+            for p in self.wall_panels:
+                groups[f"panel {p}"] = MeshGroup(f"panel {p}", 2, "tri3", cells[lab == p])
+            self._wall_mesh = Mesh(np.arange(len(nodes)), nodes, groups)
         return self._wall_mesh
+
+    def _wall_labels(self) -> np.ndarray:
+        w = self._walls()
+        if "panel" not in w:
+            return np.full(len(np.asarray(w["cells"])), "walls")
+        return np.asarray(w["panel"]).astype(str)
+
+    @property
+    def wall_panels(self) -> list[str]:
+        """The walls' panels (a STEP solid's index, a Box side; ["walls"] for uniform walls)."""
+        return sorted(set(self._wall_labels().tolist()), key=lambda x: (not x.isdigit(), int(x) if x.isdigit() else 0, x))
+
+    def _wall_cells(self, panel=None):
+        """(cells, their areas, their unit normals) of the walls, or of one panel."""
+        from loudpy.fem import shell as fe
+        w = self._walls()
+        nodes = np.asarray(w["nodes"], float)
+        cells = np.asarray(w["cells"])
+        if panel is not None:
+            sel = self._wall_labels() == str(panel)
+            if not sel.any():
+                raise SelectionError(f"no wall panel {panel!r}; panels: {self.wall_panels}")
+            cells = cells[sel]
+        n, a = fe.cell_normals(nodes, cells)
+        return cells, a, n
+
+    def wall_displacement(self, panel=None) -> Data:
+        """RMS normal displacement of the walls (or of one panel) over frequency [m]: √(∫ |u_n|² dS / S)."""
+        w = self._walls()
+        cells, a, _ = self._wall_cells(panel)
+        un = self.wall_q() @ np.asarray(w["U_n"], float)               # (n_f, n_nodes)
+        mean_sq = (np.abs(un[:, cells]) ** 2).mean(axis=2)             # per cell, P1 mean of the corners
+        rms = np.sqrt(mean_sq @ a / a.sum())
+        return Data(rms, {"f": self.frequencies}, "u", label=f"walls{'' if panel is None else f' {panel}'} (RMS)",
+                    meta=self._meta(on="walls" if panel is None else f"panel {panel}"))
 
     def wall_q(self) -> np.ndarray:
         """Modal amplitudes of the wall modes (n_f, n_wall_modes)."""
@@ -294,19 +333,30 @@ class SceneResults(FrequencyResults):
         return Field("u_n", self.wall_mesh(), np.asarray(w["U_n"][n], float), float(w["freq"][n]), "f",
                      meta={"mode": n, "region": "walls"})
 
-    def wall_volume_velocity(self) -> Data:
-        """Volume velocity of the walls into the cavity, jω Σ_k q_k ∫ φ_k·n dS [m³/s]."""
-        dv = np.asarray(self._walls()["volume_disp"], float)
+    def wall_volume_velocity(self, panel=None) -> Data:
+        """Volume velocity of the walls into the inside air, jω Σ_k q_k ∫ φ_k·n dS [m³/s]; of one panel: from its
+        shell (the normals averaged on its cells), on the shell's side — a board inside the air pushes as much the
+        other way on its other side (the panels add up to the walls when there is no board)."""
+        w = self._walls()
+        if panel is None:
+            dv = np.asarray(w["volume_disp"], float)
+        else:
+            cells, a, _ = self._wall_cells(panel)
+            dv = np.asarray(w["U_n"], float)[:, cells].mean(axis=2) @ a
         Q = 2j * np.pi * self.frequencies * (self.wall_q() @ dv)
-        return Data(Q, {"f": self.frequencies}, "Q", meta=self._meta(on="walls"))
+        return Data(Q, {"f": self.frequencies}, "Q", label="walls" if panel is None else f"panel {panel}",
+                    meta=self._meta(on="walls" if panel is None else f"panel {panel}"))
 
     def driver_volume_velocity(self) -> Data:
         """Volume velocity of the drivers' wet rear surfaces into the cavity, jω Σ_k q_k ∫ φ_k·n dS [m³/s] (all
         drivers; results written from phase I on)."""
         cav = self.attachments.get("cavity", {})
-        if "volume_disp" not in cav:
+        if "volume_disp" in cav:
+            dv = np.asarray(cav["volume_disp"], float)
+        elif "drive_volume_disp" in self.attachments:                 # merged air with walls
+            dv = np.asarray(self.attachments["drive_volume_disp"]["V"], float)
+        else:
             raise ResultsError("no volume displacements in these results (cavity results from phase I on)")
-        dv = np.asarray(cav["volume_disp"], float)
         n = int(self._walls()["meta"]["offset"]) if "walls" in self.attachments else len(dv)
         Q = 2j * np.pi * self.frequencies * (self.q[:, :n] @ dv[:n])
         return Data(Q, {"f": self.frequencies}, "Q", meta=self._meta(on="drivers"))

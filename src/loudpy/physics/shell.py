@@ -385,6 +385,7 @@ class WallModes:
     def __init__(self, walls: WallShells, shell: ShellStructure, freq, phi, zeta, n_air):
         self.walls, self.shell = walls, shell
         self.freq, self.phi, self.zeta = np.asarray(freq), np.asarray(phi), np.asarray(zeta)
+        self.labels: np.ndarray | None = None                     # each shell cell's panel (walls with panels)
         A = walls.coupling(n_air)
         self.rows = np.unique(walls.faces)
         self.B = np.asarray((A.T @ self.phi))[self.rows]
@@ -564,6 +565,8 @@ def cavity_walls(nodes, tets, faces, material, thickness, damping=None, fixed="e
                                panels=(cell_labels, {lab: (v[0], v[2]) for lab, v in table.items()}))
     freq, phi, zeta = shell.modes(f_max=f_max)
     modes = WallModes(walls, shell, freq, phi, zeta, len(nodes))
+    if table is not None:
+        modes.labels = np.asarray([str(x) for x in cell_labels])
     if extra is not None and len(modes):                         # the panels' other wet faces: with their shells
         rows, B, _ = wall_face_coupling(modes, nodes, tets, extra)
         modes.add_faces(rows, B)
