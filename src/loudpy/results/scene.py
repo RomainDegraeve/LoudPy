@@ -170,6 +170,17 @@ class SceneResults(FrequencyResults):
         return DriverResponse(name, modes, frame, q, self.frequencies, np.asarray(a["coil_nodes"]),
                               None if F is None else np.asarray(F)[sl])
 
+    def _far_at(self, pts, i: int) -> np.ndarray:
+        """The DtN pressure at points (n, 3) at the frequency of index i only."""
+        b0, k = 0, int(i)
+        for b in self.blocks:                                         # the block of entry i
+            if k < b0 + len(b.values):
+                break
+            b0 += len(b.values)
+        C = np.asarray(b.extra["dtn"])[k - b0]
+        n_h = int(np.asarray(b.extra["dtn_n"])[k - b0])
+        return self._dtn().pressure(np.asarray(pts, float), C[:n_h], 2 * np.pi * self.frequencies[k] / self.scene["c"])
+
     def _far(self, pts) -> np.ndarray:
         dtn = self._dtn()
         C = self._stacked("dtn")
@@ -195,10 +206,38 @@ class SceneResults(FrequencyResults):
 
     def view(self, f: float, camera=None, cut="driver", **kwargs):
         """One view of plot() as an lp.plot.View3D, to save (.png .pdf .html .glb .vtm) or turn (.interactive()):
-        camera = a default camera's name (lp.plot.default_cameras) or an lp.plot.Camera.
-            res.view(470).save("box_470Hz.html")"""
+        camera = a default camera's name (lp.plot.default_cameras) or an lp.plot.Camera; cut: "driver", None,
+        ("x" | "y" | "z", value [m]) or (normal, origin); surfaces: the air surfaces coloured (air_surfaces);
+        points, arcs: observation points and arcs (lp.Arc) drawn.
+            res.view(470).save("box_470Hz.html")
+            res.view(470, cut=("y", 0.2), surfaces=["ground", "walls"], points=[(0.1, 0.2, 1.0)])"""
         from loudpy.plot.scene3d import scene_view_one
         return scene_view_one(self, f, camera=camera, cut=cut, **kwargs)
+
+    @property
+    def air_surfaces(self) -> list[str]:
+        """The named surfaces of the FE air mesh (of the first band) a view can colour by the SPL."""
+        mesh = self.field("p", index=0).mesh
+        return [n for n, g in mesh.groups.items() if g.cell_type in ("tri6", "tri3") and len(g.cells)]
+
+    def wall_view(self, f: float, panels=None, show: str = "abs", deformation: float = 0.05, **kwargs):
+        """The elastic walls deformed at the frequency nearest f, coloured by their normal displacement (lp.plot
+        .scene3d.wall_view): panels = the panels drawn (wall_panels; None: all), show = "abs" (the amplitude) or
+        "real" (one instant, signed); an lp.plot.View3D."""
+        from loudpy.plot.scene3d import wall_view
+        w = self._walls()
+        i = int(np.argmin(np.abs(self.frequencies - f)))
+        q = self.wall_q()[i]
+        u = np.einsum("knd,k->nd", np.asarray(w["U"], float), q)
+        u_n = np.asarray(w["U_n"], float).T @ q
+        mesh = self.wall_mesh()
+        groups = None if panels is None else [f"panel {p}" if f"panel {p}" in mesh.groups else str(p) for p in panels]
+        return wall_view(mesh, u, u_n, groups, show, deformation, **kwargs)
+
+    def balloon_view(self, f: float, radius: float | None = None, range_db: float = 40.0, **kwargs):
+        """The directivity balloon at the frequency nearest f (lp.plot.scene3d.balloon_view): an lp.plot.View3D."""
+        from loudpy.plot.scene3d import balloon_view
+        return balloon_view(self, f, radius=radius, range_db=range_db, **kwargs)
 
     def driver_surfaces(self, f: float, deformation: float = 0.10, n_theta: int = 97) -> dict:
         """

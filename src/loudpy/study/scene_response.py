@@ -354,7 +354,12 @@ def wall_modes(study, f_max=None):
         raise ModelError("the scene has no elastic walls: call scene.walls(…)")
     w = scene_walls(scene, cavity_modes(scene) if scene._cavity is not None else None)
     keep = w.freq <= (f_max if f_max is not None else np.inf)
-    mesh = Mesh(np.arange(len(w.walls.nodes)), w.walls.nodes, {"walls": MeshGroup("walls", 2, "tri3", w.walls.cells)})
+    groups = {"walls": MeshGroup("walls", 2, "tri3", w.walls.cells)}
+    if w.labels is not None:                                      # one group per panel
+        lab = np.asarray(w.labels).astype(str)
+        for p in sorted(set(lab.tolist()), key=lambda x: (not x.isdigit(), int(x) if x.isdigit() else 0, x)):
+            groups[f"panel {p}"] = MeshGroup(f"panel {p}", 2, "tri3", w.walls.cells[lab == p])
+    mesh = Mesh(np.arange(len(w.walls.nodes)), w.walls.nodes, groups)
     U = w.translations()[keep]
     block = Block({"walls": mesh}, w.freq[keep], {"u": U, "u_n": w.normal()[keep]},
                   {"zeta": w.zeta[keep], "volume_disp": w.volume_disp[keep]}, {"physics": "walls"}, "walls")

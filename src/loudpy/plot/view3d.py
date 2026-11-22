@@ -126,6 +126,8 @@ class View3D:
         colour range; colorbar: False, True or "shared" (one bar for the datasets with the same
         colormap, range and label); other keywords go to pyvista add_mesh (color, opacity, line_width, show_edges …).
         """
+        if not dataset.n_points:                                      # nothing left (a part cut away)
+            return self
         q = as_quantity(quantity) if quantity is not None else None
         if scalars is None and dataset.point_data.keys() and "color" not in kwargs:
             scalars = dataset.point_data.active_scalars_name or list(dataset.point_data.keys())[0]

@@ -177,9 +177,25 @@ def _panel(sc, drivers, cam, clim, levels, ground, outline, size) -> view3d.View
     return v
 
 
+CUT_NORMALS = {"x": (-1.0, 0.0, 0.0), "y": (0.0, 1.0, 0.0), "z": (0.0, 0.0, 1.0)}
+#   the half removed by an axis cut: x < value (seen from −x, the driver's side cut), y > value (seen from above),
+#   z > value (seen from the front); "-x", "-y", "-z" remove the other half
+
+
 def resolve_cut(res, cut):
     """The cut plane (normal, origin) of a scene view: "driver" = the vertical plane x = x of the first driver,
-    the half x < that removed (seen from −x); None: no cut; or (normal, origin) as given."""
+    the half x < that removed (seen from −x); ("x" | "y" | "z", value [m]): the plane through value across that
+    axis, the half x < value, y > value or z > value removed ("-x" … the other half); None: no cut; or (normal,
+    origin) as given."""
+    if isinstance(cut, (tuple, list)) and len(cut) == 2 and isinstance(cut[0], str):
+        name = cut[0].strip().lower()
+        if name.lstrip("-") not in CUT_NORMALS:
+            raise ValueError(f"an axis cut is ('x' | 'y' | 'z' | '-x' | '-y' | '-z', value), got {cut!r}")
+        k = "xyz".index(name.lstrip("-"))
+        normal = np.asarray(CUT_NORMALS[name.lstrip("-")], float) * (-1.0 if name.startswith("-") else 1.0)
+        origin = np.zeros(3)
+        origin[k] = float(cut[1])
+        return (tuple(normal), tuple(origin))
     if isinstance(cut, str):
         if cut != "driver":
             raise ValueError(f"cut must be 'driver', None or (normal, origin), got {cut!r}")
@@ -209,23 +225,188 @@ def resolve_cameras(res, cameras, cut):
     return cams if cut is not None else {k: replace(c, cut=False) for k, c in cams.items()}
 
 
+def cut_camera(res, cut, view_angle: float = 25.0) -> Camera:
+    """A camera on the removed side of a cut plane (normal, origin), a little from the front, above and left."""
+    b = scene_bounds(res)
+    focus = b.mean(axis=0)
+    dist = 0.8 * float(np.linalg.norm(b[1] - b[0])) / np.tan(np.radians(view_angle) / 2)
+    d = np.array([-0.35, 0.45, 0.70]) + 1.2 * np.asarray(cut[0], float)
+    up = (0.0, 0.0, -1.0) if abs(d[1]) > 0.9 * np.linalg.norm(d) else (0.0, 1.0, 0.0)
+    return Camera(tuple(focus + dist * d / np.linalg.norm(d)), tuple(focus), up, view_angle=view_angle)
+
+
+def marks(v: view3d.View3D, points=None, arcs=None, size: float | None = None, color: str = "#c0392b"):
+    """Observation points (spheres) and arcs (tubes: lp.Arc selections or (n, 3) points) drawn in a 3D view, `size`
+    [m] across (default 2 % of what the view shows; the tubes a third of it): solid, they stay visible on a cut
+    plane through them."""
+    import pyvista as pv
+    pts = np.zeros((0, 3)) if points is None else np.atleast_2d(np.asarray(points, float))
+    lines = [np.asarray(a.points(3) if hasattr(a, "points") else a, float) for a in (arcs or ())]
+    lines = [p[np.all(np.isfinite(p), axis=1)] for p in lines]
+    if size is None:
+        found = [np.asarray(ds.points) for ds, _, _ in v.items if ds.n_points] + [pts] + lines
+        every = np.vstack([e for e in found if len(e)]) if any(len(e) for e in found) else np.zeros((1, 3))
+        size = 0.02 * float(np.linalg.norm(every.max(axis=0) - every.min(axis=0)) or 1.0)
+    if len(pts):
+        v.add(pv.PolyData(pts).glyph(geom=pv.Sphere(radius=size / 2), scale=False, orient=False), color=color,
+              smooth_shading=True, colorbar=False)
+    for p in lines:
+        if len(p) >= 2:
+            v.add(pv.lines_from_points(p).tube(radius=size / 6), color=color, smooth_shading=True, colorbar=False)
+    return v
+
+
 def scene_view_one(res, f, camera=None, cut="driver", keep=None, range_db: float = 50.0,
                    contour_db: float | None = 3.0, near_field: float = 0.08, deformation: float = 0.10,
-                   outline="auto", ground=None, size=(900, 760), cavity=None) -> view3d.View3D:
+                   outline="auto", ground=None, size=(900, 760), cavity=None, surfaces=None, points=None,
+                   arcs=None) -> view3d.View3D:
     """
     One view of a scene result as a View3D (SceneResults.view): camera = a default camera's name (default:
-    "front left (cut side)", or the front without a cut) or an lp.plot.Camera; other arguments as scene_figure.
+    "front left (cut side)", or the front without a cut; for another cut, a camera on its removed side) or an
+    lp.plot.Camera; surfaces: the air mesh's surfaces coloured by the SPL (res.air_surfaces; default the ground,
+    the walls and the openings); points, arcs: drawn (marks); other arguments as scene_figure.
     """
     cut = resolve_cut(res, cut)
+    axis_x = cut is not None and np.allclose(np.asarray(cut[0], float), CUT_NORMALS["x"])
+    if camera is None and cut is not None and not axis_x:
+        camera = cut_camera(res, cut)
     if camera is None or isinstance(camera, str):
         name = camera or ("front left (cut side)" if cut is not None else "front right (outer walls)")
         camera = resolve_cameras(res, [name], cut)[name]
     if isinstance(outline, str) and outline == "auto":
         outline = _outline(res, cut) if cut is not None else None
-    sc = scene_surfaces(res, f, cut, keep, near_field, cavity=cavity)
+    groups = tuple(surfaces) if surfaces is not None else ("ground", "walls", "openings")
+    sc = scene_surfaces(res, f, cut, keep, near_field, groups=groups, cavity=cavity)
     clim = (sc["top"] - range_db, sc["top"])
     levels = np.arange(np.ceil(clim[0] / contour_db) * contour_db, clim[1] + 1e-9, contour_db) if contour_db else None
-    return _panel(sc, res.driver_surfaces(sc["f"], deformation), camera, clim, levels, ground, outline, size)
+    v = _panel(sc, res.driver_surfaces(sc["f"], deformation), camera, clim, levels, ground, outline, size)
+    n_items = len(v.items)
+    marks(v, points, arcs)
+    if len(v.items) > n_items and v.cam is not None:                 # back off until the marks are in view
+        far = np.vstack([np.asarray(ds.points) for ds, _, _ in v.items[n_items:]])
+        b = scene_bounds(res)
+        every = np.vstack([b, far])
+        pos, focus = np.asarray(v.cam[0], float), np.asarray(v.cam[1], float)
+        grow = float(np.linalg.norm(every.max(axis=0) - every.min(axis=0)) / np.linalg.norm(b[1] - b[0]))
+        if grow > 1.0:
+            centre = 0.5 * (every.max(axis=0) + every.min(axis=0))
+            v.cam = (tuple(centre + grow * (pos - focus)), tuple(centre), *v.cam[2:])
+    return v
+
+
+def wall_view(mesh, u, u_n, groups=None, show: str = "real", deformation: float = 0.05, label: str | None = None,
+              camera=None, size=(900, 760)) -> view3d.View3D:
+    """
+    Shell walls (a TRI3 Mesh) deformed by the translations u (n, 3) and coloured by the normal displacement u_n (n,)
+    re its largest |u_n|; complex values (a response) are drawn at the instant where that largest u_n is real: "real"
+    (signed, −1 … 1) or "abs" (|u_n|, 0 … 1). The largest displacement is `deformation` × the walls' size; groups:
+    the mesh groups drawn (None: "walls"); the outline of the walls at rest in thin grey.
+    """
+    import pyvista as pv
+    groups = ["walls"] if groups is None else list(groups)
+    missing = [g for g in groups if g not in mesh.groups]
+    if missing:
+        raise ValueError(f"no group {missing} in the walls' mesh (groups: {list(mesh.groups)})")
+    X = np.asarray(mesh.coords, float)
+    u, u_n = np.asarray(u), np.asarray(u_n)
+    big = int(np.argmax(np.abs(u_n)))
+    phase = np.exp(-1j * np.angle(u_n[big])) if np.iscomplexobj(u_n) else 1.0
+    ur, unr = np.real(u * phase), np.real(u_n * phase)
+    top = float(np.abs(u_n).max()) or 1.0
+    size_w = float(np.linalg.norm(X.max(axis=0) - X.min(axis=0)))
+    amp = float(np.linalg.norm(ur, axis=1).max()) or 1.0
+    moved = X + (deformation * size_w / amp) * ur
+    vals, clim, cmap = (unr / top, (-1.0, 1.0), style.CMAPS["pressure"]) if show == "real" else \
+        (np.abs(u_n) / top, (0.0, 1.0), style.CMAPS["displacement"])
+    label = label or (r"$u_n / |u_n|_{max}$" if show == "real" else r"$|u_n| / |u_n|_{max}$")
+    v = view3d.View3D(size)
+    out = np.zeros(3)                                             # where the walls move most, seen from outside
+    for g in groups:
+        tris = view3d._rows(mesh, mesh.groups[g].cells)
+        if not len(tris):
+            continue
+        cn = np.cross(X[tris[:, 1]] - X[tris[:, 0]], X[tris[:, 2]] - X[tris[:, 0]])   # n × 2 area, into the air
+        out -= (np.abs(u_n)[tris].mean(axis=1)[:, None] * cn).sum(axis=0)
+        faces = np.hstack([np.full((len(tris), 1), 3), tris]).ravel()
+        rest = pv.PolyData(X, faces)
+        v.add(rest.extract_feature_edges(feature_angle=35.0, boundary_edges=True, manifold_edges=False,
+                                         non_manifold_edges=False), color="#9aa5ae", line_width=0.8, colorbar=False)
+        surf = pv.PolyData(moved, faces)
+        surf.point_data["u_n"] = vals
+        v.add(surf, scalars="u_n", cmap=cmap, clim=clim, colorbar="shared", label=label, smooth_shading=True,
+              ambient=0.45, diffuse=0.6, specular=0.0)
+    b = np.array([X.min(axis=0), X.max(axis=0)])
+    if camera is None:
+        cam = default_cameras(b)["front right (outer walls)"]
+        if np.linalg.norm(out) > 1e-12:
+            focus = np.asarray(cam.focus, float)
+            d = out / np.linalg.norm(out) + np.array([0.25, 0.35, 0.25])
+            camera = Camera(tuple(focus + np.linalg.norm(np.subtract(cam.position, focus)) * d / np.linalg.norm(d)),
+                            tuple(focus), cam.up, view_angle=cam.view_angle)
+        else:
+            camera = cam
+    v.camera(camera.position, camera.focus, camera.up, view_angle=camera.view_angle, parallel=camera.parallel)
+    return v
+
+
+def wall_mode_view(res, k: int, panels=None, show: str = "real", deformation: float = 0.05, **kwargs):
+    """Wall mode k of the in-vacuo wall modes of a scene (lp.Modes(scene, physics="walls")): its shape deformed and
+    coloured by the normal displacement (wall_view); panels: the panels drawn (None: all)."""
+    u, u_n = res.field("u", index=k), res.field("u_n", index=k)
+    mesh = u.mesh
+    groups = None if panels is None else [f"panel {p}" if f"panel {p}" in mesh.groups else str(p) for p in panels]
+    return wall_view(u.mesh, u.values, u_n.values, groups, show, deformation, **kwargs)
+
+
+def wall_mode_panels(res) -> list[str]:
+    """The panels of the wall modes' shell mesh (["walls"] for uniform walls)."""
+    mesh = res.field("u_n", index=0).mesh
+    found = [g[6:] for g in mesh.groups if g.startswith("panel ")]
+    return found or ["walls"]
+
+
+def balloon_view(res, f, radius: float | None = None, center=None, range_db: float = 40.0, n=(31, 73),
+                 size=(900, 760)) -> view3d.View3D:
+    """
+    The directivity balloon of a scene result at the frequency nearest f: the SPL on the half sphere above the
+    ground of `radius` around `center` (default: the DtN hemisphere's centre on the ground, radius max(1 m, 2 × the
+    hemisphere's)), drawn as a surface whose distance to the centre is the level above top − range_db (the top
+    1), coloured by the SPL; the drivers' axes drawn from the centre (their direction).
+    """
+    import pyvista as pv
+    from loudpy.errors import ResultsError
+    h = res.scene.get("hemisphere")
+    if not h:
+        raise ResultsError("a balloon needs the outside air (exterior / merged): no DtN hemisphere in these results")
+    c = np.asarray(h["center"] if center is None else center, float)
+    R = float(radius) if radius else max(1.0, 2.0 * float(h["radius"]))
+    up = int(h["up"])
+    e_up = np.eye(3)[up]
+    e1, e2 = (np.eye(3)[k] for k in range(3) if k != up)
+    th = np.linspace(0.0, np.pi / 2, n[0])
+    ph = np.linspace(0.0, 2 * np.pi, n[1])
+    TH, PH = np.meshgrid(th, ph, indexing="ij")
+    dirs = (np.cos(TH)[..., None] * e_up + (np.sin(TH) * np.cos(PH))[..., None] * e1
+            + (np.sin(TH) * np.sin(PH))[..., None] * e2).reshape(-1, 3)
+    i = int(np.argmin(np.abs(res.frequencies - f)))
+    p = res._far_at(c + R * dirs, i)
+    L = 20 * np.log10(np.maximum(np.abs(p) / np.sqrt(2), 1e-30) / 2e-5)
+    top = float(L.max())
+    rho = np.clip((L - (top - range_db)) / range_db, 0.0, 1.0)
+    grid = pv.StructuredGrid(*(dirs * rho[:, None]).reshape(n[0], n[1], 3).transpose(2, 0, 1))
+    grid.point_data["spl"] = L.reshape(n[0], n[1]).ravel(order="F")
+    v = view3d.View3D(size)
+    v.add(grid, scalars="spl", quantity="spl", clim=(top - range_db, top), smooth_shading=True, specular=0.2,
+          label=f"SPL at {R:g} m [dB]")
+    v.add(pv.Disc(inner=0.0, outer=1.05, normal=tuple(e_up), c_res=72), color="#9aa5ae", opacity=0.25,
+          colorbar=False)                                         # the ground
+    for d in res.scene.get("drivers", []):
+        ax = np.asarray(d["rotation"], float)[:, 2] if "rotation" in d else np.array([0.0, 0.0, 1.0])
+        v.add(pv.Arrow(start=(0.0, 0.0, 0.0), direction=ax / np.linalg.norm(ax), scale=1.15, tip_length=0.06,
+                       shaft_radius=0.006, tip_radius=0.02), color="#22303c", colorbar=False)
+    d = 0.9 * e1 + 0.7 * e_up + 1.2 * e2
+    v.camera(tuple(2.8 * d / np.linalg.norm(d)), tuple(0.25 * e_up), tuple(e_up), view_angle=30.0, zoom=0.9)
+    return v
 
 
 @style.styled

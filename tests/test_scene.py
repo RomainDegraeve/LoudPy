@@ -126,6 +126,16 @@ def test_cavity_elastic_walls(driver, mesh_dir, tmp_path):
     assert u_rms.dims == ("f",) and np.all(u_rms.values > 0) and np.isrealobj(u_rms.values)
     with pytest.raises(lp.errors.SelectionError, match="no wall panel"):
         res.wall_displacement(panel="back")
+    from loudpy.plot.scene3d import wall_mode_panels, wall_mode_view
+    v = res.wall_view(FREQS[2], deformation=0.05)                # deformed walls, coloured by u_n re its maximum
+    surf = next(ds for ds, kw, _ in v.items if kw.get("scalars") == "u_n")
+    rest = np.asarray(res.wall_mesh().coords, float)
+    size = np.linalg.norm(rest.max(axis=0) - rest.min(axis=0))
+    assert np.abs(surf["u_n"]).max() == pytest.approx(1.0)
+    assert np.linalg.norm(surf.points - rest, axis=1).max() == pytest.approx(0.05 * size)
+    assert wall_mode_panels(walls) == ["walls"]
+    m = wall_mode_view(walls, 0, show="abs")
+    assert next(ds for ds, kw, _ in m.items if kw.get("scalars") == "u_n")["u_n"].min() >= 0
     back = lp.load(tmp_path / "walls.h5")
     np.testing.assert_allclose(back.wall_volume_velocity().values, Q.values)
     np.testing.assert_allclose(back.wall_displacement().values, u_rms.values)
@@ -327,6 +337,41 @@ def test_scene_results_plot_and_view(driver, mesh_dir, tmp_path):
     assert res.view(300.0).save(tmp_path / "s.html", title="scene").stat().st_size > 10_000
 
 
+def test_scene_view_choices(driver, mesh_dir, tmp_path):
+    """What a scene's 3D view shows: a cut across x, y or z at a value (its camera on the removed side), the air
+    surfaces coloured, observation points and arcs drawn; the directivity balloon on the half sphere above the
+    ground (the DtN expansion at one frequency, as for all)."""
+    pytest.importorskip("pyvista")
+    from loudpy.plot.scene3d import resolve_cut
+    scene = _small("merged", driver, mesh_dir)
+    res = lp.FrequencyResponse(scene, drive=lp.Force(1.0)).solve([300.0, 600.0], store=tmp_path / "s.h5")
+    assert resolve_cut(res, ("y", 0.1)) == ((0.0, 1.0, 0.0), (0.0, 0.1, 0.0))
+    assert resolve_cut(res, ("-z", 0.02)) == ((-0.0, -0.0, -1.0), (0.0, 0.0, 0.02))
+    with pytest.raises(ValueError, match="axis cut"):
+        resolve_cut(res, ("w", 0.0))
+    assert {"ground", "walls"} <= set(res.air_surfaces)
+    arc = lp.Arc(1.0, np.arange(-90.0, 91.0, 5.0), (W / 2, H / 2, 0.0), axis="z", toward="x")
+    v = res.view(600.0, cut=("y", H / 2), surfaces=["walls"], points=[(W / 2, H / 2, 1.0)], arcs=[arc])
+    pos, focus = np.asarray(v.cam[0]), np.asarray(v.cam[1])
+    assert pos[1] - focus[1] > np.abs(pos - focus)[[0, 2]].max()          # seen from above: the top is cut off
+    ball, tube = v.items[-2][0], v.items[-1][0]                       # a sphere on the point, a tube on the arc
+    np.testing.assert_allclose(ball.center, (W / 2, H / 2, 1.0), atol=1e-9)
+    along = arc.points(3)
+    d = np.min(np.linalg.norm(tube.points[:, None, :] - along[None, :, :], axis=2), axis=1)
+    assert d.max() < 0.01 and len(np.unique(np.round(tube.points[:, 0], 3))) > 20
+    spl = [ds for ds, kw, _ in v.items if kw.get("scalars") == "spl"]
+    assert spl and all(ds.points[:, 1].max() <= H / 2 + 1e-9 for ds in spl)   # nothing above the cut
+    h = res.scene["hemisphere"]
+    pts = np.asarray(h["center"]) + 1.3 * h["radius"] * np.array([[0.0, 0.6, 0.8], [0.6, 0.8, 0.0]])
+    np.testing.assert_allclose(res._far_at(pts, 1), res._far(pts)[1], rtol=1e-12)
+    b = res.balloon_view(600.0, range_db=30.0)
+    grid = b.items[0][0]
+    L = np.asarray(grid["spl"])
+    r = np.linalg.norm(grid.points, axis=1)
+    assert r.max() == pytest.approx(1.0) and grid.points[:, h["up"]].min() >= -1e-12   # above the ground
+    np.testing.assert_allclose(r, np.clip((L - L.max() + 30.0) / 30.0, 0, 1), atol=1e-9)
+
+
 def _open_with_walls(driver, mesh_dir, walls=None):
     """The committed cavity + exterior scene (band 20–700 Hz), the cavity lossless, elastic walls when given."""
     scene = lp.Scene(box_cabinet, [driver.place("main", at=(W / 2, H / 2))])
@@ -485,5 +530,9 @@ def test_walls_in_a_merged_air_domain(driver, tmp_path):
     np.testing.assert_allclose(Qp, Q.values, rtol=0.05)
     u2 = sum(back.wall_displacement(panel=p).values ** 2 * back._wall_cells(p)[1].sum() for p in back.wall_panels)
     np.testing.assert_allclose(u2 / back._wall_cells()[1].sum(), back.wall_displacement().values ** 2, rtol=1e-10)
+    from loudpy.plot.scene3d import wall_mode_panels
+    assert wall_mode_panels(lp.Modes(scene, physics="walls").solve(f_max=3000.0)) == back.wall_panels   # the modes' panels
+    v = back.wall_view(freqs[1], panels=["back", "top"])
+    assert sum(kw.get("scalars") == "u_n" for _, kw, _ in v.items) == 2
     Qd = back.driver_volume_velocity()                           # merged air: the drivers' rear patches
     assert np.all(np.abs(Qd.values) > 0) and np.all(np.abs(Q.values / Qd.values) < 0.5)

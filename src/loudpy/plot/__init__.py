@@ -24,7 +24,9 @@ an image, an interactive HTML page or a 3D model, or to turn in a window. The fu
     field.view(cut=…)                                    a 3D view (View3D) of a field (3D, or a 2D displacement revolved)
     scene_res.plot(f)                                    cut-away views of a 3D scene result (SPL + drivers), default
                                                          cameras, cut through the driver axis, dashed outline
-    scene_res.view(f, camera)                            one of them as a View3D
+    scene_res.view(f, camera)                            one of them as a View3D (cut=("y", 0.2), surfaces=, points=,
+                                                         arcs=)
+    scene_res.wall_view(f), scene_res.balloon_view(f)    the elastic walls deformed; the directivity balloon
     view.save("x.png" | ".pdf" | ".html" | ".glb" | ".vtm"), view.interactive()   save / turn a 3D view
     lp.plot.View3D(…)                                    your own 3D scene (pyvista) in matplotlib axes
     lp.plot.default_cameras(bounds, drivers)             the default cameras of a scene

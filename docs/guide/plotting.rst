@@ -68,7 +68,14 @@ and the deformed drivers at one instant and one scale. By default it uses six ca
 (:func:`lp.plot.default_cameras <loudpy.plot.default_cameras>`: front left, front right, side, from above, rear,
 close-up on the driver) and the vertical plane through the first driver's axis as the cut; choose with
 ``cameras=["from above", …]`` (default cameras by name) or ``{name: lp.plot.Camera(…)}``, and ``cut=None``
-(the whole scene) or ``cut=(normal, origin)``. ``scene_res.view(f, camera)`` is one of them as a View3D. The
+(the whole scene) or ``cut=(normal, origin)``. ``scene_res.view(f, camera)`` is one of them as a View3D; it
+also takes ``cut=("y", 0.2)`` (the plane across x, y or z at a value: the half x < value, y > value or z > value
+removed, "-y" the other half, the camera on the removed side), ``surfaces=`` (which of
+``scene_res.air_surfaces`` carry the SPL: the ground, the walls, the openings by default) and ``points=``,
+``arcs=`` (observation points and ``lp.Arc`` arcs drawn as spheres and tubes, the camera backing off to show
+them). With elastic walls, ``scene_res.wall_view(f, panels=[…])`` draws the walls deformed and coloured by their
+normal displacement (``loudpy.plot.scene3d.wall_mode_view(modes, k)``: a wall mode), and
+``scene_res.balloon_view(f)`` the directivity balloon on the half sphere above the ground. The
 building blocks (``view3d.tet_grid``, ``tri_surface``, ``clip``, ``isolines``, ``edges``, ``dashed``) are in
 :mod:`loudpy.plot.view3d`.
 
