@@ -52,7 +52,8 @@ KINDS = {
     "texts": "a list of strings", "pairs": "a list of number pairs", "mapping": "a mapping name → value",
     "selection": "a group name or a selector node", "material": "a library name or a Material node",
     "block": "a node of the section `of`", "blocks": "a list of nodes of the section `of`",
-    "frequencies": "a list of frequencies [Hz]", "signal": "a list of samples or a signals node",
+    "frequencies": "a list of frequencies [Hz], or {'from', 'to', 'points', 'spacing': 'log' | 'linear'}",
+    "signal": "a list of samples or a signals node",
 }
 _TUPLE_KINDS = {"point", "pair", "range"}
 
@@ -525,6 +526,7 @@ NOT_BLOCKS = {
     "read_comsol": "reads COMSOL tables", "set_verbosity": "logging",
     "cabinets": "module: cabinets.Box / Step / Brace / Port are blocks", "signals": "module: signals.* are blocks",
     "errors": "module", "progress": "module", "plot": "module", "schema": "module: this description",
+    "Document": "a whole simulation (model or scene, and studies) as nodes of these blocks",
 }
 
 
@@ -587,6 +589,8 @@ def from_value(v, p: Param | None = None, **context) -> Any:
     keeps tuples)."""
     from loudpy.model.parameters import P
     if isinstance(v, dict):
+        if p is not None and p.kind == "frequencies" and "from" in v:
+            return frequencies(v)
         if "type" in v:
             return build(v, **context)
         if "P" in v:
@@ -602,6 +606,16 @@ def from_value(v, p: Param | None = None, **context) -> Any:
         tuple_ = p is not None and (p.kind in _TUPLE_KINDS or isinstance(p.default, tuple))
         return tuple(items) if tuple_ else items
     return v
+
+
+def frequencies(v) -> np.ndarray:
+    """The frequencies of a "frequencies" value: a list, or {"from", "to", "points", "spacing": "log" | "linear"}."""
+    if not isinstance(v, dict):
+        return np.asarray(v, float)
+    a, b, n = float(v["from"]), float(v["to"]), int(v.get("points", 100))
+    if n < 1 or a <= 0 or b < a:
+        raise SchemaError(f"frequencies: 0 < from ≤ to and points ≥ 1, got {v!r}")
+    return np.geomspace(a, b, n) if v.get("spacing", "log") == "log" else np.linspace(a, b, n)
 
 
 # ── nodes ──────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -697,6 +711,7 @@ def build(node: dict, **context):
     missing_ctx = [c for c in b.context if c not in context]
     if missing_ctx:
         raise SchemaError(f"{b.type} needs {missing_ctx} (build(node, {missing_ctx[0]}=…))")
+    values = _adapt(b.type, values)
     if b.varargs:
         return b.target(*args, *values.pop(b.varargs, ()), **values)
     if b.type in ("Union", "Intersection", "Difference"):
@@ -707,6 +722,57 @@ def build(node: dict, **context):
         init = {k: v for k, v in values.items() if k not in solve}
         return b.target(*args, **init), solve
     return b.target(*args, **values)
+
+
+def _adapt(type_: str, values: dict) -> dict:
+    """What plain data cannot say the way the code wants it: a Force signal (samples, fs) from a signals node, a
+    mapping of parameters as lp.Parameters."""
+    if type_ == "Force" and isinstance(values.get("amplitude"), tuple) and len(values["amplitude"]) == 2:
+        samples, fs = values["amplitude"]
+        values = {**values, "amplitude": samples, "fs": values.get("fs") or fs}
+    if type_ in ("Model", "Scene") and isinstance(values.get("parameters"), dict):
+        from loudpy.model.parameters import Parameters
+        values = {**values, "parameters": Parameters(**values["parameters"])}
+    return values
+
+
+def code(v, p: Param | None = None, path: Callable[[str], str] | None = None) -> str:
+    """Python code for a node or a value (a script's text): lp.Solid(name='cone', material='Paper', …); path(text):
+    the code of a file path (default: its repr); an Item is model['name']."""
+    if isinstance(v, dict) and "type" in v:
+        b = block(v["type"])
+        given = v.get("params") or {}
+        if b.type == "Item":
+            return f"model[{given['name']!r}]"
+        if b.type in ("Union", "Intersection", "Difference"):
+            op = {"Union": "|", "Intersection": "&", "Difference": "-"}[b.type]
+            return f"({code(given['a'], b.param('a'), path)} {op} {code(given['b'], b.param('b'), path)})"
+        args = [code(x, b.param(b.varargs), path) for x in given.get(b.varargs, [])] if b.varargs else []
+        args += [f"{k}={code(x, b.param(k), path)}" for k, x in given.items() if k != b.varargs]
+        return f"lp.{b.type}({', '.join(args)})"
+    if isinstance(v, dict) and "P" in v:
+        out = f"lp.P({v['P']!r})"
+        if float(v.get("scale", 1.0)) != 1.0:
+            out += f" * {float(v['scale'])!r}"
+        if float(v.get("offset", 0.0)) != 0.0:
+            out += f" + {float(v['offset'])!r}"
+        return out
+    if isinstance(v, dict) and "complex" in v:
+        return repr(complex(*v["complex"]))
+    if isinstance(v, dict) and p is not None and p.kind == "frequencies":
+        fn = "np.geomspace" if v.get("spacing", "log") == "log" else "np.linspace"
+        return f"{fn}({float(v['from'])!r}, {float(v['to'])!r}, {int(v.get('points', 100))})"
+    if isinstance(v, dict):
+        return "{" + ", ".join(f"{k!r}: {code(x, None, path)}" for k, x in v.items()) + "}"
+    if isinstance(v, list):
+        inner = [code(x, Param("", "pair") if p is not None and p.kind == "pairs" else None, path) for x in v]
+        tuple_ = p is not None and (p.kind in _TUPLE_KINDS or p.kind == "pair" or isinstance(p.default, tuple))
+        if tuple_:
+            return "(" + ", ".join(inner) + ("," if len(inner) == 1 else "") + ")"
+        return "[" + ", ".join(inner) + "]"
+    if isinstance(v, str) and p is not None and p.kind == "file" and path is not None:
+        return path(v)
+    return repr(v)
 
 
 def check(node: dict) -> list[str]:
@@ -738,6 +804,12 @@ def _check_value(v, p: Param) -> list[str]:
     if isinstance(v, dict) and "P" in v:
         return [] if p.kind in ("number", "integer", "complex", "pair", "point", "range") else \
             ["a parameter reference only replaces a number"]
+    if p.kind == "frequencies" and isinstance(v, dict):
+        try:
+            frequencies(v)
+            return []
+        except (SchemaError, KeyError, TypeError, ValueError) as e:
+            return [str(e) if isinstance(e, SchemaError) else f"frequencies: {{'from', 'to', 'points'}}, got {v!r}"]
     if isinstance(v, dict) and "type" in v:
         problems = check(v)
         if p.kind in ("block", "blocks") and p.of and block(v["type"]).section != p.of and not problems:
@@ -831,4 +903,5 @@ def reference_rst() -> str:
 
 
 __all__ = ["Block", "Param", "SchemaError", "KINDS", "SECTIONS", "NOT_BLOCKS", "catalog", "block", "blocks",
-           "defaults", "describe", "build", "check", "to_value", "from_value", "reference_rst"]
+           "defaults", "describe", "build", "check", "code", "frequencies", "to_value", "from_value",
+           "reference_rst"]

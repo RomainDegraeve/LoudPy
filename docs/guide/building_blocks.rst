@@ -1883,3 +1883,4 @@ Public names of loudpy that a simulation is not made of:
 - ``progress``: module
 - ``plot``: module
 - ``schema``: module: this description
+- ``Document``: a whole simulation (model or scene, and studies) as nodes of these blocks

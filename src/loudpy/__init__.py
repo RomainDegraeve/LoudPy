@@ -31,6 +31,7 @@ from .study import (Modes, FrequencyResponse, PerWavelength, Transient, Sweep, S
 from .scene import Driver, Profile, Scene, Cabinet, cabinets
 
 from . import errors, progress, schema, signals
+from .document import Document
 from ._log import set_verbosity
 
 __version__ = "0.2.0"
@@ -61,4 +62,6 @@ __all__ = [
     "Point", "Points", "Polar", "Arc", "Line",
     # messages and errors, lazily imported plotting
     "set_verbosity", "errors", "progress", "schema", "signals", "plot",
+    # a whole simulation as plain data
+    "Document",
 ]

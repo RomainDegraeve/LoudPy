@@ -130,6 +130,7 @@ Every building block with its parameters, for programs (the interface's forms): 
    schema.to_value
    schema.from_value
    schema.reference_rst
+   Document
    schema.Param
 
 Plotting

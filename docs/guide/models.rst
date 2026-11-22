@@ -254,3 +254,24 @@ triangulation).
 ``model.mesh(path, size_field="sizes.pos")`` adds a gmsh size view (element sizes anywhere in the geometry,
 written by ``loudpy.fem.adapt`` from error indicators): the smaller of the view and the regions' sizes
 wins, and the view is part of the signature (the mesh is rebuilt when it changes).
+
+
+A simulation as a document
+--------------------------
+
+``lp.Document`` holds a model (or a 3D scene) and its studies as plain data — the nodes of
+:doc:`building_blocks` — in one JSON file: what the interface edits and saves. The script is generated from it.
+
+.. code-block:: python
+
+   studies = [{"name": "modes", "type": "Modes", "params": {"f_max": 3000.0}},
+              {"name": "fr", "type": "FrequencyResponse", "params": {
+                  "drive": {"type": "Force", "params": {"amplitude": 1.0}},
+                  "freqs": {"from": 20.0, "to": 20000.0, "points": 200, "spacing": "log"}}}]
+   doc = lp.Document.of(model, studies, name="speaker")
+   doc.save("speaker/speaker.loudpy.json")       # paths relative to its folder
+   doc = lp.Document.load("speaker/speaker.loudpy.json")
+   model = doc.build()                            # the same model again
+   study, kwargs = doc.study("fr", model)         # lp.FrequencyResponse(model, drive=…), {"freqs": …}
+   Path("speaker/speaker_ui.py").write_text(doc.to_script())   # python3 speaker_ui.py meshes and runs both
+

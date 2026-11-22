@@ -232,6 +232,26 @@ def test_scene_to_script_round_trip(driver, tmp_path):
         lp.Scene(lambda occ: box_cabinet(occ), [driver.place("main", at=(W / 2, H / 2))]).cavity().to_script()
 
 
+@pytest.mark.slow
+def test_scene_document_round_trip(driver, tmp_path):
+    """A scene (Box cabinet, a driver from its modes file, cavity + exterior air) as a document: saved, read back and
+    built the same; a cabinet builder of a module file is an import; a lambda is refused."""
+    scene = lp.Scene(lp.cabinets.Box(W, H, D, ports=(lp.cabinets.Port((0.03, 0.03), 0.01, 0.02),)),
+                     [driver.place("main", at=(W / 2, H / 2))], parameters=lp.Parameters(k=1.0))
+    scene.cavity(f_max=1500.0, eta=0.02, mesh_size=(0.012, 0.03), cache_modes=False).exterior(bands=[(20, 500)])
+    doc = lp.Document.of(scene, [{"name": "fr", "type": "FrequencyResponse", "params": {
+        "drive": {"type": "Force", "params": {"amplitude": 1.0}}, "freqs": [100.0, 200.0]}}], name="box")
+    assert doc.check() == []
+    back = lp.Document.load(doc.save(tmp_path / "box.loudpy.json"))
+    again = back.build()
+    assert again.to_script() == scene.to_script()
+    assert "scene.cavity(" in back.to_script() and "store=HERE / 'results' / 'fr.h5'" in back.to_script()
+    built = lp.Document.of(lp.Scene(box_cabinet, [driver.place("main", at=(W / 2, H / 2))]).cavity())
+    assert built.scene["params"]["cabinet"]["import"].endswith("test_scene.py:box_cabinet")
+    with pytest.raises(lp.errors.ModelError, match="builder"):
+        lp.Document.of(lp.Scene(lambda occ: box_cabinet(occ), [driver.place("main", at=(W / 2, H / 2))]))
+
+
 def deep_box(occ, p):
     """The test box with a parameterised depth p["D"] (cabinet builder taking the parameters)."""
     inner = occ.addBox(0.0, 0.0, api.Z_B - p["D"], W, H, p["D"])
