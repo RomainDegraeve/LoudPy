@@ -1796,7 +1796,7 @@ Elastic walls
 ``lp.Scene.walls``
 ^^^^^^^^^^^^^^^^^^
 
-Elastic cabinet walls: shells (MITC3) on the walls of the cavity mesh, coupled to the cavity air through their in-vacuo modes (configuration cavity). material: library name or lp.Material; thickness [m] (or lp.P); damping: lp.Rayleigh() (default), lp.Hysteretic(), lp.Undamped(); fixed: "edges" (the panel edges — folds sharper than `angle` — and the rims of the driver cut-outs are clamped) or a function of the node coordinates (n, 3) returning a mask of clamped nodes; f_max: wall modes kept (default: the cavity's). The shells lie on the inner faces of the walls (no offset); the outside of the walls is in vacuo.
+Elastic cabinet walls: shells (MITC3) on the walls of the cavity mesh, coupled to the cavity air through their in-vacuo modes (configuration cavity). material: library name or lp.Material; thickness [m] (or lp.P); damping: lp.Rayleigh() (default), lp.Hysteretic(), lp.Undamped(); fixed: "edges" (the panel edges — folds sharper than `angle` — and the rims of the driver cut-outs are clamped) or a function of the node coordinates (n, 3) returning a mask of clamped nodes; f_max: wall modes kept (default: the cavity's). The shells lie on the inner faces of the walls (no offset). With the outside air (cavity() + exterior()), the outer face of each wall moves with its shell (rigid through the thickness) and radiates; else it is in vacuo.
 
 Given by the context: scene.
 
@@ -1818,7 +1818,7 @@ Given by the context: scene.
      - number
      - m
      - ``0.018``
-     - shell thickness Range: > 0.
+     - shell thickness (empty: each panel's, measured on the Box / STEP cabinet) Range: > 0.
    * - ``damping``
      - block (damping)
      - 
@@ -1839,8 +1839,46 @@ Given by the context: scene.
      - °
      - ``30.0``
      - a fold sharper than this is a panel edge Range: > 0.
+   * - ``panels``
+     - mapping
+     - 
+     - ``None``
+     - panels of their own: {a STEP solid's index (0, 1 …) or a Box side (left, right, bottom, top, back, front): a Panel}
 
 Only in a script: fixed (function): f(points) → mask of the clamped nodes.
+
+Wall panels
+-----------
+
+``lp.cabinets.Panel``
+^^^^^^^^^^^^^^^^^^^^^
+
+One panel of elastic cabinet walls (Scene.walls(panels={key: Panel(…)})): its material (a library name or an lp.Material), thickness [m] and damping (lp.Rayleigh / Hysteretic / Undamped); None keeps the walls' own — the thickness then is the one measured on the cabinet (a STEP solid, a Box wall). Keys: a STEP cabinet's solids by their index in the file (0, 1, …); a Box's sides "left", "right", "bottom", "top", "back", "front".
+
+.. list-table::
+   :header-rows: 1
+   :widths: 18 14 8 16 44
+
+   * - parameter
+     - value
+     - unit
+     - default
+     - meaning
+   * - ``material``
+     - material
+     - 
+     - ``None``
+     - its material (empty: the walls')
+   * - ``thickness``
+     - number
+     - m
+     - ``None``
+     - its thickness (empty: the walls', else measured on the cabinet) Range: > 0.
+   * - ``damping``
+     - block (damping)
+     - 
+     - ``None``
+     - its damping (empty: the walls')
 
 Not building blocks
 -------------------

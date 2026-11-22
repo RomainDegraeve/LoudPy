@@ -27,9 +27,26 @@ returning a mask clamps other nodes. The walls enter the cavity coupling through
 ``f_max`` (default: the cavity's), exactly like the driver modes: the coordinates ``q`` of the results hold the
 driver modes first, then the wall modes. ``lp.Modes(scene)`` gives the coupled driver + wall + cavity modes.
 
-Limits (phase I): the walls are coupled to the cavity only (configuration ``cavity``; the outside of the walls
-and the driver fronts are in vacuo), the shells lie on the inner faces of the walls (no offset), and the
-materials are isotropic (plywood's two directions are averaged).
+With the outside air (``scene.cavity(…).exterior(…)``) the walls radiate too: the outer face of each wall moves
+with its shell (rigid through the thickness — thin walls), coupled to the exterior FE air and its half-space DtN
+like the driver fronts. Faces with no air outside (a bottom standing on the ground) only load the cavity. A merged
+air domain (``merged()``) takes no walls. The shells lie on the inner faces of the walls (no offset).
+
+Panels of their own (an ``lp.cabinets.Box`` or ``lp.cabinets.Step`` cabinet):
+
+.. code-block:: python
+
+    scene.walls("MDF", thickness=None,                    # each panel's thickness measured on the cabinet
+                panels={2: lp.cabinets.Panel("Plywood", 0.012, lp.Hysteretic(0.03))})   # STEP solid 2 of its own
+
+A STEP cabinet's panels are its solids (``panels`` keys: their index in the file, 0, 1, …), each wall face of the
+cavity taking the solid it lies on; ``thickness=None`` measures each solid's thickness through it, along the faces'
+normals. A Box's panels are its sides ("left", "right", "bottom", "top", "back", "front": ``wall``, ``bottom``, the
+front between the drivers' planes). A ``Panel`` leaves None what it keeps of the walls'; faces on no panel (driver
+plugs, the ground, port tubes) stay rigid. Checked: the outside air displaced by each wall mode is minus the cavity's
+(rigid through the thickness), walls 100 × stiffer give the rigid-box response 100 × closer, and the power put in at
+the coil is what the modes dissipate plus what the hemisphere radiates (to 1e-10). The materials are isotropic
+(plywood's two directions are averaged).
 
 The elements
 ------------

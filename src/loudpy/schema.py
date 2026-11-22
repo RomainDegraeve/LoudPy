@@ -23,7 +23,7 @@ reference lp.P, {"complex": [re, im]} for a complex amplitude. Block types are w
 
 Sections (where a block goes): model, materials, regions, boundaries, mesh_controls, damping, drives,
 selectors, profiles, studies, study_options, signals, scene, scene.cabinet, scene.cabinet_parts, scene.drivers,
-scene.placement, scene.air, scene.walls.
+scene.placement, scene.air, scene.walls, scene.panels.
 """
 from __future__ import annotations
 
@@ -499,15 +499,23 @@ def _catalog() -> dict[str, Block]:
             context=("scene",)),
         _make("Scene.walls", "scene.walls", lp.Scene.walls, [
             _p("material", "material", help="the walls' material (solid)", group="Material"),
-            _p("thickness", "number", "m", "shell thickness", "Material", min=0),
+            _p("thickness", "number", "m", "shell thickness (empty: each panel's, measured on the Box / STEP "
+               "cabinet)", "Material", min=0, optional=True),
             _p("damping", "block", help="empty: Rayleigh fitted to the material", group="Material",
                of="damping", optional=True),
             _p("fixed", "choice", help="edges: the panel edges and the driver cut-out rims are clamped",
                group="Supports", choices=("edges",)),
             _p("f_max", "number", "Hz", "wall modes kept up to (empty: the cavity's)", "Modes", optional=True,
                min=0),
-            _p("angle", "number", "°", "a fold sharper than this is a panel edge", "Supports", min=0)],
+            _p("angle", "number", "°", "a fold sharper than this is a panel edge", "Supports", min=0),
+            _p("panels", "mapping", help="panels of their own: {a STEP solid's index (0, 1 …) or a Box side "
+               "(left, right, bottom, top, back, front): a Panel}", group="Panels", optional=True)],
             context=("scene",), code_only={"fixed (function)": "f(points) → mask of the clamped nodes"}),
+        _make("cabinets.Panel", "scene.panels", cab.Panel, [
+            _p("material", "material", help="its material (empty: the walls')", optional=True),
+            _p("thickness", "number", "m", "its thickness (empty: the walls', else measured on the cabinet)",
+               optional=True, min=0),
+            _p("damping", "block", help="its damping (empty: the walls')", of="damping", optional=True)]),
         open_air("Scene.exterior", lp.Scene.exterior, "exterior"),
         open_air("Scene.merged", lp.Scene.merged, "air"),
     ]
@@ -517,7 +525,7 @@ def _catalog() -> dict[str, Block]:
 _CATALOG: dict[str, Block] | None = None
 SECTIONS = ("model", "materials", "regions", "boundaries", "mesh_controls", "damping", "drives",
             "selectors", "profiles", "studies", "study_options", "signals", "scene", "scene.cabinet",
-            "scene.cabinet_parts", "scene.drivers", "scene.placement", "scene.air", "scene.walls")
+            "scene.cabinet_parts", "scene.drivers", "scene.placement", "scene.air", "scene.walls", "scene.panels")
 
 # Public names of loudpy that are not building blocks of a simulation, and why (the completeness test reads this).
 NOT_BLOCKS = {
@@ -874,7 +882,7 @@ SECTION_TITLES = {
     "profiles": "Wet profiles of a driver", "studies": "Studies", "study_options": "Study options",
     "signals": "Transient signals", "scene": "3D scene", "scene.cabinet": "Cabinets",
     "scene.cabinet_parts": "Cabinet parts", "scene.drivers": "Drivers", "scene.placement": "Driver placement",
-    "scene.air": "Scene air", "scene.walls": "Elastic walls"}
+    "scene.air": "Scene air", "scene.walls": "Elastic walls", "scene.panels": "Wall panels"}
 
 
 def reference_rst() -> str:

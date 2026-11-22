@@ -37,7 +37,7 @@ import numpy as np
 
 from loudpy.errors import MeshError, ModelError
 
-__all__ = ["Box", "Brace", "Port", "Step", "volume"]
+__all__ = ["Box", "Brace", "Panel", "Port", "Step", "volume"]
 
 
 @dataclass(frozen=True)
@@ -54,6 +54,29 @@ class Brace:
         for name in ("thickness", "depth"):
             if not getattr(self, name) > 0:
                 raise ModelError(f"lp.cabinets.Brace: {name} must be > 0 m, got {getattr(self, name)!r}")
+
+
+@dataclass(frozen=True)
+class Panel:
+    """
+    One panel of elastic cabinet walls (Scene.walls(panels={key: Panel(…)})): its material (a library name or an
+    lp.Material), thickness [m] and damping (lp.Rayleigh / Hysteretic / Undamped); None keeps the walls' own — the
+    thickness then is the one measured on the cabinet (a STEP solid, a Box wall). Keys: a STEP cabinet's solids by
+    their index in the file (0, 1, …); a Box's sides "left", "right", "bottom", "top", "back", "front".
+    """
+    material: object = None
+    thickness: float | None = None
+    damping: object = None
+
+    def __post_init__(self):
+        from loudpy.model.parameters import has_references
+        if has_references(self) or self.thickness is None:
+            return
+        if not self.thickness > 0:
+            raise ModelError(f"lp.cabinets.Panel: thickness must be > 0 m, got {self.thickness!r}")
+
+
+BOX_SIDES = ("left", "right", "bottom", "top", "back", "front")
 
 
 @dataclass(frozen=True)
@@ -202,6 +225,34 @@ class Box:
         top = self.depth if self.depth_top is None else self.depth_top
         return zb - self.depth + (self.depth - top) * (np.asarray(y, float) - self.bottom) / self.height
 
+    def wall_panels(self, points, normals, tol: float = 1e-4) -> tuple[list, dict]:
+        """The side of the box each cavity wall point lies on (normals into the inside air): "left", "right",
+        "bottom", "top", "back", "front" (None on a brace, a port tube, or the ground when the box has no bottom),
+        and each side's thickness [m] (wall, bottom, the front panel between the drivers' planes; None when 0)."""
+        zb, zf = self._planes()
+        X, N = np.asarray(points, float), np.asarray(normals, float)
+        b, H, W = self.bottom, self.height, self.width
+        out: list = []
+        for x, n in zip(X, N):
+            k = int(np.argmax(np.abs(n)))
+            side = None
+            if k == 0 and n[0] > 0 and abs(x[0]) < tol:
+                side = "left"
+            elif k == 0 and n[0] < 0 and abs(x[0] - W) < tol:
+                side = "right"
+            elif k == 1 and n[1] > 0 and abs(x[1] - b) < tol:
+                side = "bottom" if b > 0 else None                  # no bottom: the ground (rigid)
+            elif k == 1 and n[1] < 0 and abs(x[1] - b - H) < tol:
+                side = "top"
+            elif k == 2 and n[2] < 0 and abs(x[2] - zb) < tol:
+                side = "front"
+            elif n[2] > 0 and abs(x[2] - float(self.back_z(x[1]))) < tol * 10:
+                side = "back"
+            out.append(side)
+        t = {"left": self.wall, "right": self.wall, "top": self.wall, "back": self.wall, "bottom": self.bottom,
+             "front": zf - zb}
+        return out, {k: (float(v) if v and v > 0 else None) for k, v in t.items() if k in set(out)}
+
     def _prism(self, occ, x0, x1, y0, y1, z_front, back_offset):
         pts = [(y0, z_front), (y0, self.back_z(y0) - back_offset), (y1, self.back_z(y1) - back_offset), (y1, z_front)]
         p = [occ.addPoint(x0, float(y), float(z)) for y, z in pts]
@@ -295,7 +346,7 @@ class Step:
             occ.dilate(dims, 0.0, 0.0, 0.0, self.scale, self.scale, self.scale)
         if any(self.translate):
             occ.translate(dims, *map(float, self.translate))
-        occ.synchronize()
+        occ.synchronize()                                          # (as solids(): the file order is the panels')
         zb, zf = self._front()
         bores, picked = [], set()
         for o in self.openings:
@@ -381,6 +432,71 @@ class Step:
             raise MeshError(f"{self.path.name}: the cabinet is {len(outer)} separate solids (expected one body)")
         return Cabinet(inner=keep_inner, cuts=[], outer=outer[0], openings=keep_bores,
                        opening_size=self.port_size if keep_bores else None)
+
+    def solids(self, occ) -> tuple[list, set]:
+        """The file's solids in the current gmsh OCC model, scaled and translated: (their tags in file order, the
+        tags of the port bores named by points in openings=)."""
+        from loudpy.geometry.gmsh_session import gmsh_module
+        g = gmsh_module()
+        g.option.setString("Geometry.OCCTargetUnit", "M")
+        solids = [t for d, t in occ.importShapes(str(self.path), highestDimOnly=True) if d == 3]
+        dims = [(3, t) for t in solids]
+        if self.scale != 1.0:
+            occ.dilate(dims, 0.0, 0.0, 0.0, self.scale, self.scale, self.scale)
+        if any(self.translate):
+            occ.translate(dims, *map(float, self.translate))
+        occ.synchronize()
+        bores = {t for o in self.openings if not isinstance(o, Port) for t in solids
+                 if g.model.isInside(3, t, list(map(float, o)))}
+        return solids, bores
+
+    def wall_panels(self, points, normals, samples: int = 25) -> tuple[list, dict]:
+        """The solid of the file each cavity wall point lies on (normals into the inside air): its index in the file
+        (0, 1, …; None on a plug, the ground or a port bore), and each solid's thickness [m] measured through it
+        along the normals (the median over up to `samples` of its points). Read in a gmsh model of its own."""
+        from loudpy.geometry.gmsh_session import gmsh_module
+        g = gmsh_module()
+        current = g.model.getCurrent() if g.model.list() else None
+        g.model.add("loudpy_panels")
+        try:
+            occ = g.model.occ
+            solids, bores = self.solids(occ)
+            X, N = np.asarray(points, float), np.asarray(normals, float)
+            N = N / np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-300)
+            size = float(np.linalg.norm(np.ptp(X, axis=0))) or 1.0
+            delta = 1e-4 * size                                          # just inside the wall
+            walls = [(i, t) for i, t in enumerate(solids) if t not in bores]
+            labels: list = []
+            for x, n in zip(X, N):
+                y = (x - delta * n).tolist()
+                hit = next((i for i, t in walls if g.model.isInside(3, t, y)), None)
+                labels.append(hit)
+            thickness = {}
+            for i, t in walls:
+                idx = [k for k, lab in enumerate(labels) if lab == i]
+                if not idx:
+                    continue
+                pick = np.asarray(idx)[np.linspace(0, len(idx) - 1, min(samples, len(idx))).astype(int)]
+                lo_hi = np.array(g.model.getBoundingBox(3, t)).reshape(2, 3)
+                reach = float(np.linalg.norm(lo_hi[1] - lo_hi[0]))
+                values = []
+                for k in pick:
+                    a, b = delta, reach                                  # inside at a, outside at b
+                    if not g.model.isInside(3, t, (X[k] - a * N[k]).tolist()):
+                        continue
+                    for _ in range(40):
+                        m = 0.5 * (a + b)
+                        if g.model.isInside(3, t, (X[k] - m * N[k]).tolist()):
+                            a = m
+                        else:
+                            b = m
+                    values.append(0.5 * (a + b))
+                thickness[i] = float(np.median(values)) if values else None
+            return labels, thickness
+        finally:
+            g.model.remove()
+            if current:
+                g.model.setCurrent(current)
 
     def signature(self) -> str:
         """What the meshes depend on: the file's content and the settings."""

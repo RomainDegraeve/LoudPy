@@ -3,6 +3,7 @@ spring of a cavity-backed panel, the rigid-wall limit."""
 import dataclasses
 
 import numpy as np
+import pytest
 import scipy.linalg as sla
 
 import loudpy as lp
@@ -118,13 +119,85 @@ def test_wall_modes_converge_to_direct():
 
 
 def test_scene_wall_settings():
-    """scene.walls needs the cavity and is refused with the exterior / merged air (check() lists it)."""
+    """scene.walls needs the cavity air: with it alone or with the outside air, not with a merged air domain."""
     import pytest
     scene = lp.Scene(lambda occ: None, []).walls("Plywood", thickness=lp.P("t"))
     with pytest.raises(lp.errors.ModelError, match="elastic walls need the cavity"):
         scene.check()
-    scene.cavity().exterior()
-    with pytest.raises(lp.errors.ModelError, match="coupled to the cavity only"):
+    scene.cavity().exterior()                                        # walls radiating outside: allowed
+    with pytest.raises(lp.errors.ModelError) as e:
         scene.check()
+    assert "elastic walls" not in str(e.value)
+    merged = lp.Scene(lambda occ: None, []).walls("MDF").merged()
+    with pytest.raises(lp.errors.ModelError, match="not merged"):
+        merged.check()
     assert "Walls: Plywood" in scene.tree()
     assert scene.copy()._walls_spec == scene._walls_spec
+
+
+def test_shell_panels_of_their_own():
+    """Shell panels (labels per cell, a material and damping each): one panel per material gives the single-material
+    shell; two materials give the sum of their matrices; the modal damping is each panel's damping projected."""
+    from loudpy.physics.shell import ShellStructure
+    nodes, tets, faces = box_cavity(0.3, 0.25, 0.2, 0.05)
+    walls = wall_shells(nodes, tets, faces["z1"])
+    fixed = walls.feature_nodes()
+    one = ShellStructure(walls.nodes, walls.cells, "MDF", 0.018, lp.Undamped(), fixed=fixed)
+    labels = np.where(walls.nodes[walls.cells].mean(axis=1)[:, 0] < 0.15, "a", "b")
+    two = ShellStructure(walls.nodes, walls.cells, "MDF", np.full(len(walls.cells), 0.018), lp.Undamped(),
+                         fixed=fixed, panels=(labels, {"a": ("MDF", lp.Undamped()), "b": ("MDF", lp.Undamped())}))
+    f1, _, z1 = one.modes(n=4)
+    f2, _, z2 = two.modes(n=4)
+    np.testing.assert_allclose(f1, f2, rtol=1e-10)
+    assert np.all(z2 == 0)
+    mixed = ShellStructure(walls.nodes, walls.cells, "MDF", np.where(labels == "a", 0.012, 0.025), None, fixed=fixed,
+                           panels=(labels, {"a": ("Plywood", lp.Hysteretic(0.04)), "b": ("MDF", lp.Rayleigh())}))
+    f3, phi, z3 = mixed.modes(n=6)
+    assert mixed.panels["a"]["thickness"] == 0.012 and mixed.panels["b"]["material"].name == "MDF"
+    a, b = lp.materials["MDF"].rayleigh                             # each mode: its share of each panel's damping
+    w = 2 * np.pi * f3
+    c = np.einsum("ik,ik->k", phi, mixed.C @ phi)
+    assert np.all(z3 > 0) and np.all(c > 0) and np.all(z3 >= c / (2 * w) - 1e-15)
+    assert np.allclose(np.diag(phi.T @ (mixed.M @ phi)), 1.0)
+
+
+def test_box_and_step_panels(tmp_path):
+    """The panels of a cabinet under the cavity walls: a Box's sides (their thicknesses: wall, bottom, the front
+    between the drivers' planes); a STEP file of six panel solids — the solid under each point and its thickness
+    measured through it."""
+    import gmsh
+    box = lp.cabinets.Box(0.2, 0.3, 0.25, wall=0.015, bottom=0.02, front=0.0, front_face=0.018)
+    pts = np.array([[0.0, 0.1, -0.1], [0.2, 0.1, -0.1], [0.1, 0.02, -0.1], [0.1, 0.32, -0.1], [0.1, 0.1, -0.25],
+                    [0.1, 0.1, 0.0], [0.1, 0.05, -0.1]])
+    nrm = np.array([[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1], [0, 1, 0]], float)
+    sides, t = box.wall_panels(pts, nrm)
+    assert sides == ["left", "right", "bottom", "top", "back", "front", None]      # the last: on a brace
+    assert t == {"left": 0.015, "right": 0.015, "bottom": 0.02, "top": 0.015, "back": 0.015, "front": 0.018}
+
+    W, H, D = 0.2, 0.3, 0.25
+    th = [0.012, 0.015, 0.018, 0.02, 0.022, 0.025]                  # left right bottom top back front
+    gmsh.initialize(interruptible=False)
+    gmsh.option.setNumber("General.Terminal", 0)
+    gmsh.option.setString("Geometry.OCCTargetUnit", "M")              # written in metres
+    gmsh.model.add("panels")
+    occ = gmsh.model.occ
+    l, r, bt, tp, bk, fr = th
+    occ.addBox(-l, -bt, -bk, l, H + bt + tp, D + bk + fr)               # left
+    occ.addBox(W, -bt, -bk, r, H + bt + tp, D + bk + fr)                # right
+    occ.addBox(0, -bt, -bk, W, bt, D + bk + fr)                         # bottom
+    occ.addBox(0, H, -bk, W, tp, D + bk + fr)                           # top
+    occ.addBox(0, 0, -bk, W, H, bk)                                     # back
+    occ.addBox(0, 0, D, W, H, fr)                                       # front
+    occ.synchronize()
+    gmsh.write(str(tmp_path / "panels.step"))
+    gmsh.finalize()
+    step = lp.cabinets.Step(tmp_path / "panels.step", ground=None)
+    pts = np.array([[0, H / 2, D / 2], [W, H / 2, D / 2], [W / 2, 0, D / 2], [W / 2, H, D / 2], [W / 2, H / 2, 0],
+                    [W / 2, H / 2, D], [W / 2, H / 3, 0]])
+    labels, measured = step.wall_panels(pts, nrm[[0, 1, 2, 3, 4, 5, 4]])
+    assert labels == [0, 1, 2, 3, 4, 5, 4]
+    for i, h in enumerate(th):
+        assert measured[i] == pytest.approx(h, abs=1e-6)                 # OCC tolerances: 1e-7 m
+    assert lp.cabinets.Panel(thickness=0.012).thickness == 0.012
+    with pytest.raises(lp.errors.ModelError, match="thickness"):
+        lp.cabinets.Panel(thickness=0.0)

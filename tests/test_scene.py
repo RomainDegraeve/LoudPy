@@ -316,3 +316,98 @@ def test_scene_results_plot_and_view(driver, mesh_dir, tmp_path):
     assert panels(res.plot(300.0, cameras=["from above", "side, facing the cut"], cut=None)) == \
         ["from above", "side, facing the cut"]
     assert res.view(300.0).save(tmp_path / "s.html", title="scene").stat().st_size > 10_000
+
+
+def _open_with_walls(driver, mesh_dir, walls=None):
+    """The committed cavity + exterior scene (band 20–700 Hz), the cavity lossless, elastic walls when given."""
+    scene = lp.Scene(box_cabinet, [driver.place("main", at=(W / 2, H / 2))])
+    scene.cavity(f_max=3000.0, eta=0.0, mesh_size=(0.006, 0.03), file="scene_b_cavity.msh", cache_modes=False)
+    scene.exterior(bands=[(20.0, 700.0)], driver_size=0.006, max_size=0.07, margin=0.04, file="scene_b_exterior.msh")
+    if walls:
+        scene.walls(**walls)
+    scene.mesh(mesh_dir, reuse="always")
+    return scene
+
+
+def _radiated_power(res, scene):
+    """Power through the DtN hemisphere [W] from the exact expansion: Σ |c_h|² / (4ρc k² |h_n(kR)|²)."""
+    from loudpy.physics.exterior import HalfSpaceDtN, _h2
+    out = []
+    for blk in res.blocks:
+        for f, c, nh in zip(blk.values, blk.extra["dtn"], blk.extra["dtn_n"]):
+            n_max = int(round((np.sqrt(8 * nh + 1) - 3) / 2))
+            n = HalfSpaceDtN.harmonics(n_max)[:, 0]
+            k = 2 * np.pi * f / scene.c
+            out.append(np.sum(np.abs(c[:nh]) ** 2 / np.abs(_h2(n, k * scene.dtn().R)) ** 2) / (4 * scene.rho * scene.c * k * k))
+    return np.array(out)
+
+
+@pytest.mark.slow
+def test_walls_radiate_into_the_outside_air(driver, mesh_dir):
+    """Elastic walls with the outside air (cavity + exterior, half-space DtN): the outer faces move with the walls
+    (rigid through the thickness), so each wall mode displaces the outside air by minus what it displaces in the
+    cavity (the bottom stands on the ground: left out); stiffer walls bring the response to the rigid box; the power
+    put in at the coil is what the modes dissipate plus what the hemisphere radiates."""
+    from loudpy.fem import shell as fe
+    from loudpy.physics.exterior import ExteriorFE
+    from loudpy.study import scene_response as sr
+    freqs = np.array([150.0, 400.0, 650.0])
+    scene = _open_with_walls(driver, mesh_dir, dict(material="MDF", thickness=0.018, damping=lp.Undamped()))
+    cav = sr.cavity_modes(scene)
+    walls = sr.scene_walls(scene, cav)
+    drivers = sr.multidriver(scene)
+    band = scene.band_meshes[0]
+    ext = ExteriorFE(str(band["path"]), scene.dtn(), band["f_hi"], front="interface_front", surfaces=["openings"])
+    ext.couple_driver(drivers, [d.driver.front for d in scene.drivers], patch=["interface_front"])
+    n_d = ext.Bf.shape[1]
+    ext.couple_walls(walls)
+    assert ext.Bf.shape[1] == n_d + len(walls) and len(walls) >= 3
+    ws = walls.walls                                              # inner volume displacement, the bottom left out
+    nrm, area = fe.cell_normals(ws.nodes, ws.cells)
+    up = ws.nodes[ws.cells].mean(axis=1)[:, 1] > 1e-6
+    U = walls.translations()[:, ws.cells].mean(axis=2)            # (k, cells, 3)
+    inner = np.einsum("kcd,cd,c->k", U[:, up], nrm[up], area[up])
+    big = np.abs(inner) > 0.2 * np.abs(inner).max()
+    ratio = ext.wall_volume_disp[big] / inner[big]
+    assert np.all(np.abs(ratio + 1) < 0.1), ratio
+
+    rigid = lp.FrequencyResponse(_open_with_walls(driver, mesh_dir), drive=lp.Force(1.0)).solve(freqs)
+    soft = lp.FrequencyResponse(scene, drive=lp.Force(1.0)).solve(freqs)
+    stiff_mdf = lp.Material("stiff MDF", rho=lp.materials["MDF"].rho, E=100 * lp.materials["MDF"].E, nu=0.3)
+    stiff = lp.FrequencyResponse(_open_with_walls(driver, mesh_dir, dict(material=stiff_mdf, thickness=0.018,
+                                                                          damping=lp.Undamped(), f_max=40000.0)),
+                                 drive=lp.Force(1.0)).solve(freqs)
+    n = rigid.q.shape[1]
+    dev = [np.abs(r.q[:, :n] - rigid.q).max() / np.abs(rigid.q).max() for r in (soft, stiff)]
+    assert stiff.q.shape[1] > n and dev[1] < dev[0] / 10 and dev[1] < 5e-3, dev
+
+    cpl = sr.cavity_coupling(scene, drivers, cav)                 # power: coil in = modes dissipate + radiated
+    F = np.concatenate([soft.attachments["drive"]["F"], np.zeros(len(cpl.w_s) - len(drivers))])
+    w = 2 * np.pi * freqs
+    p_in = 0.5 * np.real(np.conj(F)[None, :] * 1j * w[:, None] * soft.q).sum(axis=1)
+    p_d = 0.5 * np.sum(2 * cpl.zeta * cpl.w_s * (w[:, None] * np.abs(soft.q)) ** 2, axis=1)
+    p_rad = _radiated_power(soft, scene)
+    np.testing.assert_allclose(p_in, p_d + p_rad, rtol=1e-4)
+    assert np.all(p_rad > 0)
+
+
+@pytest.mark.slow
+def test_box_wall_panels_of_their_own(driver, tmp_path):
+    """Walls of an lp.cabinets.Box, each side a panel: their thicknesses measured on the box (wall, the front between
+    the drivers' planes), a Panel of its own for the back; the bottom on the ground is no wall."""
+    from loudpy.study import scene_response as sr
+    box = lp.cabinets.Box(W, H, D, wall=0.012)
+    scene = lp.Scene(box, [driver.place("main", at=(W / 2, H / 2))])
+    scene.cavity(f_max=1500.0, mesh_size=(0.012, 0.03), cache_modes=False)
+    scene.walls("MDF", thickness=None, damping=lp.Undamped(), f_max=1500.0,
+                panels={"back": lp.cabinets.Panel("Plywood", 0.03), "front": lp.cabinets.Panel(thickness=0.018)})
+    assert "measured" in scene.tree() and "2 panel(s)" in scene.tree()
+    scene.mesh(tmp_path)
+    walls = sr.scene_walls(scene, sr.cavity_modes(scene))
+    p = walls.shell.panels
+    assert set(p) == {"left", "right", "top", "back", "front"}
+    assert p["left"]["thickness"] == pytest.approx(0.012) and p["back"]["thickness"] == pytest.approx(0.03)
+    assert p["back"]["material"].name == "Plywood" and p["front"]["thickness"] == pytest.approx(0.018)
+    with pytest.raises(lp.errors.SelectionError, match="not panels"):
+        scene.walls("MDF", thickness=None, panels={"side": lp.cabinets.Panel(thickness=0.01)})
+        sr.scene_walls(scene, sr.cavity_modes(scene))

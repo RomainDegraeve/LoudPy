@@ -84,6 +84,7 @@ class _Walls:
     fixed: object = "edges"                # "edges" (panel edges and the driver cut-out rims), or f(points) → bool
     f_max: float | None = None             # wall modes kept [Hz] (None: the cavity's f_max)
     angle: float = 30.0                    # a fold sharper than this is a panel edge [deg]
+    panels: dict | None = None             # {panel key: lp.cabinets.Panel} (a STEP solid's index, a Box side)
 
 
 @dataclass
@@ -220,16 +221,30 @@ class Scene:
         self._cavity = self._cavity_spec = _Cavity(tuple(mesh_size), tuple(near), f_max, eta, file, cache_modes)
         return self
 
-    def walls(self, material="MDF", thickness=0.018, damping=None, fixed="edges", f_max=None, angle=30.0):
+    def walls(self, material="MDF", thickness=0.018, damping=None, fixed="edges", f_max=None, angle=30.0,
+              panels=None):
         """
         Elastic cabinet walls: shells (MITC3) on the walls of the cavity mesh, coupled to the cavity air through
         their in-vacuo modes (configuration cavity). material: library name or lp.Material; thickness [m] (or
         lp.P); damping: lp.Rayleigh() (default), lp.Hysteretic(), lp.Undamped(); fixed: "edges" (the panel edges
         — folds sharper than `angle` — and the rims of the driver cut-outs are clamped) or a function of the
         node coordinates (n, 3) returning a mask of clamped nodes; f_max: wall modes kept (default: the cavity's).
-        The shells lie on the inner faces of the walls (no offset); the outside of the walls is in vacuo.
+        The shells lie on the inner faces of the walls (no offset). With the outside air (cavity() + exterior()), the
+        outer face of each wall moves with its shell (rigid through the thickness) and radiates; else it is in vacuo.
+
+        Panels of their own (an lp.cabinets.Box / Step): thickness=None — each panel's thickness measured on the
+        cabinet (a STEP solid through its wet face, a Box wall); panels={key: lp.cabinets.Panel(material, thickness,
+        damping)} — a STEP solid by its index in the file (0, 1, …) or a Box side ("left", "right", "bottom", "top",
+        "back", "front"); what a Panel leaves None is the walls' own. Faces on no panel (driver plugs, the ground,
+        port tubes) stay rigid.
         """
-        self._walls = self._walls_spec = _Walls(material, thickness, damping, fixed, f_max, angle)
+        from loudpy.scene.cabinets import Panel
+        for key, pnl in (panels or {}).items():
+            if not isinstance(pnl, Panel):
+                raise ModelError(f"walls panels: {key!r} → lp.cabinets.Panel(material, thickness, damping), "
+                                 f"got {pnl!r}")
+        self._walls = self._walls_spec = _Walls(material, thickness, damping, fixed, f_max, angle,
+                                                dict(panels) if panels else None)
         return self
 
     def exterior(self, ground="y", level=0.0, margin=0.05, bands=((20.0, 1000.0),), points_per_wavelength=4.0,
@@ -527,9 +542,8 @@ class Scene:
             problems.append("no driver (Driver.place)")
         if self._walls_spec is not None and self._cavity_spec is None:
             problems.append("elastic walls need the cavity: call cavity()")
-        if self._walls_spec is not None and self._open_spec is not None:
-            problems.append("elastic walls are coupled to the cavity only (configuration cavity): remove "
-                            "exterior() / merged()")
+        if self._walls_spec is not None and self._open_spec is not None and self._open_spec.kind == "merged":
+            problems.append("elastic walls need the cavity air: cavity() (+ exterior()), not merged()")
         for spec in (self._cavity_spec, self._open_spec, self._walls_spec):
             try:
                 resolve(spec, self.parameters)
@@ -565,8 +579,10 @@ class Scene:
         if self._walls_spec is not None:
             w = self._walls_spec
             name = getattr(w.material, "name", w.material)
-            lines.append(f"├─ Walls: {name}, {w.thickness} m shells (MITC3), fixed {w.fixed if isinstance(w.fixed, str) else 'by function'}"
-                         f", modes to {w.f_max or 'the cavity f_max'} Hz")
+            th = "measured" if w.thickness is None else f"{w.thickness} m"
+            lines.append(f"├─ Walls: {name}, {th} shells (MITC3), fixed {w.fixed if isinstance(w.fixed, str) else 'by function'}"
+                         f", modes to {w.f_max or 'the cavity f_max'} Hz"
+                         + (f", {len(w.panels)} panel(s) of their own" if w.panels else ""))
         if self._open_spec is not None:
             o = self._open_spec
             lines.append(f"├─ {o.kind.capitalize()} air: bands {o.bands}, ground {o.ground}, "

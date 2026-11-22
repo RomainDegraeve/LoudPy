@@ -74,6 +74,7 @@ SAMPLES = [
                     ports=(lp.cabinets.Port((0.06, 0.06), 0.02, 0.06),)),
     lp.cabinets.Step(STEP, openings=(lp.cabinets.Port((0.06, 0.06), 0.02, 0.06, wall=0.0),), scale=1e-3),
     lp.Profile(lp.BoundaryOf("air_rear"), start=(0.05, 0.03)),
+    lp.cabinets.Panel("Plywood", 0.012, lp.Hysteretic(0.03)),
 ]
 
 
@@ -106,7 +107,7 @@ def test_every_value_block_is_covered_by_a_sample():
     for o in SAMPLES:
         walk(schema.describe(o))
     value_sections = {"materials", "regions", "boundaries", "mesh_controls", "damping", "drives", "selectors",
-                      "profiles", "study_options", "scene.cabinet", "scene.cabinet_parts"}
+                      "profiles", "study_options", "scene.cabinet", "scene.cabinet_parts", "scene.panels"}
     expected = {b.type for b in schema.catalog().values() if b.section in value_sections} - {"Item"}
     assert expected <= described | nested, sorted(expected - described - nested)
 

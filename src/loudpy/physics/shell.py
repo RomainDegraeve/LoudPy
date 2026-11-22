@@ -49,10 +49,15 @@ class ShellStructure:
     material: a library name or an lp.Material (solid); damping: lp.Rayleigh() (default, the material's fit),
     lp.Hysteretic() (complex stiffness K (1 + iη)), lp.Undamped(); fixed: node rows clamped on every DOF, or
     DOF indices with fixed_dofs=…
+
+    Panels of different materials: panels=(label per cell, {label: (material, damping)}) — every cell takes its
+    panel's material and damping (thickness per cell through `thickness`); the modal damping is then the projection
+    of each panel's damping on the modes: ζ_k = φ_kᵀ C φ_k / 2ω_k + φ_kᵀ K_η φ_k / 2ω_k² with C = Σ α_p M_p + β_p K_p
+    (Rayleigh panels) and K_η = Σ η_p K_p (hysteretic panels).
     """
 
     def __init__(self, nodes, cells, material, thickness, damping=None, fixed=(), fixed_dofs=None,
-                 shear_factor=fe.SHEAR_FACTOR, drill=fe.DRILL):
+                 shear_factor=fe.SHEAR_FACTOR, drill=fe.DRILL, panels=None):
         from loudpy.checks import check
         from loudpy.model.damping import Hysteretic, Rayleigh, Undamped
         from loudpy.model.materials import Material, materials
@@ -75,8 +80,60 @@ class ShellStructure:
             dofs.append(np.asarray(fixed_dofs, np.int64))
         self.fixed = np.unique(np.concatenate(dofs)) if dofs else np.zeros(0, np.int64)
         self.free = np.setdiff1d(np.arange(fe.NDOF * len(self.nodes)), self.fixed)
-        self._K, self._M = fe.shell_matrices(self.nodes, self.cells, mat.E, mat.nu, mat.rho, thickness,
-                                             shear_factor, drill)
+        self.panels = None
+        if panels is None:
+            self._K, self._M = fe.shell_matrices(self.nodes, self.cells, mat.E, mat.nu, mat.rho, thickness,
+                                                 shear_factor, drill)
+        else:
+            self._panel_matrices(panels, shear_factor, drill)
+
+    def _panel_matrices(self, panels, shear_factor, drill):
+        """K, M of panels of their own material (one cell set), and the damping C, K_η they carry."""
+        from loudpy.model.damping import Hysteretic, Rayleigh, Undamped
+        from loudpy.model.materials import Material, materials
+        if len(self.cells) != 1:
+            raise ModelError("shell panels: one kind of cell (triangles or quadrilaterals)")
+        (key, cells), = self.cells.items()
+        labels, table = np.asarray(panels[0]), dict(panels[1])
+        if len(labels) != len(cells):
+            raise ModelError(f"shell panels: {len(labels)} labels for {len(cells)} cells")
+        h = np.broadcast_to(np.asarray(fe._value(self.thickness, key) if isinstance(self.thickness, dict)
+                                       else self.thickness, float), (len(cells),))
+        n = fe.NDOF * len(self.nodes)
+        K = sp.csr_matrix((n, n))
+        M = sp.csr_matrix((n, n))
+        C = sp.csr_matrix((n, n))
+        Ke = sp.csr_matrix((n, n))
+        self.panels = {}
+        for lab in np.unique(labels):
+            if lab not in table:
+                raise ModelError(f"shell panels: no material for panel {lab!r}")
+            mat, damping = table[lab]
+            mat = mat if isinstance(mat, Material) else materials[mat]
+            if mat.kind != "solid":
+                raise ModelError(f"panel {lab!r}: {mat.name!r} is a {mat.kind}, not a solid")
+            mat.require("rho", "E", "nu")
+            damping = Rayleigh() if damping is None else damping
+            sel = labels == lab
+            Kp, Mp = fe.shell_matrices(self.nodes, cells[sel], mat.E, mat.nu, mat.rho, h[sel], shear_factor, drill)
+            K, M = K + Kp, M + Mp
+            if isinstance(damping, Rayleigh):
+                fit = mat.rayleigh or (None, None)
+                a = damping.alpha if damping.alpha is not None else fit[0]
+                b = damping.beta if damping.beta is not None else fit[1]
+                if a is None or b is None:
+                    raise ModelError(f"panel {lab!r}: {mat.name}: no Rayleigh fit for lp.Rayleigh()")
+                C = C + float(a) * Mp + float(b) * Kp
+            elif isinstance(damping, Hysteretic):
+                eta = damping.eta if damping.eta is not None else mat.loss_factor
+                if eta is None:
+                    raise ModelError(f"panel {lab!r}: {mat.name}: no loss factor for lp.Hysteretic()")
+                Ke = Ke + float(eta) * Kp
+            elif not isinstance(damping, Undamped):
+                raise ModelError(f"panel {lab!r} damping: lp.Rayleigh, lp.Hysteretic or lp.Undamped")
+            self.panels[lab] = dict(material=mat, damping=damping, thickness=float(np.mean(h[sel])),
+                                    cells=int(sel.sum()))
+        self._K, self._M, self._C, self._Keta = K.tocsr(), M.tocsr(), C.tocsr(), Ke.tocsr()
 
     @property
     def n_dofs(self) -> int:
@@ -87,6 +144,8 @@ class ShellStructure:
     def K(self):
         """Stiffness (real; complex K (1 + iη) with lp.Hysteretic)."""
         from loudpy.model.damping import Hysteretic
+        if self.panels is not None:
+            return self._K + 1j * self._Keta if self._Keta.nnz else self._K
         if isinstance(self.damping, Hysteretic):
             eta = self.damping.eta if self.damping.eta is not None else self.material.loss_factor
             if eta is None:
@@ -114,7 +173,9 @@ class ShellStructure:
 
     @property
     def C(self):
-        """Viscous damping α M + β K (zero unless lp.Rayleigh)."""
+        """Viscous damping α M + β K (zero unless lp.Rayleigh; panels: Σ α_p M_p + β_p K_p)."""
+        if self.panels is not None:
+            return self._C
         a, b = self.rayleigh
         return a * self._M + b * self._K
 
@@ -135,6 +196,11 @@ class ShellStructure:
         if f_max is not None:
             keep = f <= f_max
             f, phi = f[keep], phi[:, keep]
+        if self.panels is not None:                       # each panel's damping projected on the modes
+            w = 2 * np.pi * np.maximum(f, 1e-12)
+            c = np.einsum("ik,ik->k", phi, np.asarray(self._C @ phi))
+            ke = np.einsum("ik,ik->k", phi, np.asarray(self._Keta @ phi))
+            return f, phi, c / (2 * w) + ke / (2 * w * w)
         return f, phi, self.modal_damping(f)
 
     def modal_damping(self, f):
@@ -342,10 +408,20 @@ class WallModes:
 
 
 def cavity_walls(nodes, tets, faces, material, thickness, damping=None, fixed="edges", f_max=1000.0,
-                 angle=30.0) -> WallModes:
+                 angle=30.0, panels=None) -> WallModes:
     """Shells on the wall faces of a cavity (`faces`: TRI6, cavity rows), their in-vacuo modes up to f_max and
     the coupling columns. fixed: "edges" (folds sharper than `angle` and the free boundary of the walls, e.g.
-    the rims of the driver cut-outs) or a function of the node coordinates (n, 3) → mask of clamped nodes."""
+    the rims of the driver cut-outs) or a function of the node coordinates (n, 3) → mask of clamped nodes.
+    panels: (label per face, {label: (material, thickness, damping)}) — each panel of its own material, thickness
+    [m] and damping; faces labelled None are not walls (rigid: a plug, the ground, a port tube)."""
+    table = None
+    if panels is not None:
+        labels = np.asarray(panels[0], dtype=object)
+        keep = np.array([lab is not None for lab in labels])
+        if not keep.any():
+            raise ModelError("no wall face lies on a panel of the cabinet")
+        faces, labels = np.asarray(faces)[keep], labels[keep]
+        table = dict(panels[1])
     walls = wall_shells(nodes, tets, faces)
     if isinstance(fixed, str):
         if fixed != "edges":
@@ -358,6 +434,23 @@ def cavity_walls(nodes, tets, faces, material, thickness, damping=None, fixed="e
     if len(rows) == 0:
         raise ModelError("the walls are not held anywhere (fixed selects no node): their rigid motions "
                          "would be free")
-    shell = ShellStructure(walls.nodes, walls.cells, material, thickness, damping, fixed=rows)
+    if table is None:
+        shell = ShellStructure(walls.nodes, walls.cells, material, thickness, damping, fixed=rows)
+    else:
+        order = _face_order(faces, walls.faces)                   # wall_shells keeps the faces' order
+        cell_labels = labels[order]
+        h = np.array([table[lab][1] for lab in cell_labels], float)
+        shell = ShellStructure(walls.nodes, walls.cells, material, h, damping, fixed=rows,
+                               panels=(cell_labels, {lab: (v[0], v[2]) for lab, v in table.items()}))
     freq, phi, zeta = shell.modes(f_max=f_max)
     return WallModes(walls, shell, freq, phi, zeta, len(nodes))
+
+
+def _face_order(faces, oriented):
+    """Index of each oriented face (wall_shells' faces) in `faces` (same faces, the corners maybe swapped)."""
+    a = np.sort(np.asarray(faces)[:, :3], axis=1)
+    b = np.sort(np.asarray(oriented)[:, :3], axis=1)
+    if len(a) == len(b) and np.array_equal(a, b):
+        return np.arange(len(a))
+    index = {tuple(r): i for i, r in enumerate(a)}
+    return np.array([index[tuple(r)] for r in b])
