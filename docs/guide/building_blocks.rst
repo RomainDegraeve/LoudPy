@@ -43,7 +43,7 @@ An axisymmetric loudspeaker model: a geometry (.geo), regions, boundaries and ma
      - number
      - 
      - ``0.3``
-     - element size growth away from small features (empty: gmsh's)
+     - element size growth away from small features (empty: gmsh's) Range: > 0.
    * - ``parameters``
      - mapping
      - 
@@ -83,22 +83,22 @@ A material in SI units.
      - number
      - kg/m³
      - ``None``
-     - density
+     - density Range: > 0.
    * - ``E``
      - number
      - Pa
      - ``None``
-     - Young's modulus (solid)
+     - Young's modulus (solid) Range: > 0.
    * - ``nu``
      - number
      - 
      - ``None``
-     - Poisson's ratio (solid)
+     - Poisson's ratio (solid) Range: > -1, < 0.5.
    * - ``c``
      - number
      - m/s
      - ``None``
-     - speed of sound (fluid)
+     - speed of sound (fluid) Range: > 0.
    * - ``rayleigh``
      - pair
      - 
@@ -108,22 +108,22 @@ A material in SI units.
      - number
      - 
      - ``None``
-     - default hysteretic loss factor eta (solid)
+     - default hysteretic loss factor eta (solid) Range: ≥ 0.
    * - ``temperature``
      - number
      - K
      - ``None``
-     - reference temperature of the values
+     - reference temperature of the values Range: > 0.
    * - ``pressure``
      - number
      - Pa
      - ``None``
-     - static pressure (a gas from lp.air())
+     - static pressure (a gas from lp.air()) Range: > 0.
    * - ``humidity``
      - number
      - 
      - ``None``
-     - relative humidity 0–1 (a gas from lp.air())
+     - relative humidity 0–1 (a gas from lp.air()) Range: ≥ 0, ≤ 1.
    * - ``source``
      - text
      - 
@@ -171,22 +171,22 @@ Elastic structure (axisymmetric solid) on the physical groups selected by `name`
      - number
      - m
      - ``0.002``
-     - largest element size in these domains
+     - largest element size in these domains Range: > 0.
    * - ``rho``
      - number
      - kg/m³
      - ``None``
-     - density; empty: the material's
+     - density; empty: the material's Range: > 0.
    * - ``E``
      - number
      - Pa
      - ``None``
-     - Young's modulus; empty: the material's
+     - Young's modulus; empty: the material's Range: > 0.
    * - ``nu``
      - number
      - 
      - ``None``
-     - Poisson's ratio; empty: the material's
+     - Poisson's ratio; empty: the material's Range: > -1, < 0.5.
 
 ``lp.Air``
 ^^^^^^^^^^
@@ -221,17 +221,17 @@ Acoustic fluid (linear acoustics) on the groups selected by `name`; rho, c overr
      - number
      - m
      - ``0.01``
-     - largest element size in these domains
+     - largest element size in these domains Range: > 0.
    * - ``rho``
      - number
      - kg/m³
      - ``None``
-     - density; empty: the material's
+     - density; empty: the material's Range: > 0.
    * - ``c``
      - number
      - m/s
      - ``None``
-     - speed of sound; empty: the material's
+     - speed of sound; empty: the material's Range: > 0.
 
 ``lp.PML``
 ^^^^^^^^^^
@@ -266,37 +266,37 @@ Perfectly matched layer grown by the mesher from its base curves, outward from t
      - number
      - m
      - ``1.0``
-     - layer thickness (a quarter wavelength at tuned_to is plenty)
+     - layer thickness (a quarter wavelength at tuned_to is plenty) Range: > 0.
    * - ``mesh_size``
      - number
      - m
      - ``0.01``
-     - largest element size in these domains
+     - largest element size in these domains Range: > 0.
    * - ``tuned_to``
      - number
      - Hz
      - ``None``
-     - the frequency the absorption is tuned to (empty: the study's)
+     - the frequency the absorption is tuned to (empty: the study's) Range: > 0.
    * - ``order``
      - number
      - 
      - ``1.0``
-     - absorption profile: 1 linear, 2 quadratic
+     - absorption profile: 1 linear, 2 quadratic Range: > 0.
    * - ``strength``
      - number
      - 
      - ``3.0``
-     - absorption strength (larger: shorter decay, more reflection)
+     - absorption strength (larger: shorter decay, more reflection) Range: > 0.
    * - ``rho``
      - number
      - kg/m³
      - ``None``
-     - density; empty: the material's
+     - density; empty: the material's Range: > 0.
    * - ``c``
      - number
      - m/s
      - ``None``
-     - speed of sound; empty: the material's
+     - speed of sound; empty: the material's Range: > 0.
 
 Boundaries
 ----------
@@ -437,7 +437,7 @@ Element size [m] of the domain groups selected by `on` (overrides the regions' m
      - number
      - m
      - required
-     - element size there (overrides the regions' mesh_size)
+     - element size there (overrides the regions' mesh_size) Range: > 0.
    * - ``name``
      - text
      - 
@@ -490,7 +490,7 @@ Hysteretic (structural) damping: complex stiffness K (1 + i eta) (None: Material
      - number
      - 
      - ``None``
-     - loss factor: K (1 + i eta) (empty: the material's)
+     - loss factor: K (1 + i eta) (empty: the material's) Range: ≥ 0.
 
 ``lp.Undamped``
 ^^^^^^^^^^^^^^^
@@ -523,7 +523,7 @@ Force on the coil: a complex amplitude [N] (harmonic), or a time signal sampled 
      - number
      - Hz
      - ``None``
-     - sampling rate of a force signal (transient)
+     - sampling rate of a force signal (transient) Range: > 0.
 
 ``lp.Voltage``
 ^^^^^^^^^^^^^^
@@ -548,7 +548,7 @@ Voltage drive of an electro-mechanical coil: amplitude [V], resistance Re [Ω], 
      - number
      - Ω
      - required
-     - coil resistance
+     - coil resistance Range: > 0.
    * - ``Bl``
      - number
      - T·m
@@ -558,12 +558,12 @@ Voltage drive of an electro-mechanical coil: amplitude [V], resistance Re [Ω], 
      - number
      - H
      - ``0.0``
-     - coil (semi-)inductance
+     - coil (semi-)inductance Range: ≥ 0.
    * - ``n``
      - number
      - 
      - ``1.0``
-     - semi-inductance exponent: Z_L = Le (jω)^n (1: a plain inductance)
+     - semi-inductance exponent: Z_L = Le (jω)^n (1: a plain inductance) Range: > 0, ≤ 1.
 
 Selectors
 ---------
@@ -626,7 +626,7 @@ What lies entirely inside a box. Each coordinate: (min, max), a number (a line: 
      - number
      - m
      - ``None``
-     - tolerance (empty: relative to the geometry)
+     - tolerance (empty: relative to the geometry) Range: > 0.
 
 ``lp.Near``
 ^^^^^^^^^^^
@@ -844,12 +844,12 @@ Given by the context: model.
      - number, in .solve()
      - Hz
      - required
-     - highest mode frequency
+     - highest mode frequency Range: > 0.
    * - ``f_min``
      - number, in .solve()
      - Hz
      - ``20.0``
-     - lowest mode frequency
+     - lowest mode frequency Range: ≥ 0.
    * - ``orders``
      - integers, in .solve()
      - 
@@ -864,17 +864,17 @@ Given by the context: model.
      - integer, in .solve()
      - 
      - ``20``
-     - modes per shift (multishift)
+     - modes per shift (multishift) Range: > 0.
    * - ``n_modes``
      - integer, in .solve()
      - 
      - ``30``
-     - modes around f_target (arpack)
+     - modes around f_target (arpack) Range: > 0.
    * - ``f_target``
      - number, in .solve()
      - Hz
      - ``100.0``
-     - centre of the arpack search
+     - centre of the arpack search Range: > 0.
    * - ``output``
      - block (study_options), in .solve()
      - 
@@ -967,27 +967,27 @@ Given by the context: model.
      - number
      - 
      - ``0.8``
-     - generalised-α high-frequency dissipation (0–1)
+     - generalised-α high-frequency dissipation (0–1) Range: ≥ 0, ≤ 1.
    * - ``nr_tol``
      - number
      - 
      - ``1e-05``
-     - Newton–Raphson tolerance
+     - Newton–Raphson tolerance Range: > 0.
    * - ``nr_max_iter``
      - integer
      - 
      - ``10``
-     - Newton–Raphson iterations at most
+     - Newton–Raphson iterations at most Range: > 0.
    * - ``n_steps``
      - integer, in .solve()
      - 
      - ``None``
-     - time steps (or a duration)
+     - time steps (or a duration) Range: > 0.
    * - ``duration``
      - number, in .solve()
      - s
      - ``None``
-     - simulated time (or n_steps)
+     - simulated time (or n_steps) Range: > 0.
    * - ``output``
      - block (study_options), in .solve()
      - 
@@ -1053,12 +1053,12 @@ Given by the context: study.
      - number
      - 
      - ``0.05``
-     - relative error estimate to reach
+     - relative error estimate to reach Range: > 0, < 1.
    * - ``max_iterations``
      - integer
      - 
      - ``4``
-     - adaptation rounds at most
+     - adaptation rounds at most (0: the first mesh only) Range: ≥ 0.
    * - ``folder``
      - file
      - 
@@ -1093,32 +1093,32 @@ Air and PML meshes that follow the wavelength λ = c / f0, f0 = first frequency 
      - integer
      - 
      - ``None``
-     - or: a new mesh every `every` frequencies
+     - or: a new mesh every `every` frequencies Range: > 0.
    * - ``air_elements``
      - number
      - 
      - ``6.0``
-     - air elements per wavelength λ = c / f0
+     - air elements per wavelength λ = c / f0 Range: > 0.
    * - ``air_max_size``
      - number
      - m
      - ``None``
-     - largest air element (empty: the Air region's mesh_size)
+     - largest air element (empty: the Air region's mesh_size) Range: > 0.
    * - ``pml_thickness``
      - number
      - 
      - ``0.25``
-     - PML thickness in wavelengths
+     - PML thickness in wavelengths Range: > 0.
    * - ``pml_elements``
      - number
      - 
      - ``4.0``
-     - elements across the PML
+     - elements across the PML Range: > 0.
    * - ``c``
      - number
      - m/s
      - ``None``
-     - speed of sound for λ (empty: the Air material's)
+     - speed of sound for λ (empty: the Air material's) Range: > 0.
    * - ``folder``
      - file
      - 
@@ -1148,7 +1148,7 @@ What a study keeps of its fields: fields (names, None for all), every (n-th entr
      - integer
      - 
      - ``1``
-     - keep every n-th entry
+     - keep every n-th entry Range: > 0.
    * - ``probes``
      - mapping
      - m
@@ -1176,17 +1176,17 @@ A sine of frequency f [Hz] over `periods` periods (or `duration` [s]); (signal, 
      - number
      - Hz
      - required
-     - frequency
+     - frequency Range: > 0.
    * - ``periods``
      - number
      - 
      - ``5.0``
-     - periods (with a raised-cosine start)
+     - periods (with a raised-cosine start) Range: > 0.
    * - ``fs``
      - number
      - Hz
      - ``48000.0``
-     - sampling rate
+     - sampling rate Range: > 0.
    * - ``amplitude``
      - number
      - 
@@ -1196,7 +1196,7 @@ A sine of frequency f [Hz] over `periods` periods (or `duration` [s]); (signal, 
      - number
      - s
      - ``None``
-     - length (empty: periods / f)
+     - length (empty: periods / f) Range: > 0.
 
 ``lp.signals.multitone``
 ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1221,12 +1221,12 @@ Sines of equal amplitude at `freqs` [Hz] with Schroeder phases φ_k = −π k (k
      - number
      - s
      - ``None``
-     - length (empty: periods of the lowest tone)
+     - length (empty: periods of the lowest tone) Range: > 0.
    * - ``fs``
      - number
      - Hz
      - ``48000.0``
-     - sampling rate
+     - sampling rate Range: > 0.
    * - ``amplitude``
      - number
      - 
@@ -1236,7 +1236,7 @@ Sines of equal amplitude at `freqs` [Hz] with Schroeder phases φ_k = −π k (k
      - number
      - 
      - ``5.0``
-     - periods of the lowest tone
+     - periods of the lowest tone Range: > 0.
 
 ``lp.signals.wav``
 ^^^^^^^^^^^^^^^^^^
@@ -1261,7 +1261,7 @@ A WAV file as a signal: its first channel scaled to ±`amplitude` (peak), cut to
      - number
      - s
      - ``None``
-     - length kept (empty: all)
+     - length kept (empty: all) Range: > 0.
    * - ``amplitude``
      - number
      - 
@@ -1326,32 +1326,32 @@ A parametric box (module docstring). Lengths in m.
      - number
      - m
      - required
-     - inner width (x)
+     - inner width (x) Range: > 0.
    * - ``height``
      - number
      - m
      - required
-     - inner height (y, from bottom)
+     - inner height (y, from bottom) Range: > 0.
    * - ``depth``
      - number
      - m
      - required
-     - inner depth (z, back to front, at the bottom)
+     - inner depth (z, back to front, at the bottom) Range: > 0.
    * - ``depth_top``
      - number
      - m
      - ``None``
-     - depth at the top (a slanted back; empty: depth)
+     - depth at the top (a slanted back; empty: depth) Range: > 0.
    * - ``wall``
      - number
      - m
      - ``0.0``
-     - thickness of the sides, top and back (0: the inside up to the front)
+     - thickness of the sides, top and back (0: the inside up to the front) Range: ≥ 0.
    * - ``bottom``
      - number
      - m
      - ``0.0``
-     - thickness of the bottom (0: the inside air stands on the ground)
+     - thickness of the bottom (0: the inside air stands on the ground) Range: ≥ 0.
    * - ``braces``
      - blocks (scene.cabinet_parts)
      - 
@@ -1366,7 +1366,7 @@ A parametric box (module docstring). Lengths in m.
      - number
      - m
      - ``0.005``
-     - mesh size on the port walls (empty: the default sizes)
+     - mesh size on the port walls (empty: the default sizes) Range: > 0.
    * - ``front``
      - number
      - m
@@ -1411,7 +1411,7 @@ A cabinet from a CAD file (module docstring).
      - number
      - 
      - ``1.0``
-     - scale applied to the file
+     - scale applied to the file Range: > 0.
    * - ``translate``
      - point
      - m
@@ -1421,7 +1421,7 @@ A cabinet from a CAD file (module docstring).
      - number
      - m
      - ``0.005``
-     - mesh size on the port walls (empty: the default sizes)
+     - mesh size on the port walls (empty: the default sizes) Range: > 0.
    * - ``plug_drivers``
      - bool
      - 
@@ -1464,12 +1464,12 @@ A horizontal brace across the inside: at height y (from the inner bottom), thick
      - number
      - m
      - ``0.015``
-     - shelf thickness
+     - shelf thickness Range: > 0.
    * - ``depth``
      - number
      - m
      - ``0.08``
-     - depth from the back
+     - depth from the back Range: > 0.
 
 ``lp.cabinets.Port``
 ^^^^^^^^^^^^^^^^^^^^
@@ -1494,17 +1494,17 @@ A round port through the front face: axis at (x, y), radius, length from the fro
      - number
      - m
      - required
-     - bore radius
+     - bore radius Range: > 0.
    * - ``length``
      - number
      - m
      - required
-     - length from the front face inwards
+     - length from the front face inwards Range: > 0.
    * - ``wall``
      - number
      - m
      - ``0.003``
-     - tube wall thickness inside the box (0: a plain hole)
+     - tube wall thickness inside the box (0: a plain hole) Range: ≥ 0.
 
 Drivers
 -------
@@ -1537,7 +1537,7 @@ A driver from an eigen result file of its axisymmetric model: the modes of the a
      - number
      - Hz
      - ``None``
-     - modes kept up to (empty: all in the file)
+     - modes kept up to (empty: all in the file) Range: > 0.
    * - ``geometry``
      - file
      - 
@@ -1634,12 +1634,12 @@ Given by the context: scene.
      - number
      - Hz
      - ``6000.0``
-     - cavity modes kept up to
+     - cavity modes kept up to Range: > 0.
    * - ``eta``
      - number
      - 
      - ``0.0``
-     - modal loss factor of the cavity air
+     - modal loss factor of the cavity air Range: ≥ 0.
    * - ``near``
      - pair
      - m
@@ -1686,7 +1686,7 @@ Given by the context: scene.
      - number
      - m
      - ``0.05``
-     - hemisphere radius beyond the structure
+     - hemisphere radius beyond the structure Range: > 0.
    * - ``bands``
      - pairs
      - Hz
@@ -1696,17 +1696,17 @@ Given by the context: scene.
      - number
      - 
      - ``4.0``
-     - elements per wavelength at the band's f_hi
+     - elements per wavelength at the band's f_hi Range: > 0.
    * - ``max_size``
      - number
      - m
      - ``0.06``
-     - largest element
+     - largest element Range: > 0.
    * - ``driver_size``
      - number
      - m
      - ``0.003``
-     - element size on the drivers
+     - element size on the drivers Range: > 0.
    * - ``near``
      - pair
      - m
@@ -1753,7 +1753,7 @@ Given by the context: scene.
      - number
      - m
      - ``0.05``
-     - hemisphere radius beyond the structure
+     - hemisphere radius beyond the structure Range: > 0.
    * - ``bands``
      - pairs
      - Hz
@@ -1763,17 +1763,17 @@ Given by the context: scene.
      - number
      - 
      - ``4.0``
-     - elements per wavelength at the band's f_hi
+     - elements per wavelength at the band's f_hi Range: > 0.
    * - ``max_size``
      - number
      - m
      - ``0.06``
-     - largest element
+     - largest element Range: > 0.
    * - ``driver_size``
      - number
      - m
      - ``0.003``
-     - element size on the drivers
+     - element size on the drivers Range: > 0.
    * - ``near``
      - pair
      - m
@@ -1818,7 +1818,7 @@ Given by the context: scene.
      - number
      - m
      - ``0.018``
-     - shell thickness
+     - shell thickness Range: > 0.
    * - ``damping``
      - block (damping)
      - 
@@ -1833,12 +1833,12 @@ Given by the context: scene.
      - number
      - Hz
      - ``None``
-     - wall modes kept up to (empty: the cavity's)
+     - wall modes kept up to (empty: the cavity's) Range: > 0.
    * - ``angle``
      - number
      - °
      - ``30.0``
-     - a fold sharper than this is a panel edge
+     - a fold sharper than this is a panel edge Range: > 0.
 
 Only in a script: fixed (function): f(points) → mask of the clamped nodes.
 

@@ -61,7 +61,8 @@ _TUPLE_KINDS = {"point", "pair", "range"}
 @dataclass(frozen=True)
 class Param:
     """One parameter of a block. kind: KINDS; unit: SI unit of the value; group: the form section it is shown in;
-    optional: None is allowed (an override: "the material's"); min: values must be > min (≥ with min_inclusive);
+    optional: None is allowed (an override: "the material's"); min / max: values must be > min (≥ with
+    min_inclusive) and < max (≤ with max_inclusive) — the block refuses the others too (a test checks it);
     of: for kind "block" / "blocks", the section of the nested nodes; stage: "solve" for an argument of a study's
     .solve(); default: from the code (REQUIRED: none)."""
     name: str
@@ -72,6 +73,8 @@ class Param:
     choices: tuple = ()
     min: float | None = None
     min_inclusive: bool = False
+    max: float | None = None
+    max_inclusive: bool = False
     optional: bool = False
     of: str = ""
     stage: str = ""
@@ -81,6 +84,15 @@ class Param:
     def required(self) -> bool:
         """True when the code gives it no default (a value must be given)."""
         return self.default is REQUIRED
+
+    def limits(self) -> str:
+        """The allowed range as text: "> 0", "≥ 0, ≤ 1", "> -1, < 0.5" ("" without limits)."""
+        out = []
+        if self.min is not None:
+            out.append(f"{'≥' if self.min_inclusive else '>'} {self.min:g}")
+        if self.max is not None:
+            out.append(f"{'≤' if self.max_inclusive else '<'} {self.max:g}")
+        return ", ".join(out)
 
     def label(self) -> str:
         """"thickness [m]": the name and the unit."""
@@ -205,7 +217,8 @@ def _catalog() -> dict[str, Block]:
                group="Material", of="damping"),
             MESH,
             RHO, _p("E", "number", "Pa", "Young's modulus; empty: the material's", "Overrides", optional=True, min=0),
-            _p("nu", "number", help="Poisson's ratio; empty: the material's", group="Overrides", optional=True)]),
+            _p("nu", "number", help="Poisson's ratio; empty: the material's", group="Overrides", optional=True,
+               min=-1, max=0.5)]),
         _make("Air", "regions", lp.Air, [NAME, ON, MATERIAL, MESH, RHO, C]),
         _make("PML", "regions", lp.PML, [
             NAME, replace(ON_CURVES, help="the base curves it grows from (straight lines r = const or z = const), "
@@ -240,7 +253,7 @@ def _catalog() -> dict[str, Block]:
             _p("kind", "choice", help="solid or fluid", group="Identity", choices=("solid", "fluid")),
             _p("rho", "number", "kg/m³", "density", "Properties", optional=True, min=0),
             _p("E", "number", "Pa", "Young's modulus (solid)", "Properties", optional=True, min=0),
-            _p("nu", "number", help="Poisson's ratio (solid)", group="Properties", optional=True),
+            _p("nu", "number", help="Poisson's ratio (solid)", group="Properties", optional=True, min=-1, max=0.5),
             _p("c", "number", "m/s", "speed of sound (fluid)", "Properties", optional=True, min=0),
             _p("rayleigh", "pair", help="default Rayleigh fit (alpha [1/s], beta [s]): C = alpha M + beta K",
                group="Damping", optional=True),
@@ -251,7 +264,7 @@ def _catalog() -> dict[str, Block]:
             _p("pressure", "number", "Pa", "static pressure (a gas from lp.air())", "Conditions", optional=True,
                min=0),
             _p("humidity", "number", help="relative humidity 0–1 (a gas from lp.air())", group="Conditions",
-               optional=True, min=0, min_inclusive=True),
+               optional=True, min=0, min_inclusive=True, max=1, max_inclusive=True),
             _p("source", "text", help="where the values come from", group="Identity")]),
         # damping
         _make("Rayleigh", "damping", lp.Rayleigh, [
@@ -268,11 +281,11 @@ def _catalog() -> dict[str, Block]:
             _p("fs", "number", "Hz", "sampling rate of a force signal (transient)", "Drive", optional=True, min=0)]),
         _make("Voltage", "drives", lp.Voltage, [
             _p("amplitude", "complex", "V", "voltage amplitude on the coil", "Drive"),
-            _p("Re", "number", "Ω", "coil resistance", "Coil", min=0, min_inclusive=True),
+            _p("Re", "number", "Ω", "coil resistance", "Coil", min=0),
             _p("Bl", "number", "T·m", "force factor", "Coil"),
             _p("Le", "number", "H", "coil (semi-)inductance", "Coil", min=0, min_inclusive=True),
             _p("n", "number", help="semi-inductance exponent: Z_L = Le (jω)^n (1: a plain inductance)",
-               group="Coil", min=0)]),
+               group="Coil", min=0, max=1, max_inclusive=True)]),
         # selectors
         _make("Group", "selectors", sel.Group, [
             _p("labels", "texts", help="names of physical groups of the geometry")], varargs="labels"),
@@ -341,7 +354,7 @@ def _catalog() -> dict[str, Block]:
             _p("drive", "block", help="a Force signal on the coil", group="Drive", of="drives"),
             _p("nonlinear", "bool", help="the coil's geometric nonlinearity (Newton–Raphson)", group="Solver"),
             _p("rho_inf", "number", help="generalised-α high-frequency dissipation (0–1)", group="Solver", min=0,
-               min_inclusive=True),
+               min_inclusive=True, max=1, max_inclusive=True),
             _p("nr_tol", "number", help="Newton–Raphson tolerance", group="Solver", min=0),
             _p("nr_max_iter", "integer", help="Newton–Raphson iterations at most", group="Solver", min=0),
             _p("n_steps", "integer", help="time steps (or a duration)", group="Time", optional=True, min=0,
@@ -358,8 +371,9 @@ def _catalog() -> dict[str, Block]:
                choices=("grid", "zip"))],
             context=("study",), code_only={"solve arguments": "those of the wrapped study"}),
         _make("Adaptive", "studies", lp.Adaptive, [
-            _p("target", "number", help="relative error estimate to reach", group="Adaptive", min=0),
-            _p("max_iterations", "integer", help="adaptation rounds at most", group="Adaptive", min=0),
+            _p("target", "number", help="relative error estimate to reach", group="Adaptive", min=0, max=1),
+            _p("max_iterations", "integer", help="adaptation rounds at most (0: the first mesh only)",
+               group="Adaptive", min=0, min_inclusive=True),
             _p("folder", "file", help="where the adapted meshes go", group="Files", optional=True)],
             context=("study",), code_only={"solve arguments": "those of the wrapped study"}),
         # study options
@@ -821,6 +835,8 @@ def _check_value(v, p: Param) -> list[str]:
             return [f"{KINDS[k]}, got {v!r}"]
         if p.min is not None and (v < p.min or (v == p.min and not p.min_inclusive)):
             return [f"{'≥' if p.min_inclusive else '>'} {p.min:g}, got {v!r}"]
+        if p.max is not None and (v > p.max or (v == p.max and not p.max_inclusive)):
+            return [f"{'≤' if p.max_inclusive else '<'} {p.max:g}, got {v!r}"]
         return []
     if k == "complex":
         ok = (isinstance(v, (int, float)) and not isinstance(v, bool)) or (isinstance(v, dict) and "complex" in v) \
@@ -890,6 +906,8 @@ def reference_rst() -> str:
                     default = "required" if p.required else f"``{p.default!r}``"
                     extra = f" Choices: {', '.join(str(c) for c in p.choices)}." if p.choices and \
                         len(p.choices) > 1 else ""
+                    if p.limits():
+                        extra += f" Range: {p.limits()}."
                     out += [f"   * - ``{p.name}``", f"     - {cell(kind)}", f"     - {cell(p.unit)}",
                             f"     - {cell(default)}", f"     - {cell(p.help)}{cell(extra)}"]
                 out.append("")

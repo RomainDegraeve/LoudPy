@@ -47,6 +47,14 @@ class Brace:
     thickness: float = 0.015
     depth: float = 0.08
 
+    def __post_init__(self):
+        from loudpy.model.parameters import has_references
+        if has_references(self):                                  # lp.P: checked once resolved
+            return
+        for name in ("thickness", "depth"):
+            if not getattr(self, name) > 0:
+                raise ModelError(f"lp.cabinets.Brace: {name} must be > 0 m, got {getattr(self, name)!r}")
+
 
 @dataclass(frozen=True)
 class Port:
@@ -56,6 +64,16 @@ class Port:
     radius: float
     length: float
     wall: float = 0.003
+
+    def __post_init__(self):
+        from loudpy.model.parameters import has_references
+        if has_references(self):                                  # lp.P: checked once resolved
+            return
+        for name in ("radius", "length"):
+            if not getattr(self, name) > 0:
+                raise ModelError(f"lp.cabinets.Port: {name} must be > 0 m, got {getattr(self, name)!r}")
+        if not self.wall >= 0:
+            raise ModelError(f"lp.cabinets.Port: wall must be ≥ 0 m, got {self.wall!r}")
 
     def tuning(self, volume: float, c: float | None = None) -> float:
         """Helmholtz estimate f_b = c/2π √(S / (V L')), L' = L + 0.85a + 0.6a (one flanged, one free end) [Hz];
@@ -121,6 +139,8 @@ class Box:
         object.__setattr__(self, "ports", tuple(self.ports))
         if has_references(self):                                  # lp.P: checked once resolved
             return
+        if self.port_size is not None and not self.port_size > 0:
+            raise ModelError(f"lp.cabinets.Box: port_size must be > 0 m (or None), got {self.port_size!r}")
         for name in ("width", "height", "depth"):
             if not getattr(self, name) > 0:
                 raise ModelError(f"lp.cabinets.Box: {name} must be > 0 m, got {getattr(self, name)!r}")
@@ -245,6 +265,10 @@ class Step:
     def __post_init__(self):
         object.__setattr__(self, "path", Path(self.path))
         object.__setattr__(self, "openings", tuple(self.openings))
+        if isinstance(self.scale, (int, float)) and not self.scale > 0:
+            raise ModelError(f"lp.cabinets.Step: scale must be > 0, got {self.scale!r}")
+        if isinstance(self.port_size, (int, float)) and not self.port_size > 0:
+            raise ModelError(f"lp.cabinets.Step: port_size must be > 0 m (or None), got {self.port_size!r}")
         if not self.path.exists():
             raise ModelError(f"lp.cabinets.Step: {self.path} not found")
         if self.path.suffix.lower() not in (".step", ".stp", ".iges", ".igs", ".brep", ".brp"):

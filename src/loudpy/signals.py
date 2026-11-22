@@ -29,6 +29,10 @@ def sine(f: float, periods: float = 5.0, fs: float = 48000.0, amplitude: float =
     """A sine of frequency f [Hz] over `periods` periods (or `duration` [s]); (signal, fs)."""
     if not f > 0:
         raise ModelError(f"signals.sine: f must be > 0 Hz, got {f!r}")
+    if duration is not None and not duration > 0:
+        raise ModelError(f"signals.sine: duration must be > 0 s (or None: periods / f), got {duration!r}")
+    if not duration and not periods > 0:
+        raise ModelError(f"signals.sine: periods must be > 0, got {periods!r}")
     t = _times(duration if duration else periods / f, fs)
     return amplitude * np.sin(2 * np.pi * f * t), float(fs)
 
@@ -42,6 +46,10 @@ def multitone(freqs, duration: float | None = None, fs: float = 48000.0, amplitu
     freqs = [float(f) for f in np.atleast_1d(freqs)]
     if not freqs or min(freqs) <= 0:
         raise ModelError("signals.multitone: give positive frequencies [Hz]")
+    if duration is not None and not duration > 0:
+        raise ModelError(f"signals.multitone: duration must be > 0 s (or None), got {duration!r}")
+    if not duration and not periods > 0:
+        raise ModelError(f"signals.multitone: periods must be > 0, got {periods!r}")
     t = _times(duration if duration else periods / min(freqs), fs)
     n = len(freqs)
     x = sum(np.sin(2 * np.pi * f * t - np.pi * k * (k - 1) / n) for k, f in enumerate(freqs, start=1)) / n

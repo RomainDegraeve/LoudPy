@@ -82,6 +82,9 @@ class Modes(Study):
         check(f_min, "frequency", "Modes.solve(f_min)")
         if f_min >= f_max:
             raise ModelError(f"Modes.solve: f_min = {f_min:g} Hz must be below f_max = {f_max:g} Hz")
+        if int(n_per_shift) < 1 or int(n_modes) < 1 or not f_target > 0:
+            raise ModelError(f"Modes.solve: n_per_shift ≥ 1, n_modes ≥ 1 and f_target > 0, got {n_per_shift!r}, "
+                             f"{n_modes!r} and {f_target!r}")
         if self.is_scene:                       # drivers + cavity modes (scene configuration "cavity")
             if output is not None:
                 raise ModelError("output= is for 2D models (scene results keep modal coordinates only)")

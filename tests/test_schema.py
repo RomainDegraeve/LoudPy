@@ -160,3 +160,62 @@ def test_studies_and_item_selections_are_built_on_their_model():
 def test_the_reference_page_is_current():
     assert REFERENCE.read_text() == schema.reference_rst(), \
         "docs/guide/building_blocks.rst is stale: write lp.schema.reference_rst() to it"
+
+
+LIMIT_SAMPLES = {"Solid": {"name": "s", "material": "Paper"}, "Air": {"name": "a"}, "PML": {"name": "p"},
+          "MeshSize": {"on": "x", "size": 0.001},
+          "Material": {"name": "m", "kind": "solid", "rho": 1000.0, "E": 1e9, "nu": 0.3},
+          "Voltage": {"amplitude": 1.0, "Re": 8.0, "Bl": 7.0}, "Force": {"amplitude": 1.0},
+          "cabinets.Box": {"width": 0.2, "height": 0.3, "depth": 0.2}, "cabinets.Brace": {"y": 0.1},
+          "cabinets.Port": {"at": [0.05, 0.05], "radius": 0.02, "length": 0.05}, "cabinets.Step": {"path": STEP},
+          "signals.sine": {"f": 100.0}, "signals.multitone": {"freqs": [100.0, 200.0]},
+          "Modes": {"f_max": 1000.0},
+          "Transient": {"drive": {"type": "Force", "params": {"amplitude": [0.0, 1.0, 0.0], "fs": 1000.0}}},
+          "Adaptive": {}, "Sweep": {"parameters": {}},
+          "PerWavelength": {"bands": [20.0]}, "Output": {}, "Rayleigh": {}, "Hysteretic": {}, "Box": {}}
+
+
+def _outcome(t, p, value, model):
+    """"refused" when building the block (and solving, for a .solve() argument) is refused because of this value."""
+    import warnings
+    node = {"type": t, "params": {**LIMIT_SAMPLES[t], p.name: value}}
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            if t in ("Adaptive", "Sweep"):
+                schema.build(node, study=lp.Modes(model))
+                return "accepted"
+            out = schema.build(node, model=model)
+            if isinstance(out, tuple) and p.stage == "solve":
+                out[0].solve(**out[1])
+    except Exception as e:                                          # noqa: BLE001
+        return "refused" if p.name in str(e) or "range" in str(e) else f"other: {type(e).__name__}: {e}"
+    return "accepted"
+
+
+def test_declared_limits_are_what_the_blocks_enforce(tmp_path):
+    """Every limit of the description (min / max, inclusive or not) is the block's own: a value beyond it is refused
+    by the block itself (built, or solved for a .solve() argument), an inclusive edge is accepted, an exclusive one
+    refused — the forms refuse exactly what loudpy refuses."""
+    model = api.plate_model()
+    model.mesh(tmp_path / "plate.msh")
+    checked, wrong = 0, []
+    for t in LIMIT_SAMPLES:
+        for p in schema.block(t).params:
+            for lim, incl, sign in ((p.min, p.min_inclusive, -1), (p.max, p.max_inclusive, 1)):
+                if lim is None:
+                    continue
+                step = 1 if p.kind == "integer" else (0.5 if lim == 0 else abs(lim) * 0.5)
+                edge = int(lim) if p.kind == "integer" else float(lim)
+                for value, want in ((lim + sign * step, "refused"), (edge, "accepted" if incl else "refused")):
+                    got = _outcome(t, p, value, model)
+                    checked += 1
+                    if got != want and not (want == "accepted" and got.startswith("other")):
+                        wrong.append(f"{t}.{p.name} = {value}: the description says {want}, the block {got}")
+                    assert schema.check({"type": t, "params": {**LIMIT_SAMPLES[t], p.name: value}}) == [] or \
+                        want == "refused" or p.stage == "solve", (t, p.name, value)
+    assert not wrong, "\n".join(wrong)
+    assert checked > 60
+    target = schema.block("Adaptive").param("target")
+    assert target.limits() == "> 0, < 1"
+    assert schema.check({"type": "Adaptive", "params": {"target": 2.0}}) == ["Adaptive.target: < 1, got 2.0"]

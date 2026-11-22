@@ -30,6 +30,10 @@ class Transient(Study):
         if not nonlinear:
             raise NotImplementedError("only the nonlinear (total Lagrangian) transient is available; for "
                                       "small amplitudes it gives the linear response")
+        if not 0 <= rho_inf <= 1:
+            raise ModelError(f"Transient: rho_inf must be in [0, 1], got {rho_inf!r}")
+        if not nr_tol > 0 or not int(nr_max_iter) >= 1:
+            raise ModelError(f"Transient: nr_tol > 0 and nr_max_iter ≥ 1, got {nr_tol!r} and {nr_max_iter!r}")
         self.drive, self.rho_inf, self.nr_tol, self.nr_max_iter = drive, rho_inf, nr_tol, nr_max_iter
 
     def _check_damping(self):
@@ -50,6 +54,10 @@ class Transient(Study):
         from loudpy.physics.structural import MecaAssemblerNL
         from loudpy.physics.systems import meshes, nodal, System
         from loudpy.solvers.time import free_dof_reducer, generalized_alpha_newton
+        if n_steps is not None and not int(n_steps) >= 1:
+            raise ModelError(f"Transient.solve: n_steps must be ≥ 1, got {n_steps!r}")
+        if duration is not None and not duration > 0:
+            raise ModelError(f"Transient.solve: duration must be > 0 s, got {duration!r}")
         sig = np.asarray(self.drive.amplitude, float)
         dt = 1.0 / float(self.drive.fs)  # type: ignore[arg-type]   # checked by the drive (a signal has fs)
         if duration is not None:
