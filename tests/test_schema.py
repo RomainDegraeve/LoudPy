@@ -1,6 +1,5 @@
 """lp.schema: every public building block described, every parameter of the code described (and no other), the
 description round-trips through plain data, refuses wrong values, and the generated reference page is current."""
-import dataclasses
 import inspect
 import json
 from pathlib import Path
