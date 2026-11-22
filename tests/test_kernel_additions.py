@@ -120,3 +120,21 @@ def test_box_refuses_drivers_off_its_front_face():
     deep = lp.cabinets.Box(0.26, 0.2, lp.P("D"), wall=0.015, ports=[port])               # a parametric depth
     with pytest.raises(lp.errors.ModelError, match="not on the front face"):
         deep.for_drivers([hp.place("main", at=(0.24, 0.12))])
+
+
+def test_a_2d_mesh_ignores_gmsh_options_left_by_others(tmp_path):
+    """gmsh's options belong to the process: a 3D scene, a preview may leave mesh sizes set; a 2D model meshes the same
+    whatever they were (its size options set every time)."""
+    import gmsh
+    a = api.plate_model().mesh(tmp_path / "a.msh")
+    if not gmsh.isInitialized():
+        gmsh.initialize(interruptible=False)
+    try:
+        gmsh.option.setNumber("Mesh.MeshSizeMax", 1e-3)              # left over by someone else
+        gmsh.option.setNumber("Mesh.MeshSizeFactor", 3.0)
+        b = api.plate_model().mesh(tmp_path / "b.msh")              # (the 2D mesher ends gmsh when done)
+    finally:
+        if gmsh.isInitialized():
+            gmsh.option.setNumber("Mesh.MeshSizeMax", 1e22)
+            gmsh.option.setNumber("Mesh.MeshSizeFactor", 1.0)
+    assert b.n_nodes == a.n_nodes

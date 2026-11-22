@@ -610,12 +610,16 @@ class MeshManager:
         gmsh.option.setNumber("Mesh.Optimize", 1)
         gmsh.option.setNumber("Mesh.ElementOrder", self.mesh_order)
         gmsh.option.setNumber("Mesh.SecondOrderLinear", 0)
-        if self.grading or self.size_field is not None:
-            # sizes come from the fields only (see the class docstring)
-            gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
-        if self.size_field is not None:
-            gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
-            gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
+        # every size option set (gmsh's defaults otherwise): options are global to the process, and another user
+        # of gmsh (a 3D scene, a preview) may have changed them since gmsh started
+        gmsh.option.setNumber("Mesh.MeshSizeMin", 0.0)
+        gmsh.option.setNumber("Mesh.MeshSizeMax", 1e22)
+        gmsh.option.setNumber("Mesh.MeshSizeFactor", 1.0)
+        # with grading or a size field, sizes come from the fields only (see the class docstring)
+        fields_only = bool(self.grading or self.size_field is not None)
+        gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0 if fields_only else 1)
+        gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0 if self.size_field is not None else 1)
+        gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
 
         gmsh.model.mesh.generate(2)
         if write_mesh_file:
