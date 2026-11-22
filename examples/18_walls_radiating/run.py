@@ -8,9 +8,9 @@ both faces, the panels inside and out. Needs 02_azimuthal_modes (driver modes).
 
   cabinet  : lp.cabinets.Step("cabinet.step", openings=[a point in the slot]) — solids 0 bottom, 1 left, 2 right,
              3 top, 4 back, 5 front, 6 upper board, 7 lower board (8: the slot, air)
-  walls    : scene.walls("MDF", thickness=None, panels={4: Panel("Plywood"), 5: Panel(thickness=0.018)})
-             thickness=None: each panel's measured through its solid (bottom 18, sides and top 15, back 22, boards
-             12 mm); the front is 1 mm in the file (the driver's flange planes): given 18 mm
+  walls    : scene.walls("MDF", thickness=None, panels={4: Panel("Plywood")})
+             thickness=None: each panel's measured through its solid (bottom and front 18, sides and top 15, back
+             22, boards 12 mm); the front has the driver's cut-out behind the driver's flange plane (cabinet.py)
   air      : lp.Scene.vented_box — one merged air domain (inside, the slot, outside), 1 kHz bands
   studies  : the in-vacuo wall modes; the response to 1 N on the coil, 20 Hz – 1 kHz, with these walls and with rigid
              walls (the same scene without walls) for comparison
@@ -47,8 +47,7 @@ files = HERE / "Results/Files"
 MESHES = HERE / "meshes"
 F_MAX = 1000.0                                       # [Hz]: one air band; wall modes to 2 kHz
 FREQS = np.geomspace(20.0, F_MAX, 150)               # [Hz]
-PANELS = {4: lp.cabinets.Panel("Plywood"),           # the back in plywood (its measured 22 mm)
-          5: lp.cabinets.Panel(thickness=0.018)}     # the front: 18 mm (1 mm in the file)
+PANELS = {4: lp.cabinets.Panel("Plywood")}           # the back in plywood (its measured 22 mm); the rest MDF
 if not STEP.exists():
     write_step(STEP)
 

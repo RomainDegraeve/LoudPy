@@ -20,18 +20,18 @@ plot.py                    SPL 1 m ahead, coil excursion, walls / driver volume 
 cabinet = lp.cabinets.Step("cabinet.step", openings=[OPENING])     # a point of the slot's air
 scene = lp.Scene.vented_box(cabinet, driver(), at=(X0, DRIVER_Y), f_max=1000)   # one merged air domain
 scene.walls("MDF", thickness=None,                                 # each panel's thickness measured on its solid
-            panels={4: lp.cabinets.Panel("Plywood"), 5: lp.cabinets.Panel(thickness=0.018)})
+            panels={4: lp.cabinets.Panel("Plywood")})
 ```
 
-Panels found on the inside air (checked, not run): bottom 18, left / right / top 15, back 22 mm (plywood), front 18 mm
-(given: 1 mm in the file, the driver's flange planes), upper and lower boards 12 mm; inside air 10.15 L.
+Panels found on the inside air (checked, not run): bottom 18, left / right / top 15, back 22 mm (plywood), front
+18 mm, upper and lower boards 12 mm, all measured on their solids; inside air 10.33 L; the first wall mode 1.53 kHz
+(panel edges clamped), above the 1 kHz band of the response.
 
-Why the front is only 1 mm thick in the file: the driver's model (02) is an axisymmetric 2D model whose air
-couples to the cabinet's on two planes, its rear baffle plane Z_B = 31 mm and the box's front face Z_F = 32 mm. The
-front panel must lie between them, so its solid is 1 mm thick. The shell does not care (a shell is a mid-surface: its
-thickness only sets its mass and stiffness, here 18 mm), but the air sees a 1 mm front: the slot is a hole, not an
-18 mm deep duct (a little less air mass in the opening). A driver model with its baffle planes 18 mm apart would let
-the front be drawn 18 mm thick.
+The front and the driver: the driver's model (02) is an axisymmetric 2D model whose air meets the cabinet's on two
+planes 1 mm apart, its flange: the rear baffle plane Z_B = 31 mm and the front face Z_F = 32 mm. The front panel is
+18 mm thick up to Z_F; behind Z_B it has the driver's cut-out (a hole of 58 mm radius, the basket's room), and loudpy
+cuts the driver itself in the last millimetre. To try 15 mm: FRONT = 0.015 in cabinet.py (python3 cabinet.py writes
+the file again).
 
 How the walls are coupled (docs: guide/shells): one shell per panel on its inner face (a board: on one side); every
 other wet face (the outer face, the board's other side) moves with the shell at its nearest point — rigid through

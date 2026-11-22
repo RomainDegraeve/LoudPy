@@ -12,7 +12,7 @@
       [
        0.14,
        0.053000000000000005,
-       0.0315
+       0.023
       ]
      ]
     }
@@ -125,12 +125,6 @@
        "type": "cabinets.Panel",
        "params": {
         "material": "Plywood"
-       }
-      },
-      "5": {
-       "type": "cabinets.Panel",
-       "params": {
-        "thickness": 0.018
        }
       }
      }
