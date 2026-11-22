@@ -49,6 +49,8 @@ Evaluations
 
    res.spl(at=(0.0, 0.3))                       # Data: SPL [dB re 20 µPa] over f (RMS)
    res.spl(at=lp.Arc(0.3, range(0, 91, 2)))     # Data over (f, angle): directivity
+   res.baffle()                                 # z of the baffle's front face, from the mesh (None: free field)
+   res.directivity(0.3, range(0, 91, 2))        # SPL over (f, angle) around (0, baffle), mirrored: −90 … 90°
    res.pressure(at=lp.Line((0, .05), (0, .5)))  # complex pressure over (f, s)
    res.displacement(at=(0, 0), component="z")   # u_z over f (complex amplitude)
    res.velocity(at=..., component="z")            # jω u (harmonic) or the stored v (transient)

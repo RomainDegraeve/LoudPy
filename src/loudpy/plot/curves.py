@@ -145,6 +145,9 @@ def map(d, ax=None, levels=None, vmin=None, vmax=None, cmap=None, logx=None, col
         ax.clabel(cl, fmt="%g dB" if s.quantity.unit.startswith("dB") else "%g", fontsize=6.5)
     x_axis(ax, dims[0], x, logx)
     ax.set_ylabel(quantity(dims[1]).axis_label())
+    if dims[1] == "angle" and y.min() < 0:                                  # both sides of the axis
+        ticks = _angle_ticks(y)
+        ax.set_yticks(ticks, [signed_angle(t) for t in ticks])
     ax.grid(False, which="both")
     if colorbar:
         ax.figure.colorbar(cs, ax=ax, label=s.quantity.axis_label(), pad=0.015,
@@ -154,11 +157,24 @@ def map(d, ax=None, levels=None, vmin=None, vmax=None, cmap=None, logx=None, col
     return ax
 
 
+def signed_angle(t: float) -> str:
+    """An angle tick on both sides of the axis: "0°", "+30°", "−30°", "±180°"."""
+    return "±180°" if abs(t) == 180 else (f"{t:+g}°" if t else "0°").replace("-", "\u2212")
+
+
+def _angle_ticks(a) -> np.ndarray:
+    """Ticks every 30° (every 15° up to ±90°) within the range of the angles a."""
+    a = np.asarray(a, float)
+    step = 15.0 if a.max() - a.min() <= 180 else 30.0
+    return np.arange(np.ceil(a.min() / step) * step, a.max() + 1e-9, step)
+
+
 @style.styled
 def polar(d, ax=None, rlim=None, title=None, zero="N", clockwise=True, legend: bool = True, **kwargs):
     """
     Data over "angle" [°] on a polar diagram (2D: one curve per value of the other coordinate, e.g.
-    d.sel(f=[100, 1000, 5000])); legend=False for an overlay. rlim: radial limits (default: −40 … +6 dB for relative levels, 40 dB
+    d.sel(f=[100, 1000, 5000])); legend=False for an overlay. Angles on both sides of the axis (−θ … θ, e.g.
+    res.directivity()): signed ticks, the front half circle only within ±90°. rlim: radial limits (default: −40 … +6 dB for relative levels, 40 dB
     below the maximum for absolute levels); values below the inner limit are not drawn.
     """
     if ax is None:
@@ -184,6 +200,14 @@ def polar(d, ax=None, rlim=None, title=None, zero="N", clockwise=True, legend: b
             ax.legend(loc="center left", bbox_to_anchor=(1.08, 0.5), fontsize=7)
     ax.set_theta_zero_location(zero)
     ax.set_theta_direction(-1 if clockwise else 1)
+    a = s.coords["angle"].astype(float)
+    if a.min() < 0:                         # both sides of the axis: signed ticks; within ±90°, the front half only
+        half = a.min() >= -90 and a.max() <= 90
+        ticks = np.arange(-90.0, 91.0, 30.0) if half else np.arange(-150.0, 181.0, 30.0)
+        ax.set_thetagrids(ticks if half else ticks % 360, [signed_angle(t) for t in ticks])  # (the grid first: the
+        if half:                                                                             # limits follow it)
+            ax.set_thetamin(-90)
+            ax.set_thetamax(90)
     if rlim is not None:
         ax.set_rlim(*rlim)
     ax.set_title(title or s.quantity.axis_label(), fontsize=9)

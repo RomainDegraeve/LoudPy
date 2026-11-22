@@ -211,6 +211,18 @@ class Data:
         out = self.values - ref if self.quantity.unit.startswith("dB") else self.values / ref
         return self._new(out, self.quantity.relative(), reference=str(at or "max"))
 
+    def mirror(self, dim: str = "angle") -> "Data":
+        """The data mirrored about 0 along `dim` (≥ 0): the values at −x are those at x, e.g. the directivity of an
+        axisymmetric result on both sides of the axis (−θ … θ)."""
+        a = np.asarray(self.coords[dim], float)
+        if a.min() < 0:
+            raise ValueError(f"{dim!r} has negative values already: nothing to mirror")
+        ax = self._axis(dim)
+        side = np.flip(np.compress(a > 0, self.values, axis=ax), axis=ax)
+        coords = {**self.coords, dim: np.concatenate([-a[a > 0][::-1], a])}
+        return Data(np.concatenate([side, self.values], axis=ax), coords, self.quantity, self.label,
+                    {**self.meta, "mirrored": f"{dim} → −{dim} (axisymmetric)"})
+
     def _jw(self):
         if "f" not in self.coords:
             raise ValueError("velocity() / acceleration() of harmonic data need a frequency dimension 'f'")

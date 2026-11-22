@@ -61,18 +61,19 @@ label_panels = style.label_panels
 
 
 @style.styled
-def directivity(res, f, radius: float, angles=None, center=None, axis="z", toward="x", normalize: bool = True,
-                ax=None, **kwargs):
+def directivity(res, f, radius: float | None = None, angles=None, center=None, axis="z", toward="x",
+                normalize: bool = True, mirror: bool | None = None, ax=None, **kwargs):
     """
-    Polar SPL at the frequencies f on an arc of `radius` around `center`, angles [°] from `axis`
-    (2D results: from the z axis toward +r, default 0…180°; 3D scenes: in the plane of `axis` and
-    `toward`, default −180…180°); normalize: dB re the 0° direction. Returns the polar axes.
+    Polar SPL at the frequencies f on an arc of `radius` around `center`, angles [°] from `axis`. 2D results
+    (res.directivity): centre on the baffle and radius read from the mesh by default, mirrored to −θ … θ (both sides
+    of the axis; mirror=False: 0 … θ only); 3D scenes: radius and centre needed, in the plane of `axis` and `toward`,
+    default −180 … 180°. normalize: dB re the 0° direction. Returns the polar axes.
     """
-    from loudpy.results.selection import Arc
-    dim = 3 if hasattr(res, "far_field") else 2                    # scene results are 3D
-    if angles is None:
-        angles = np.arange(0, 181, 2) if dim == 2 else np.arange(-180, 181, 2)
-    d = res.spl(at=Arc(radius, angles, center, axis, toward)).sel(f=list(np.atleast_1d(f)))
+    if type(res).__name__ == "SceneResults":
+        d = res.directivity(radius, angles, center, mirror=bool(mirror), axis=axis, toward=toward)
+    else:
+        d = res.directivity(radius, angles, center, mirror=True if mirror is None else mirror)
+    d = d.sel(f=list(np.atleast_1d(f)))
     if normalize:
         d = d.normalize(angle=0)
     return polar(d, ax=ax, **kwargs)

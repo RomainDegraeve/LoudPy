@@ -10,6 +10,7 @@ import pytest
 import loudpy as lp
 from loudpy.fem.reference import cell_type_name
 from loudpy.geometry.mesh import Mesh, MeshGroup
+from loudpy.results.directivity import arc as default_arc
 from loudpy.results.results import Block, FrequencyResults
 from support import current_api as api
 from support import fem_meshes as fm
@@ -111,6 +112,7 @@ def test_far_field_of_monopoles_from_the_file(tmp_path, baffled, verify):
     mesh = annulus(0.05, 0.5, 0.01, baffled)
     path = FrequencyResults([Block({"air": mesh}, f, {"p": p(mesh.coords)})]).save(tmp_path / "monopole.h5")
     res = lp.load(path)
+    assert res.baffle() == (0.0 if baffled else None)          # the air on a plane / all around the source
     arc = lp.Arc(3.0, np.arange(0.0, 91.0 if baffled else 181.0, 15.0))
     ff = np.asarray(res.far_field(arc, radius=0.3, baffle=0.0 if baffled else None, c=c))
     exact = p(arc.points(2))
@@ -139,6 +141,19 @@ def test_far_field_of_the_speaker(mesh_dir):
     assert (np.abs(ff[0] - ff[1]).max(axis=1) / np.abs(ff[1]).max(axis=1)).max() < 3e-3
     assert res.far_field(lp.Arc(1.0, [0, 45], center=(0, 0.032)), radius=0.2, center=(0, 0.032),
                          baffle=0.032).dims == ("f", "angle")
+    # directivity: centred on the baffle found on the mesh, mirrored to −θ … θ
+    assert res.baffle() == pytest.approx(0.032)
+    d = res.directivity(0.26, np.arange(0.0, 81.0, 10.0))
+    np.testing.assert_array_equal(d.coords["angle"], np.arange(-80.0, 81.0, 10.0))
+    np.testing.assert_allclose(d.values, d.values[:, ::-1])
+    np.testing.assert_allclose(d.sel(angle=list(np.arange(0.0, 81.0, 10.0))).values, res.spl(arc).values)
+    R, angles = default_arc(res)
+    assert 0 < R < 0.3 and angles[0] == 0 and angles[-1] in (90, 180)
+    assert res.directivity().coords["angle"][0] == -angles[-1]
+    with pytest.raises(ValueError, match="negative"):
+        d.mirror()
+    ax = lp.plot.directivity(res, f=500.0, radius=0.26, angles=np.arange(0.0, 91.0, 10.0))
+    assert [t.get_text() for t in ax.get_xticklabels()][:2] == ["\u221290°", "\u221260°"]
 
 
 def test_plain_arrays(mesh_dir):

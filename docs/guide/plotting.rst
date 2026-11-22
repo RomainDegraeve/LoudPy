@@ -20,7 +20,7 @@ mesh), *what* (a quantity with its unit), *how* (a plot kind) — with the brevi
    lp.plot.modes(modes.order(0), n=12)                  # grid of mode shapes
    lp.plot.mode_chart(modes, y="order")                 # f against the azimuthal order (colour ζ)
    lp.plot.coupled_modes(modes.set("fsi"), [0, 3, 7])   # pressure in the air + deformed structure
-   lp.plot.directivity(res, f=[1000, 4000], radius=0.3) # polar SPL re on axis (2D or 3D results)
+   lp.plot.directivity(res, f=[1000, 4000])             # polar SPL re on axis; 2D: around the baffle, ±θ
    lp.plot.boundary(field, res.boundary("wet_front"))   # deformed boundary profile
    lp.plot.animate(trans, "u.mp4")                      # animation (transient, or a harmonic field)
 

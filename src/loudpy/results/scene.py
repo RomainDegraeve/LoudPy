@@ -29,7 +29,7 @@ import numpy as np
 
 from loudpy.results.data import Data
 from loudpy.results.results import FrequencyResults
-from loudpy.results.selection import as_selection
+from loudpy.results.selection import Arc, as_selection
 from loudpy.errors import ResultsError, SelectionError
 
 
@@ -119,6 +119,17 @@ class SceneResults(FrequencyResults):
     def scene(self) -> dict:
         """The scene description stored with the results (drivers, configuration, air, hemisphere)."""
         return self.attachments.get("scene", {}).get("meta", {})
+
+    def directivity(self, radius: float | None = None, angles=None, center=None,  # type: ignore[override]
+                    mirror: bool = False, axis: str = "z", toward: str = "x") -> Data:
+        """SPL [dB] over (f, angle) on an arc of `radius` [m] around `center` (x, y, z) in the plane of `axis` and
+        `toward`, angles [°] from `axis` (default −180 … 180° every 2°); no symmetry to mirror in 3D."""
+        if radius is None or center is None:
+            raise ResultsError("3D scenes: give the arc's radius and centre (x, y, z)")
+        if mirror:
+            raise ResultsError("3D scenes have no axis of symmetry: nothing to mirror")
+        angles = np.arange(-180.0, 181.0, 2.0) if angles is None else angles
+        return self.spl(at=Arc(radius, angles, center, axis, toward))
 
     @property
     def drivers(self) -> list[str]:

@@ -378,6 +378,22 @@ class FrequencyResults(Results):
             at=sel.describe(), far_field=f"Kirchhoff–Helmholtz over a sphere of radius {radius:g} m"
             + (f", baffle z = {baffle:g} m" if baffle is not None else "")))
 
+    def baffle(self) -> float | None:
+        """z [m] of the baffle's front face, read from the mesh (the plane the front air stands on); None in free
+        field (loudpy.results.directivity)."""
+        from loudpy.results.directivity import baffle
+        return baffle(self)
+
+    def directivity(self, radius: float | None = None, angles=None, center=None, mirror: bool = True) -> Data:
+        """
+        SPL [dB] over (f, angle) on an arc of `radius` [m] around `center` on the axis, angles [°] from the z axis;
+        defaults read from the mesh: the centre on the baffle's front face (else the origin), the radius 0.8 × the
+        air in front, 0 … 180° when there is air behind (else 0 … 90°); mirror: −θ … θ, as both sides of the axis
+        (loudpy.results.directivity).
+        """
+        from loudpy.results.directivity import directivity
+        return directivity(self, radius, angles, center, mirror)
+
     def volume_velocity(self, on: str) -> Data:
         """Volume velocity Q = ∫ jω u·n dA [m³/s] over the boundary `on` (n out of the structure)."""
         from loudpy.results.values import volume_velocity
