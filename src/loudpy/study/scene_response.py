@@ -202,6 +202,14 @@ def solve(study, freqs, store=None, chunk_hz=50.0, rtol=1e-7, log=None):
     if scene.folder is None:
         raise StateError("mesh the scene first: scene.mesh(folder)")
     freqs = np.atleast_1d(np.asarray(freqs, float))
+    if scene.configuration != "cavity" and scene.band_meshes:        # every frequency on an air mesh made for it
+        lo, hi = min(b["f_lo"] for b in scene.band_meshes), max(b["f_hi"] for b in scene.band_meshes)
+        out = freqs[(freqs < lo * (1 - 1e-9)) | (freqs > hi * (1 + 1e-9))]
+        if len(out):
+            raise ModelError(f"{len(out)} frequencies ({out.min():g}–{out.max():g} Hz) outside the air's meshes "
+                             f"({lo:g}–{hi:g} Hz): give the air bands up to {freqs.max():g} Hz "
+                             f"(scene.merged / exterior(bands=lp.Scene.bands({freqs.max():g})), or f_max= of "
+                             f"lp.Scene.sealed_box / vented_box) and mesh again")
     drivers = multidriver(scene)
     F = coil_force(scene, drivers, study.drive)
     config = scene.configuration

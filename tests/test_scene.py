@@ -350,6 +350,9 @@ def test_scene_view_choices(driver, mesh_dir, tmp_path):
     with pytest.raises(ValueError, match="axis cut"):
         resolve_cut(res, ("w", 0.0))
     assert {"ground", "walls"} <= set(res.air_surfaces)
+    top = max(b["f_hi"] for b in scene.band_meshes)                 # beyond the air's meshes: refused, said why
+    with pytest.raises(lp.errors.ModelError, match="outside the air's meshes"):
+        lp.FrequencyResponse(scene, drive=lp.Force(1.0)).solve([300.0, 2.0 * top])
     arc = lp.Arc(1.0, np.arange(-90.0, 91.0, 5.0), (W / 2, H / 2, 0.0), axis="z", toward="x")
     v = res.view(600.0, cut=("y", H / 2), surfaces=["walls"], points=[(W / 2, H / 2, 1.0)], arcs=[arc])
     pos, focus = np.asarray(v.cam[0]), np.asarray(v.cam[1])
