@@ -244,8 +244,9 @@ class Box:
                 side = "bottom" if b > 0 else None                  # no bottom: the ground (rigid)
             elif k == 1 and n[1] < 0 and abs(x[1] - b - H) < tol:
                 side = "top"
-            elif k == 2 and n[2] < 0 and abs(x[2] - zb) < tol:
-                side = "front"
+            elif k == 2 and n[2] < 0 and abs(x[2] - zb) < tol and not any(
+                    np.hypot(x[0] - p.at[0], x[1] - p.at[1]) < p.radius + p.wall + tol for p in self.ports):
+                side = "front"                                       # (a port's mouth is no wall)
             elif n[2] > 0 and abs(x[2] - float(self.back_z(x[1]))) < tol * 10:
                 side = "back"
             out.append(side)
@@ -315,7 +316,8 @@ class Step:
 
     def __post_init__(self):
         object.__setattr__(self, "path", Path(self.path))
-        object.__setattr__(self, "openings", tuple(self.openings))
+        object.__setattr__(self, "openings", tuple(o if isinstance(o, Port) else tuple(float(c) for c in o)
+                                                   for o in self.openings))
         if isinstance(self.scale, (int, float)) and not self.scale > 0:
             raise ModelError(f"lp.cabinets.Step: scale must be > 0, got {self.scale!r}")
         if isinstance(self.port_size, (int, float)) and not self.port_size > 0:

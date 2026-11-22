@@ -1,0 +1,169 @@
+{
+ "format": "loudpy.document/1",
+ "name": "18_walls_radiating",
+ "scene": {
+  "type": "Scene",
+  "params": {
+   "cabinet": {
+    "type": "cabinets.Step",
+    "params": {
+     "path": "cabinet.step",
+     "openings": [
+      [
+       0.14,
+       0.053000000000000005,
+       0.0315
+      ]
+     ]
+    }
+   }
+  },
+  "drivers": [
+   {
+    "driver": {
+     "type": "Driver.from_modes",
+     "params": {
+      "path": "../02_azimuthal_modes/Results/Files/eigen_fourier.h5",
+      "orders": [
+       0,
+       1,
+       2,
+       3
+      ],
+      "geometry": "../Geometries/Loudspeaker/HPNEW-Sketch.geo",
+      "rear": {
+       "type": "Profile",
+       "params": {
+        "on": {
+         "type": "BoundaryOf",
+         "params": {
+          "a": {
+           "type": "Group",
+           "params": {
+            "labels": [
+             "air_rear"
+            ]
+           }
+          }
+         }
+        },
+        "start": [
+         0.05435,
+         0.031
+        ],
+        "end": [
+         0.00633,
+         0.0052
+        ]
+       }
+      },
+      "f_max": 10000.0,
+      "front": {
+       "type": "Profile",
+       "params": {
+        "on": {
+         "type": "Interface",
+         "params": {
+          "a": {
+           "type": "Group",
+           "params": {
+            "labels": [
+             "cone",
+             "coil",
+             "surround",
+             "spider",
+             "former",
+             "glue",
+             "dustcap"
+            ]
+           }
+          },
+          "b": {
+           "type": "Group",
+           "params": {
+            "labels": [
+             "air_front"
+            ]
+           }
+          }
+         }
+        },
+        "start": [
+         0.05735,
+         0.032
+        ]
+       }
+      },
+      "coil": "interface_forced",
+      "name": "driver"
+     }
+    },
+    "place": {
+     "type": "Driver.place",
+     "params": {
+      "name": "main",
+      "at": [
+       0.125,
+       0.25,
+       0.0
+      ]
+     }
+    }
+   }
+  ],
+  "settings": [
+   {
+    "type": "Scene.merged",
+    "params": {}
+   },
+   {
+    "type": "Scene.walls",
+    "params": {
+     "thickness": null,
+     "panels": {
+      "4": {
+       "type": "cabinets.Panel",
+       "params": {
+        "material": "Plywood"
+       }
+      },
+      "5": {
+       "type": "cabinets.Panel",
+       "params": {
+        "thickness": 0.018
+       }
+      }
+     }
+    }
+   }
+  ]
+ },
+ "studies": [
+  {
+   "name": "walls_modes",
+   "type": "Modes",
+   "params": {
+    "physics": "walls",
+    "f_max": 2000.0
+   }
+  },
+  {
+   "name": "elastic",
+   "type": "FrequencyResponse",
+   "params": {
+    "drive": {
+     "type": "Force",
+     "params": {
+      "amplitude": 1.0
+     }
+    },
+    "freqs": {
+     "from": 20.0,
+     "to": 1000.0,
+     "points": 150,
+     "spacing": "log"
+    }
+   }
+  }
+ ]
+}

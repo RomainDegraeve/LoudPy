@@ -181,43 +181,25 @@ class ExteriorFE:
 
     def couple_walls(self, walls, gap=None):
         """
-        Elastic walls (physics.shell.WallModes, shells on the cavity faces) coupled to this exterior air through the
-        cabinet's outer faces ("walls"): each outer point moves with the shell at its nearest point (rigid through the
-        thickness: thin walls); outer faces farther than `gap` from every shell (default: 1.5 × the thickest panel
-        + 2 mm) stay rigid. The wall modes' columns ∫ N_i (u_k·n) dS (n into this air) are appended to Bf, after the
-        driver modes (couple_driver first).
+        Elastic walls (physics.shell.WallModes) coupled to this air through every wall face of the mesh ("walls",
+        "openings": the cabinet's outer faces, and in a merged air domain its inner faces and the boards' two sides):
+        each point moves with the shell at its nearest point (rigid through the thickness: thin walls); faces
+        farther than `gap` from every shell stay rigid (physics.shell.wall_face_coupling). The wall modes' columns
+        are appended to Bf, after the driver modes (couple_driver first).
         """
-        from loudpy.physics.shell import wall_shells
+        from loudpy.physics.modal import stack_columns
+        from loudpy.physics.shell import wall_face_coupling
         if self.Bf is None:
             raise StateError("couple_driver first: the wall modes come after the driver modes")
-        faces = self.faces.get("walls")
-        if faces is None or not len(faces):
-            raise SelectionError("no 'walls' faces (the cabinet's outer surface) in the exterior mesh")
-        outer = wall_shells(self.nodes, self.tets, faces)            # oriented: normals into this air
-        F = outer.faces                                              # (n_f, 6) rows, oriented
-        X = self.nodes[F[:, :3]]
-        nrm = np.cross(X[:, 1] - X[:, 0], X[:, 2] - X[:, 0])
-        area = 0.5 * np.linalg.norm(nrm, axis=1)
-        nrm /= np.maximum(2 * area, 1e-300)[:, None]
-        h = np.max(np.atleast_1d(np.asarray(walls.shell.thickness, float)))
-        gap = 1.5 * h + 2e-3 if gap is None else float(gap)
-        rows = np.unique(F)
-        lam, cell, dist = closest_on_triangles(self.nodes[rows], walls.walls.nodes, walls.walls.cells)
-        U = walls.translations()                                     # (k, n_shell, 3)
-        tri = walls.walls.cells[cell]                                # (n_rows, 3)
-        u = np.einsum("ra,krad->rkd", lam, U[:, tri])                # (n_rows, k, 3) at the outer nodes
-        u[dist > gap] = 0.0                                          # not over a wall: rigid
-        pos = np.searchsorted(rows, F)                               # (n_f, 6) → index into rows
-        un = np.einsum("fakd,fd->fak", u[pos], nrm)                  # u·n at the face nodes
-        local = np.einsum("ab,fbk->fak", _P2_FACE_MASS, un) * area[:, None, None]
-        Bw = np.zeros((len(rows), U.shape[0]))
-        np.add.at(Bw, pos.ravel(), local.reshape(-1, U.shape[0]))
-        from loudpy.physics.modal import stack_columns
+        faces = [self.faces[n] for n in ("walls", "openings") if n in self.faces and len(self.faces[n])]
+        if not faces:
+            raise SelectionError("no wall faces ('walls', 'openings') in the air mesh")
+        rows, Bw, dist = wall_face_coupling(walls, self.nodes, self.tets, np.vstack(faces), gap)
         n_drv = self.Bf.shape[1]
         self.pnodes, self.Bf = stack_columns([(self.pnodes, self.Bf), (rows, Bw)])
-        self.wall_rows, self.wall_columns = rows, np.arange(n_drv, n_drv + U.shape[0])
+        self.wall_rows, self.wall_columns = rows, np.arange(n_drv, n_drv + Bw.shape[1])
         self.wall_volume_disp = Bw.sum(axis=0)                       # ∫ u_k·n dS into this air, per wall mode
-        self.wall_area = float(area[np.all(dist[pos[:, :3]] <= gap, axis=1)].sum())
+        self.wall_distance = dist                                    # of each coupled row to the shells [m]
         return self
 
     def preconditioner(self, k):
@@ -243,62 +225,6 @@ class ExteriorFE:
         x, it, info = BlockSolver(b, small=[], big="p", rtol=rtol, restart=150, maxiter=20).solve(
             1j * k * self.c, x0=x0, preconditioner=precond or self.preconditioner(k))
         return x["p"], it, info
-
-
-_P2_FACE_MASS = np.array([[6, -1, -1, 0, -4, 0], [-1, 6, -1, 0, 0, -4], [-1, -1, 6, -4, 0, 0],
-                          [0, 0, -4, 32, 16, 16], [-4, 0, 0, 16, 32, 16], [0, -4, 0, 16, 16, 32]], float) / 180.0
-#   ∫ N_a N_b dS / area on a TRI6 face (gmsh order: corners 1 2 3, mid-edges 12 23 31)
-
-
-def closest_on_triangles(points, nodes, tris, candidates: int = 8):
-    """For each point: the barycentric coordinates (n, 3) of its closest point on the triangles (nodes, tris), the
-    triangle, and the distance — among the `candidates` triangles of nearest centroid."""
-    from scipy.spatial import cKDTree
-    P = np.asarray(points, float)
-    T = np.asarray(nodes, float)[np.asarray(tris)]                    # (m, 3, 3)
-    k = min(candidates, len(T))
-    _, idx = cKDTree(T.mean(axis=1)).query(P, k=k)
-    idx = idx.reshape(len(P), k)
-    best = np.full(len(P), np.inf)
-    lam = np.zeros((len(P), 3))
-    cell = np.zeros(len(P), np.int64)
-    for j in range(k):
-        A, B, C = (T[idx[:, j], i] for i in range(3))
-        q, l3 = _closest_point(P, A, B, C)
-        d = np.linalg.norm(P - q, axis=1)
-        better = d < best
-        best[better], lam[better], cell[better] = d[better], l3[better], idx[better, j]
-    return lam, cell, best
-
-
-def _closest_point(P, A, B, C):
-    """Closest points of the triangles (A, B, C) to the points P (vectorised; Ericson, Real-Time Collision
-    Detection, 5.1.5) and their barycentric coordinates."""
-    ab, ac, ap = B - A, C - A, P - A
-    d1, d2 = np.einsum("ij,ij->i", ab, ap), np.einsum("ij,ij->i", ac, ap)
-    bp, cp = P - B, P - C
-    d3, d4 = np.einsum("ij,ij->i", ab, bp), np.einsum("ij,ij->i", ac, bp)
-    d5, d6 = np.einsum("ij,ij->i", ab, cp), np.einsum("ij,ij->i", ac, cp)
-    va, vb, vc = d3 * d6 - d5 * d4, d5 * d2 - d1 * d6, d1 * d4 - d3 * d2
-    lam = np.zeros((len(P), 3))
-    den = np.where(np.abs(va + vb + vc) > 0, va + vb + vc, 1.0)
-    v, w = vb / den, vc / den
-    lam[:] = np.c_[1 - v - w, v, w]                                   # inside the face
-    def put(mask, l):
-        lam[mask] = l[mask]
-    with np.errstate(divide="ignore", invalid="ignore"):
-        tab = np.where(np.abs(d1 - d3) > 0, d1 / (d1 - d3), 0.0)
-        tac = np.where(np.abs(d2 - d6) > 0, d2 / (d2 - d6), 0.0)
-        tbc = np.where(np.abs((d4 - d3) + (d5 - d6)) > 0, (d4 - d3) / ((d4 - d3) + (d5 - d6)), 0.0)
-    put((vc <= 0) & (d1 >= 0) & (d3 <= 0), np.c_[1 - tab, tab, 0 * tab])             # edge AB
-    put((vb <= 0) & (d2 >= 0) & (d6 <= 0), np.c_[1 - tac, 0 * tac, tac])             # edge AC
-    put((va <= 0) & (d4 - d3 >= 0) & (d5 - d6 >= 0), np.c_[0 * tbc, 1 - tbc, tbc])  # edge BC
-    one = np.ones(len(P))
-    put((d1 <= 0) & (d2 <= 0), np.c_[one, 0 * one, 0 * one])                         # vertex A
-    put((d3 >= 0) & (d4 <= d3), np.c_[0 * one, one, 0 * one])                        # vertex B
-    put((d6 >= 0) & (d5 <= d6), np.c_[0 * one, 0 * one, one])                        # vertex C
-    q = lam[:, :1] * A + lam[:, 1:2] * B + lam[:, 2:] * C
-    return q, lam
 
 
 def add_exterior(b, ext, c, field="p"):

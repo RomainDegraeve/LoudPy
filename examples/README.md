@@ -37,6 +37,7 @@ needed on the stored results.
 | 13 | `13_box_elastic_walls` | the box with elastic MDF walls (shells) | ~8 min |
 | 14 | `14_labyrinth` | a folded transmission line on a rigid ground | ~12 min |
 | 15 | `15_column_multi_driver` | three drivers in a column with a folded line (multi-driver scene) | ~30 min |
+| 18 | `18_walls_radiating` | elastic walls (a STEP of panels and labyrinth boards, thicknesses measured) in one air domain with an opening, radiating | not run yet (~1 h) |
 
 Other folders:
 

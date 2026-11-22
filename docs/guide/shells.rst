@@ -29,8 +29,16 @@ driver modes first, then the wall modes. ``lp.Modes(scene)`` gives the coupled d
 
 With the outside air (``scene.cavity(…).exterior(…)``) the walls radiate too: the outer face of each wall moves
 with its shell (rigid through the thickness — thin walls), coupled to the exterior FE air and its half-space DtN
-like the driver fronts. Faces with no air outside (a bottom standing on the ground) only load the cavity. A merged
-air domain (``merged()``) takes no walls. The shells lie on the inner faces of the walls (no offset).
+like the driver fronts. Faces with no air outside (a bottom standing on the ground) only load the cavity.
+
+In one merged air domain (``merged()``: openings, a labyrinth — an ``lp.cabinets.Box`` or ``Step`` cabinet), the walls
+are in that air: their shells come from a mesh of the inside air made for them, and every wet face of the walls (the
+inside, the outside, both faces of a labyrinth's boards, around an opening) moves with its shell in the one FE air.
+Each panel carries one shell, on its inner face; a board wet on both faces carries it on one side, the other side
+moving with it (rigid through the thickness). Example: ``examples/18_walls_radiating`` (a STEP of six panels and two
+labyrinth boards, a slot opening). Checked like the cavity + outside air: opposite volumes on the two faces of each
+wall mode (−0.97 … −1.00), 100 × stiffer walls 100 × closer to rigid ones, the coil power balance to 1e-10. The
+shells lie on the inner faces of the walls (no offset).
 
 Panels of their own (an ``lp.cabinets.Box`` or ``lp.cabinets.Step`` cabinet):
 

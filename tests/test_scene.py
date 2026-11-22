@@ -411,3 +411,56 @@ def test_box_wall_panels_of_their_own(driver, tmp_path):
     with pytest.raises(lp.errors.SelectionError, match="not panels"):
         scene.walls("MDF", thickness=None, panels={"side": lp.cabinets.Panel(thickness=0.01)})
         sr.scene_walls(scene, sr.cavity_modes(scene))
+
+
+@pytest.mark.slow
+def test_walls_in_a_merged_air_domain(driver, tmp_path):
+    """Elastic walls in ONE air domain (inside, a port, outside; lp.cabinets.Box, 12 mm walls): every wet face of a
+    wall moves with its shell — each wall mode displaces the outside air by minus what it displaces the inside; walls
+    100 × stiffer bring the response to rigid walls; coil power in = modal dissipation + radiated."""
+    from loudpy.physics.exterior import ExteriorFE
+    from loudpy.physics.shell import wall_face_coupling
+    from loudpy.study import scene_response as sr
+    freqs = np.array([120.0, 300.0, 480.0])
+
+    def scene_of(walls=None):
+        box = lp.cabinets.Box(W, H, D, wall=0.012, ports=(lp.cabinets.Port((0.05, 0.05), 0.015, 0.03, wall=0.0),))
+        s = lp.Scene(box, [driver.place("main", at=(W / 2 + 0.03, H / 2))])
+        s.merged(bands=[(20.0, 500.0)], driver_size=0.004, max_size=0.07, margin=0.04,
+                 file="merged_walls_{f_hi:.0f}Hz.msh")                # 4 mm: the 1 mm front wall needs it
+        if walls:
+            s.walls(**walls)
+        return s.mesh(tmp_path)
+    mdf = dict(material="MDF", thickness=None, damping=lp.Undamped(), f_max=3000.0,
+               panels={"front": lp.cabinets.Panel(thickness=0.012)})
+    scene = scene_of(mdf)
+    assert scene.configuration == "merged" and scene.walls_mesh.exists()
+    walls = sr.scene_walls(scene, None)
+    assert len(walls) >= 3 and set(walls.shell.panels) == {"left", "right", "top", "back", "front"}
+    band = scene.band_meshes[0]
+    ext = ExteriorFE(str(band["path"]), scene.dtn(), band["f_hi"], front="interface_driver", surfaces=["openings"])
+    faces = np.vstack([ext.faces[n] for n in ("walls", "openings") if len(ext.faces.get(n, []))])
+    rows, B, dist = wall_face_coupling(walls, ext.nodes, ext.tets, faces)
+    inside = B[dist < 1e-6].sum(axis=0)                           # faces on the shells: the inside of the walls
+    outside = B[(dist >= 1e-6) & (dist < 0.02)].sum(axis=0)       # their outer faces, 12 mm away
+    big = np.abs(inside) > 0.2 * np.abs(inside).max()
+    np.testing.assert_allclose(outside[big] / inside[big], -1.0, atol=0.12)
+    np.testing.assert_allclose(inside[big] / walls.volume_disp[big], 1.0, atol=0.05)   # the two meshes agree
+
+    rigid = lp.FrequencyResponse(scene_of(), drive=lp.Force(1.0)).solve(freqs)
+    soft = lp.FrequencyResponse(scene, drive=lp.Force(1.0)).solve(freqs)
+    stiff_mdf = lp.Material("stiff MDF", rho=lp.materials["MDF"].rho, E=100 * lp.materials["MDF"].E, nu=0.3)
+    stiff = lp.FrequencyResponse(scene_of({**mdf, "material": stiff_mdf, "f_max": 20000.0}),
+                                 drive=lp.Force(1.0)).solve(freqs)
+    n = rigid.q.shape[1]
+    dev = [np.abs(r.q[:, :n] - rigid.q).max() / np.abs(rigid.q).max() for r in (soft, stiff)]
+    assert soft.q.shape[1] == n + len(walls) and dev[1] < dev[0] / 10, dev
+
+    drivers = sr.multidriver(scene)                               # power: coil in = modes dissipate + radiated
+    w_s = np.concatenate([2 * np.pi * drivers.freq, 2 * np.pi * walls.freq])
+    zeta = np.concatenate([drivers.zeta, walls.zeta])
+    F = np.concatenate([soft.attachments["drive"]["F"], np.zeros(len(walls))])
+    w = 2 * np.pi * freqs
+    p_in = 0.5 * np.real(np.conj(F)[None, :] * 1j * w[:, None] * soft.q).sum(axis=1)
+    p_d = 0.5 * np.sum(2 * zeta * w_s * (w[:, None] * np.abs(soft.q)) ** 2, axis=1)
+    np.testing.assert_allclose(p_in, p_d + _radiated_power(soft, scene), rtol=1e-4)

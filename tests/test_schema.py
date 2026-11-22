@@ -220,3 +220,12 @@ def test_declared_limits_are_what_the_blocks_enforce(tmp_path):
     target = schema.block("Adaptive").param("target")
     assert target.limits() == "> 0, < 1"
     assert schema.check({"type": "Adaptive", "params": {"target": 2.0}}) == ["Adaptive.target: < 1, got 2.0"]
+
+
+def test_bindings_are_not_settings():
+    """What the surroundings set on a block (a Step's drivers, bound by the scene: compare=False) is left out of its
+    node — the node describes the settings."""
+    import dataclasses
+    step = dataclasses.replace(lp.cabinets.Step(STEP), drivers=(object(),))
+    node = schema.describe(step)
+    assert "drivers" not in node["params"] and schema.build(node) == lp.cabinets.Step(STEP)

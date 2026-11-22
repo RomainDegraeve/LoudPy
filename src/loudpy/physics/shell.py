@@ -393,6 +393,16 @@ class WallModes:
     def __len__(self):
         return len(self.freq)
 
+    def add_faces(self, rows, B):
+        """More coupling columns on other cavity rows (wall_face_coupling: faces moving with the shells)."""
+        rows = np.asarray(rows)
+        every = np.union1d(self.rows, rows)
+        out = np.zeros((len(every), self.B.shape[1]))
+        out[np.searchsorted(every, self.rows)] += self.B
+        np.add.at(out, np.searchsorted(every, rows), B)
+        self.rows, self.B = every, out
+        self.volume_disp = self.B.sum(axis=0)
+
     def translations(self):
         """Mode shapes as nodal translations (k, n_shell, 3)."""
         return self.phi.reshape(len(self.walls.nodes), 6, -1)[:, :3].transpose(2, 0, 1)
@@ -407,6 +417,111 @@ class WallModes:
         return np.einsum("knd,nd->kn", self.translations(), acc)
 
 
+_P2_FACE_MASS = np.array([[6, -1, -1, 0, -4, 0], [-1, 6, -1, 0, 0, -4], [-1, -1, 6, -4, 0, 0],
+                          [0, 0, -4, 32, 16, 16], [-4, 0, 0, 16, 32, 16], [0, -4, 0, 16, 16, 32]], float) / 180.0
+#   ∫ N_a N_b dS / area on a TRI6 face (gmsh order: corners 1 2 3, mid-edges 12 23 31)
+
+
+def closest_on_triangles(points, nodes, tris, candidates: int = 8):
+    """For each point: the barycentric coordinates (n, 3) of its closest point on the triangles (nodes, tris), the
+    triangle, and the distance — among the `candidates` triangles of nearest centroid."""
+    from scipy.spatial import cKDTree
+    P = np.asarray(points, float)
+    T = np.asarray(nodes, float)[np.asarray(tris)]                    # (m, 3, 3)
+    k = min(candidates, len(T))
+    _, idx = cKDTree(T.mean(axis=1)).query(P, k=k)
+    idx = idx.reshape(len(P), k)
+    best = np.full(len(P), np.inf)
+    lam = np.zeros((len(P), 3))
+    cell = np.zeros(len(P), np.int64)
+    for j in range(k):
+        A, B, C = (T[idx[:, j], i] for i in range(3))
+        q, l3 = _closest_point(P, A, B, C)
+        d = np.linalg.norm(P - q, axis=1)
+        better = d < best
+        best[better], lam[better], cell[better] = d[better], l3[better], idx[better, j]
+    return lam, cell, best
+
+
+def _closest_point(P, A, B, C):
+    """Closest points of the triangles (A, B, C) to the points P (vectorised; Ericson, Real-Time Collision
+    Detection, 5.1.5) and their barycentric coordinates."""
+    ab, ac, ap = B - A, C - A, P - A
+    d1, d2 = np.einsum("ij,ij->i", ab, ap), np.einsum("ij,ij->i", ac, ap)
+    bp, cp = P - B, P - C
+    d3, d4 = np.einsum("ij,ij->i", ab, bp), np.einsum("ij,ij->i", ac, bp)
+    d5, d6 = np.einsum("ij,ij->i", ab, cp), np.einsum("ij,ij->i", ac, cp)
+    va, vb, vc = d3 * d6 - d5 * d4, d5 * d2 - d1 * d6, d1 * d4 - d3 * d2
+    lam = np.zeros((len(P), 3))
+    den = np.where(np.abs(va + vb + vc) > 0, va + vb + vc, 1.0)
+    v, w = vb / den, vc / den
+    lam[:] = np.c_[1 - v - w, v, w]                                   # inside the face
+    def put(mask, l):
+        lam[mask] = l[mask]
+    with np.errstate(divide="ignore", invalid="ignore"):
+        tab = np.where(np.abs(d1 - d3) > 0, d1 / (d1 - d3), 0.0)
+        tac = np.where(np.abs(d2 - d6) > 0, d2 / (d2 - d6), 0.0)
+        tbc = np.where(np.abs((d4 - d3) + (d5 - d6)) > 0, (d4 - d3) / ((d4 - d3) + (d5 - d6)), 0.0)
+    put((vc <= 0) & (d1 >= 0) & (d3 <= 0), np.c_[1 - tab, tab, 0 * tab])             # edge AB
+    put((vb <= 0) & (d2 >= 0) & (d6 <= 0), np.c_[1 - tac, 0 * tac, tac])             # edge AC
+    put((va <= 0) & (d4 - d3 >= 0) & (d5 - d6 >= 0), np.c_[0 * tbc, 1 - tbc, tbc])  # edge BC
+    one = np.ones(len(P))
+    put((d1 <= 0) & (d2 <= 0), np.c_[one, 0 * one, 0 * one])                         # vertex A
+    put((d3 >= 0) & (d4 <= d3), np.c_[0 * one, one, 0 * one])                        # vertex B
+    put((d6 >= 0) & (d5 <= d6), np.c_[0 * one, 0 * one, one])                        # vertex C
+    q = lam[:, :1] * A + lam[:, 1:2] * B + lam[:, 2:] * C
+    return q, lam
+
+
+
+
+def wall_face_coupling(walls, nodes, tets, faces, gap=None):
+    """
+    Wall modes (WallModes) on wet faces of an air mesh (nodes, P2 tets) that are not the shells' own: the outer face
+    of a wall, the other side of a board, every face of a merged air domain. Rigid through the thickness: each point
+    moves with the shell at its nearest point; faces farther than `gap` (default 1.5 × the thickest panel + 2 mm)
+    from every shell stay rigid. Returns (rows, B[i, k] = ∫ N_i (u_k·n) dS with n into that air, the distance of
+    each row to the shells).
+    """
+    out = wall_shells(nodes, tets, faces)                         # oriented: normals into that air
+    F = out.faces
+    nodes = np.asarray(nodes, float)
+    X = nodes[F[:, :3]]
+    nrm = np.cross(X[:, 1] - X[:, 0], X[:, 2] - X[:, 0])
+    area = 0.5 * np.linalg.norm(nrm, axis=1)
+    nrm /= np.maximum(2 * area, 1e-300)[:, None]
+    h = np.max(np.atleast_1d(np.asarray(walls.shell.thickness, float)))
+    gap = 1.5 * h + 2e-3 if gap is None else float(gap)
+    rows = np.unique(F)
+    lam, cell, dist = closest_on_triangles(nodes[rows], walls.walls.nodes, walls.walls.cells)
+    U = walls.translations()                                     # (k, n_shell, 3)
+    u = np.einsum("ra,krad->rkd", lam, U[:, walls.walls.cells[cell]])    # (n_rows, k, 3)
+    u[dist > gap] = 0.0                                          # not over a wall: rigid
+    pos = np.searchsorted(rows, F)                               # (n_f, 6) → index into rows
+    un = np.einsum("fakd,fd->fak", u[pos], nrm)                  # u·n at the face nodes
+    local = np.einsum("ab,fbk->fak", _P2_FACE_MASS, un) * area[:, None, None]
+    B = np.zeros((len(rows), U.shape[0]))
+    np.add.at(B, pos.ravel(), local.reshape(-1, U.shape[0]))
+    return rows, B, dist
+
+
+def one_side(normals, areas, labels, cos: float = 0.7):
+    """The faces of each panel that carry its shell: one side of it (a board wet on both faces gets one shell, not
+    two) — the faces whose normal is within acos(cos) of the panel's main direction, on the side of larger area; the
+    other faces of the panel move with the shell (wall_face_coupling)."""
+    normals, areas = np.asarray(normals, float), np.asarray(areas, float)
+    labels = np.asarray(labels, dtype=object)
+    keep = np.zeros(len(labels), bool)
+    for lab in set(labels.tolist()):
+        sel = np.where(labels == lab)[0]
+        n, a = normals[sel], areas[sel]
+        main = np.linalg.eigh(np.einsum("f,fi,fj->ij", a, n, n))[1][:, -1]
+        d = n @ main
+        pos, neg = d > cos, d < -cos
+        keep[sel[pos if a[pos].sum() >= a[neg].sum() else neg]] = True
+    return keep
+
+
 def cavity_walls(nodes, tets, faces, material, thickness, damping=None, fixed="edges", f_max=1000.0,
                  angle=30.0, panels=None) -> WallModes:
     """Shells on the wall faces of a cavity (`faces`: TRI6, cavity rows), their in-vacuo modes up to f_max and
@@ -414,7 +529,7 @@ def cavity_walls(nodes, tets, faces, material, thickness, damping=None, fixed="e
     the rims of the driver cut-outs) or a function of the node coordinates (n, 3) → mask of clamped nodes.
     panels: (label per face, {label: (material, thickness, damping)}) — each panel of its own material, thickness
     [m] and damping; faces labelled None are not walls (rigid: a plug, the ground, a port tube)."""
-    table = None
+    table, extra = None, None
     if panels is not None:
         labels = np.asarray(panels[0], dtype=object)
         keep = np.array([lab is not None for lab in labels])
@@ -422,6 +537,11 @@ def cavity_walls(nodes, tets, faces, material, thickness, damping=None, fixed="e
             raise ModelError("no wall face lies on a panel of the cabinet")
         faces, labels = np.asarray(faces)[keep], labels[keep]
         table = dict(panels[1])
+        oriented = wall_shells(nodes, tets, faces)
+        n, a = fe.cell_normals(oriented.nodes, oriented.cells)
+        side = one_side(n, a, labels)                            # one shell per panel (a board: one side)
+        extra = faces[~side] if (~side).any() else None
+        faces, labels = faces[side], labels[side]
     walls = wall_shells(nodes, tets, faces)
     if isinstance(fixed, str):
         if fixed != "edges":
@@ -443,7 +563,11 @@ def cavity_walls(nodes, tets, faces, material, thickness, damping=None, fixed="e
         shell = ShellStructure(walls.nodes, walls.cells, material, h, damping, fixed=rows,
                                panels=(cell_labels, {lab: (v[0], v[2]) for lab, v in table.items()}))
     freq, phi, zeta = shell.modes(f_max=f_max)
-    return WallModes(walls, shell, freq, phi, zeta, len(nodes))
+    modes = WallModes(walls, shell, freq, phi, zeta, len(nodes))
+    if extra is not None and len(modes):                         # the panels' other wet faces: with their shells
+        rows, B, _ = wall_face_coupling(modes, nodes, tets, extra)
+        modes.add_faces(rows, B)
+    return modes
 
 
 def _face_order(faces, oriented):

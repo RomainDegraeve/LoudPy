@@ -135,6 +135,7 @@ class Scene:
         self._open_spec: _OpenAir | None = None
         self.folder: Path | None = None
         self.cavity_mesh: Path | None = None
+        self.walls_mesh: Path | None = None                               # the inside air for the shells (merged)
         self.band_meshes: list[dict] = []
         self.hemisphere: dict | None = None
 
@@ -229,8 +230,10 @@ class Scene:
         lp.P); damping: lp.Rayleigh() (default), lp.Hysteretic(), lp.Undamped(); fixed: "edges" (the panel edges
         — folds sharper than `angle` — and the rims of the driver cut-outs are clamped) or a function of the
         node coordinates (n, 3) returning a mask of clamped nodes; f_max: wall modes kept (default: the cavity's).
-        The shells lie on the inner faces of the walls (no offset). With the outside air (cavity() + exterior()), the
-        outer face of each wall moves with its shell (rigid through the thickness) and radiates; else it is in vacuo.
+        The shells lie on the inner faces of the walls (no offset), one per panel (a board wet on both faces: one
+        side). With the outside air (cavity() + exterior()) the outer face of each wall moves with its shell (rigid
+        through the thickness) and radiates; else it is in vacuo. With one merged air domain (merged(), an lp.cabinets
+        Box / Step: openings, a labyrinth's boards) every wet face of the walls moves with its shell in that air.
 
         Panels of their own (an lp.cabinets.Box / Step): thickness=None — each panel's thickness measured on the
         cabinet (a STEP solid through its wet face, a Box wall); panels={key: lp.cabinets.Panel(material, thickness,
@@ -239,7 +242,9 @@ class Scene:
         port tubes) stay rigid.
         """
         from loudpy.scene.cabinets import Panel
-        for key, pnl in (panels or {}).items():
+        panels = {int(k) if isinstance(k, str) and k.isdigit() else k: v      # a STEP solid's index (JSON: text)
+                  for k, v in (panels or {}).items()}
+        for key, pnl in panels.items():
             if not isinstance(pnl, Panel):
                 raise ModelError(f"walls panels: {key!r} → lp.cabinets.Panel(material, thickness, damping), "
                                  f"got {pnl!r}")
@@ -296,6 +301,9 @@ class Scene:
         self._walls = resolve(self._walls_spec, self.parameters)
         if self._cavity is not None:
             self.cavity_mesh = self._build("cavity", self.folder / self._cavity.file, reuse, self._mesh_cavity)
+        if self._walls is not None and self._open is not None and self._open.kind == "merged":
+            name = "walls_" + Path(self._open.file.format(kind="merged", f_hi=self._open.bands[0][1])).stem + ".msh"
+            self.walls_mesh = self._build("walls", self.folder / name, reuse, self._mesh_walls)
         if self._open is not None:
             self.hemisphere = self._hemisphere()
             self.band_meshes = []
@@ -329,8 +337,8 @@ class Scene:
         mesh_keys = {"cavity": ("mesh_size", "near"),                 # only what changes the meshes
                      "open": ("kind", "ground", "level", "margin", "points_per_wavelength", "max_size",
                               "driver_size", "near", "plug_from")}
-        kind = "cavity" if what == "cavity" else "open"             # a mesh depends on its own settings only
-        v = self._cavity if kind == "cavity" else self._open
+        kind = "cavity" if what in ("cavity", "walls") else "open"  # a mesh depends on its own settings only
+        v = (self._cavity or _Cavity()) if kind == "cavity" else self._open
         settings = {kind: {n: getattr(v, n) for n in mesh_keys[kind]}}
         sig = dict(what=what, cabinet=hashlib.sha256(src.encode()).hexdigest()[:16], drivers=drivers,
                    settings=settings, extra=extra, p2_nodes="curved")           # mid-edge nodes on the surfaces
@@ -400,6 +408,16 @@ class Scene:
         mesh_cavity(path, vols[0], self._frames(), r_c[0] if self._single() else r_c,
                     z_b[0] if self._single() else z_b, cv.mesh_size[0], cv.mesh_size[1], cv.near[0], cv.near[1])
         g.clear()
+
+    def _mesh_walls(self, path):
+        """The inside air meshed for the shells of the elastic walls (a merged air domain has no cavity of its own):
+        the cavity's default sizes."""
+        saved = self._cavity
+        self._cavity = _Cavity()
+        try:
+            self._mesh_cavity(path)
+        finally:
+            self._cavity = saved
 
     def _vertices(self, occ, solids):
         g = gmsh_module()
@@ -540,10 +558,9 @@ class Scene:
             problems.append(str(e))
         if not self.drivers:
             problems.append("no driver (Driver.place)")
-        if self._walls_spec is not None and self._cavity_spec is None:
-            problems.append("elastic walls need the cavity: call cavity()")
-        if self._walls_spec is not None and self._open_spec is not None and self._open_spec.kind == "merged":
-            problems.append("elastic walls need the cavity air: cavity() (+ exterior()), not merged()")
+        if self._walls_spec is not None and self._cavity_spec is None and \
+                (self._open_spec is None or self._open_spec.kind != "merged"):
+            problems.append("elastic walls need the air: cavity() (+ exterior()) or merged()")
         for spec in (self._cavity_spec, self._open_spec, self._walls_spec):
             try:
                 resolve(spec, self.parameters)
@@ -581,7 +598,7 @@ class Scene:
             name = getattr(w.material, "name", w.material)
             th = "measured" if w.thickness is None else f"{w.thickness} m"
             lines.append(f"├─ Walls: {name}, {th} shells (MITC3), fixed {w.fixed if isinstance(w.fixed, str) else 'by function'}"
-                         f", modes to {w.f_max or 'the cavity f_max'} Hz"
+                         f", modes to {w.f_max or 'the default (cavity f_max, or 2 × the air bands)'} Hz"
                          + (f", {len(w.panels)} panel(s) of their own" if w.panels else ""))
         if self._open_spec is not None:
             o = self._open_spec

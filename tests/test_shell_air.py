@@ -119,20 +119,34 @@ def test_wall_modes_converge_to_direct():
 
 
 def test_scene_wall_settings():
-    """scene.walls needs the cavity air: with it alone or with the outside air, not with a merged air domain."""
+    """scene.walls needs air: the cavity (alone or with the outside air) or one merged air domain."""
     import pytest
     scene = lp.Scene(lambda occ: None, []).walls("Plywood", thickness=lp.P("t"))
-    with pytest.raises(lp.errors.ModelError, match="elastic walls need the cavity"):
+    with pytest.raises(lp.errors.ModelError, match="elastic walls need the air"):
         scene.check()
     scene.cavity().exterior()                                        # walls radiating outside: allowed
     with pytest.raises(lp.errors.ModelError) as e:
         scene.check()
     assert "elastic walls" not in str(e.value)
-    merged = lp.Scene(lambda occ: None, []).walls("MDF").merged()
-    with pytest.raises(lp.errors.ModelError, match="not merged"):
+    merged = lp.Scene(lambda occ: None, []).walls("MDF").merged()   # walls in one air domain: allowed too
+    with pytest.raises(lp.errors.ModelError) as e:
         merged.check()
+    assert "elastic walls" not in str(e.value)
     assert "Walls: Plywood" in scene.tree()
     assert scene.copy()._walls_spec == scene._walls_spec
+
+
+def test_one_shell_per_panel():
+    """A board wet on both faces carries one shell (the side of larger area, or the first), its edges none; a panel
+    wet on one side keeps all of it."""
+    from loudpy.physics.shell import one_side
+    n = np.array([[0, 0, 1], [0, 0, 1], [0, 0, -1], [0, 0, -1], [1, 0, 0], [0, -1, 0], [0, -1, 0]], float)
+    a = np.array([1.0, 1.0, 1.0, 1.0, 0.05, 2.0, 2.0])
+    labels = ["board", "board", "board", "board", "board", "panel", "panel"]
+    keep = one_side(n, a, labels)
+    assert keep.tolist() in ([True, True, False, False, False, True, True], [False, False, True, True, False, True, True])
+    a[2] = 1.5                                                       # the −z side larger: it carries the shell
+    assert one_side(n, a, labels).tolist() == [False, False, True, True, False, True, True]
 
 
 def test_shell_panels_of_their_own():

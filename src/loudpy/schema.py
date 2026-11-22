@@ -51,7 +51,7 @@ KINDS = {
     "range": "a number or two numbers (min, max)", "numbers": "a list of numbers", "integers": "a list of integers",
     "texts": "a list of strings", "pairs": "a list of number pairs", "mapping": "a mapping name → value",
     "selection": "a group name or a selector node", "material": "a library name or a Material node",
-    "block": "a node of the section `of`", "blocks": "a list of nodes of the section `of`",
+    "block": "a node of the section `of`", "blocks": "a list of nodes of the section `of` (or points)",
     "frequencies": "a list of frequencies [Hz], or {'from', 'to', 'points', 'spacing': 'log' | 'linear'}",
     "signal": "a list of samples or a signals node",
 }
@@ -690,8 +690,11 @@ def describe(obj) -> dict:
         return {"type": t, "params": {"point": to_value(np.asarray(obj.point))}}
     if t == "Item":
         return {"type": t, "params": {"name": obj.item.name}}
+    bound = {f.name for f in dataclasses.fields(obj) if not f.compare} if dataclasses.is_dataclass(obj) else set()
     params = {}
     for p in b.params:
+        if p.name in bound:                                          # set by its surroundings (a Step's drivers)
+            continue
         v = getattr(obj, p.name)
         if p.required or not _same(v, p.default):
             params[p.name] = to_value(v)
@@ -866,8 +869,9 @@ def _check_value(v, p: Param) -> list[str]:
     if k in ("point", "numbers", "integers", "texts", "pairs", "frequencies", "signal", "blocks"):
         if not isinstance(v, list):
             return [f"{KINDS[k]}, got {v!r}"]
-        if k == "blocks":
-            return [e for x in v for e in _check_value(x, replace(p, kind="block"))]
+        if k == "blocks":                                            # nodes (or points, where a block takes them)
+            return [e for x in v if not (isinstance(x, list) and all(isinstance(c, (int, float)) for c in x))
+                    for e in _check_value(x, replace(p, kind="block"))]
         return []
     if k == "mapping":
         return [] if isinstance(v, (dict, str)) else [f"{KINDS[k]}, got {v!r}"]

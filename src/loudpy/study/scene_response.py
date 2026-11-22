@@ -66,19 +66,24 @@ def scene_walls(scene, cav):
     w = scene._walls
     if w is None:
         return None
-    if scene.configuration not in ("cavity", "cavity+exterior"):
-        raise ModelError("elastic walls need the cavity air (configuration cavity or cavity+exterior), not "
-                         f"{scene.configuration!r}")
     from loudpy.geometry.meshing3d import read_p2_mesh
     from loudpy.physics.shell import cavity_walls
-    nodes, tets, faces = read_p2_mesh(scene.cavity_mesh, ["walls"])
-    if len(nodes) != len(cav.nodes) or not np.allclose(nodes, cav.nodes):
-        raise StateError(f"the cavity modes do not belong to {scene.cavity_mesh}: remesh the scene")
+    merged = scene.configuration == "merged"
+    if merged:                                                   # the shells on a mesh of the inside air
+        if scene.walls_mesh is None:
+            raise StateError("mesh the scene first: scene.mesh(folder)")
+        nodes, tets, faces = read_p2_mesh(scene.walls_mesh, ["walls"])
+    else:
+        nodes, tets, faces = read_p2_mesh(scene.cavity_mesh, ["walls"])
+        if len(nodes) != len(cav.nodes) or not np.allclose(nodes, cav.nodes):
+            raise StateError(f"the cavity modes do not belong to {scene.cavity_mesh}: remesh the scene")
     if not len(faces["walls"]):
-        raise SelectionError(f"{scene.cavity_mesh} has no 'walls' faces")
-    panels = wall_panels(scene, nodes, tets, faces["walls"]) if (w.panels or w.thickness is None) else None
+        raise SelectionError("the inside air has no 'walls' faces")
+    panels = wall_panels(scene, nodes, tets, faces["walls"]) if (w.panels or w.thickness is None or merged) \
+        else None
     return cavity_walls(nodes, tets, faces["walls"], w.material, w.thickness, w.damping, w.fixed,
-                        w.f_max or scene._cavity.f_max, w.angle, panels=panels)
+                        w.f_max or (scene._cavity.f_max if scene._cavity is not None else
+                                    2 * max(b[1] for b in scene._open.bands)), w.angle, panels=panels)
 
 
 def wall_panels(scene, nodes, tets, faces):
@@ -92,8 +97,9 @@ def wall_panels(scene, nodes, tets, faces):
     w = scene._walls
     cab = scene._cabinet()
     if not isinstance(cab, (Box, Step)):
-        raise ModelError("walls panels and measured thicknesses need an lp.cabinets.Box or lp.cabinets.Step "
-                         "cabinet (a cabinet builder has no panels): give thickness=")
+        raise ModelError("walls panels, measured thicknesses and walls in a merged air domain need an "
+                         "lp.cabinets.Box or lp.cabinets.Step cabinet (a cabinet builder has no panels): give "
+                         "thickness= (cavity air only)")
     ws = wall_shells(nodes, tets, faces)                         # the faces' order kept, normals into the air
     normals, _ = fe.cell_normals(ws.nodes, ws.cells)
     centres = ws.nodes[ws.cells].mean(axis=1)
@@ -181,9 +187,7 @@ def solve(study, freqs, store=None, chunk_hz=50.0, rtol=1e-7, log=None):
     drivers = multidriver(scene)
     F = coil_force(scene, drivers, study.drive)
     config = scene.configuration
-    if scene._walls is not None and config not in ("cavity", "cavity+exterior"):
-        raise ModelError(f"elastic walls need the cavity air (configuration cavity or cavity+exterior), not "
-                         f"{config!r}")
+
     meta = dict(study="FrequencyResponse", scene=True, configuration=config, drive=repr(study.drive))
     t0 = time.time()
 
@@ -196,7 +200,14 @@ def solve(study, freqs, store=None, chunk_hz=50.0, rtol=1e-7, log=None):
         S, R, kappa2, eta = cpl.S, cpl.R, cav.kappa2, scene._cavity.eta
         log(f"  cavity: {len(cav.nodes)} nodes, {len(kappa2)} modes, wet areas "
             f"{np.round(np.array(cpl.wet_areas) * 1e4, 1)} cm² ({time.time() - t0:.0f} s)")
+    walls_m = None
+    if config == "merged" and scene._walls is not None:             # walls in the one air domain (no cavity)
+        walls_m = scene_walls(scene, None)
+        log(f"  walls: {len(walls_m.walls.nodes)} shell nodes, {len(walls_m)} modes up to "
+            f"{walls_m.freq[-1] if len(walls_m) else 0:.0f} Hz")
     attachments = _attachments(scene, drivers, att_extra)
+    if walls_m is not None:
+        attachments["walls"] = _wall_attachment(walls_m, len(drivers))
     attachments["drive"] = dict(F=np.asarray(F, complex))                # modal force, stacked drivers
     if cav is not None:
         attachments["cavity"] = dict(nodes=cav.nodes, tets=cav.tets, psi=cav.psi.astype(np.float32), kappa2=cav.kappa2,
@@ -235,8 +246,9 @@ def solve(study, freqs, store=None, chunk_hz=50.0, rtol=1e-7, log=None):
             ext.couple_driver(drivers, profiles, patch=[front_name])
         else:
             ext.couple_driver(drivers, profiles)
-        if cpl is not None and cpl.walls is not None and len(cpl.walls):
-            ext.couple_walls(cpl.walls)                               # the walls' outer faces radiate too
+        wm = cpl.walls if cpl is not None else walls_m
+        if wm is not None and len(wm):
+            ext.couple_walls(wm)                                     # every wet face of the walls in this air
         bands.append((b["f_lo"] if bi == 0 else b["f_lo"] + 1e-6, b["f_hi"], ext))
         bmap.append((bi, sel))
         log(f"  band {b['f_lo']:.0f}–{b['f_hi']:.0f} Hz: {len(ext.nodes)} nodes, wet area per driver "
@@ -255,6 +267,10 @@ def solve(study, freqs, store=None, chunk_hz=50.0, rtol=1e-7, log=None):
 
     w_s = cpl.w_s if cpl is not None else 2 * np.pi * drivers.freq        # driver (and wall) modes
     zeta = cpl.zeta if cpl is not None else np.asarray(drivers.zeta, float)
+    if walls_m is not None and len(walls_m):
+        w_s = np.concatenate([w_s, 2 * np.pi * walls_m.freq])
+        zeta = np.concatenate([zeta, walls_m.zeta])
+        S, R = np.zeros((len(w_s), 0)), np.zeros((len(w_s), len(w_s)))
     Fq = np.concatenate([np.asarray(F), np.zeros((len(w_s) - len(F),) + np.shape(F)[1:], complex)])
     q, coefs, iters = coupled_sweep(bands, freqs, Fq, w_s, zeta, S, R, kappa2, eta,
                                     scene.rho, scene.c, chunk_hz, rtol, on_frequency, log=log)
@@ -314,8 +330,7 @@ def wall_modes(study, f_max=None):
     scene = study.model
     if scene._walls is None:
         raise ModelError("the scene has no elastic walls: call scene.walls(…)")
-    cav = cavity_modes(scene)
-    w = scene_walls(scene, cav)
+    w = scene_walls(scene, cavity_modes(scene) if scene._cavity is not None else None)
     keep = w.freq <= (f_max if f_max is not None else np.inf)
     mesh = Mesh(np.arange(len(w.walls.nodes)), w.walls.nodes, {"walls": MeshGroup("walls", 2, "tri3", w.walls.cells)})
     U = w.translations()[keep]
