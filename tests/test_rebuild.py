@@ -25,7 +25,8 @@ def test_model_rebuilt_from_its_result_file(tmp_path):
     shutil.rmtree(src)
 
     res = lp.load(tmp_path / "modes.h5")
-    assert res.model.rebuildable and "Solid(name='plate'" in res.model["script"]
+    script = " ".join(res.model["script"].split())                       # (long calls are wrapped)
+    assert res.model.rebuildable and "Solid( name='plate'" in script
     again = res.model.rebuild(tmp_path / "rebuilt")
     assert (tmp_path / "rebuilt" / "plate.geo").exists() and (tmp_path / "rebuilt" / "model.py").exists()
     assert [repr(i) for i in again.regions + again.boundaries] == [repr(i) for i in model.regions + model.boundaries]
