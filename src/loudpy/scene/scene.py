@@ -320,6 +320,47 @@ class Scene:
                  if self.band_meshes else ""))
         return self
 
+    def mesh_files(self, folder=None) -> list[dict]:
+        """
+        The meshes mesh(folder) builds, named as it names them — the cavity, the inside air the walls sit on
+        (merged air with walls), each air band: [{"what", "title", "path", "state"}], state "built", "out of date"
+        (its settings, cabinet or drivers changed since: mesh() builds it again) or "missing". Nothing is meshed
+        here. folder: the one the scene was meshed in by default.
+        """
+        from loudpy.model.parameters import resolve
+        folder = Path(folder) if folder is not None else self.folder
+        if folder is None:
+            raise StateError("give the folder of the meshes (or mesh the scene first)")
+        saved = (self._cavity, self._open, self._walls)
+        cav, opn = resolve(self._cavity_spec, self.parameters), resolve(self._open_spec, self.parameters)
+        self._cavity, self._open, self._walls = cav, opn, resolve(self._walls_spec, self.parameters)
+        try:
+            items: list[tuple] = []
+            if cav is not None:
+                items.append(("cavity", "cavity", folder / cav.file, None))
+            if self._walls is not None and opn is not None and opn.kind == "merged":
+                name = "walls_" + Path(opn.file.format(kind="merged", f_hi=opn.bands[0][1])).stem + ".msh"
+                items.append(("walls", "inside air of the walls", folder / name, None))
+            if opn is not None:
+                for f_lo, f_hi in opn.bands:
+                    h = min(opn.max_size, self.c / f_hi / opn.points_per_wavelength)
+                    items.append((f"{opn.kind}_{f_hi:.0f}", f"{opn.kind} {f_lo:g}–{f_hi:g} Hz",
+                                  folder / opn.file.format(kind=opn.kind, f_hi=f_hi), {"h": h}))
+            out = []
+            for what, title, path, extra in items:
+                state = "missing"
+                if path.exists():
+                    sig_path = Path(str(path) + ".json")
+                    try:
+                        same = sig_path.exists() and json.loads(sig_path.read_text()) == self._signature(what, extra)
+                    except (OSError, ValueError):
+                        same = False
+                    state = "built" if same else "out of date"
+                out.append(dict(what=what, title=title, path=path, state=state))
+            return out
+        finally:
+            self._cavity, self._open, self._walls = saved
+
     # signature: what a mesh depends on
     def _signature(self, what, extra=None):
         if hasattr(self.cabinet, "signature"):                    # lp.cabinets.Box / Step (parameters resolved)

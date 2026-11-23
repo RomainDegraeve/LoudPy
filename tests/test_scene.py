@@ -6,6 +6,8 @@ the low-level coupling code.
   cavity+exterior (B)   small coarse scene, committed meshes: same as ExteriorFE + coupled_sweep
   merged (C)            idem, the driver wetted on both faces by one air domain
 """
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -492,6 +494,14 @@ def test_walls_in_a_merged_air_domain(driver, tmp_path):
                panels={"front": lp.cabinets.Panel(thickness=0.012)})
     scene = scene_of(mdf)
     assert scene.configuration == "merged" and scene.walls_mesh.exists()
+    files = scene.mesh_files()                                    # every mesh it builds, and their state
+    assert [f["what"] for f in files] == ["walls", "merged_500"] and {f["state"] for f in files} == {"built"}
+    sig = Path(str(files[1]["path"]) + ".json")
+    kept = sig.read_text()
+    sig.write_text("{}")                                          # other settings than these
+    assert [f["state"] for f in scene.mesh_files()] == ["built", "out of date"]
+    sig.write_text(kept)
+    assert [f["state"] for f in scene.mesh_files(tmp_path / "elsewhere")] == ["missing", "missing"]
     walls = sr.scene_walls(scene, None)
     assert len(walls) >= 3 and set(walls.shell.panels) == {"left", "right", "top", "back", "front"}
     band = scene.band_meshes[0]

@@ -96,7 +96,9 @@ geometry files, the meshed domain groups with their kind, size and PML thickness
 groups, the mesh order and the grading (the deterministic flag is recorded but does not decide reuse:
 a saved file is reproducible). The signature records groups, not
 the names that selected them; a saved mesh with more boundary groups than needed is reused. Meshes
-saved by earlier versions (signature version 1) are rebuilt once.
+saved by earlier versions (signature version 1) are rebuilt once. A 3D scene's meshes (its cavity, the inside air
+of its walls, each air band) are reused the same way; ``scene.mesh_files(folder)`` lists them with their state
+(built, out of date, missing) without meshing.
 
 File layout of an example
 -------------------------
