@@ -124,7 +124,8 @@ The exterior and merged air are meshed per frequency **band** (``bands=[(20, 100
 Each mesh is rebuilt only when what it depends on changes (the cabinet, the drivers, its own settings), and
 ``scene.mesh_files(folder)`` tells which are up to date without meshing. A mesh can be used as it is even when out
 of date with ``scene.keep(["cavity"])`` (``"walls"``, ``"air"`` for every band, ``"air 2000"`` for one band,
-``"all"``), for example a fine cavity mesh kept while the air bands change. With one merged air domain and elastic
+``"all"``), for example a fine cavity mesh kept while the air bands change; ``scene.mesh(folder, only=["air 2000"])``
+builds just the meshes named the same way. With one merged air domain and elastic
 walls, ``scene.walls(…, mesh_size=(near, far))`` sets the inside-air mesh the shells lie on. ``scene.settings``
 gives the air, walls and kept meshes as given and ``scene.restore(settings)`` sets them back.
 ``scene.air_hemisphere()`` measures the outside air's hemisphere without meshing.

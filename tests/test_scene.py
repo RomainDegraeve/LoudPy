@@ -522,6 +522,9 @@ def test_walls_in_a_merged_air_domain(driver, tmp_path):
     fresh = scene_of(mdf, mesh=False)
     h = fresh.air_hemisphere()                                    # measured as mesh() will, nothing meshed
     assert h["radius"] == pytest.approx(scene.hemisphere["radius"]) and fresh.hemisphere is None
+    one = scene_of(mdf, mesh=False).mesh(tmp_path / "one", only=["walls"])  # one mesh built, alone
+    assert [p.name for p in (tmp_path / "one").glob("*.msh")] == ["walls_merged_walls_500Hz.msh"]
+    assert [f["state"] for f in one.mesh_files()] == ["built", "missing"] and not one.band_meshes
     with pytest.raises(lp.errors.ModelError, match="keep"):
         finer.keep(["cabinet"])
     cav = lp.Scene(lp.cabinets.Box(W, H, D), [driver.place("main", at=(W / 2, H / 2))]).cavity()

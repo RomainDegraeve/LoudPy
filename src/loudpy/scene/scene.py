@@ -335,7 +335,12 @@ class Scene:
 
     def _kept(self, what: str) -> bool:
         """keep() names this mesh ("cavity", "walls", or a band "<kind>_<f_hi>")."""
-        k = set(self._keep)
+        return self._named(what, self._keep)
+
+    @staticmethod
+    def _named(what: str, names) -> bool:
+        """`names` ("cavity", "walls", "air", "air <f_hi>", "all": keep() / mesh(only=)) include this mesh."""
+        k = {names} if isinstance(names, str) else set(names)
         if "all" in k or what in k:
             return True
         _kind, _, f_hi = what.partition("_")
@@ -356,11 +361,13 @@ class Scene:
         raise StateError("configure the scene first: cavity(), exterior() or merged()")
 
     # ── meshing ────────────────────────────────────────────────────────────
-    def mesh(self, folder, reuse=True):
+    def mesh(self, folder, reuse=True, only=None):
         """
         Build (or reuse) the meshes in `folder`. reuse=True: a mesh is kept when its signature
         (cabinet builder, drivers, settings) is unchanged; "always": an existing file is used as
-        it is; False: rebuild.
+        it is; False: rebuild. only: build (or reuse) just these meshes — "cavity", "walls", "air"
+        (every band), "air <f_hi>" (one band), as keep() names them — and leave the others alone
+        (a mesh-only run: the scene is then not ready to solve).
         """
         from loudpy.model.parameters import resolve
         self.folder = Path(folder)
@@ -372,10 +379,12 @@ class Scene:
         if self._walls is not None and self._walls.mesh_size is not None and self._cavity is not None:
             raise ModelError("walls(mesh_size=) is for one merged air domain: with cavity modes the shells lie on "
                              "the cavity mesh (set cavity(mesh_size=))")
-        if self._cavity is not None:
+        def wanted(what):
+            return only is None or self._named(what, only)
+        if self._cavity is not None and wanted("cavity"):
             self.cavity_mesh = self._build("cavity", self.folder / self._cavity.file, reuse, self._mesh_cavity,
                                            info=dict(role="cavity", mesh_size=list(self._cavity.mesh_size)))
-        if self._walls is not None and self._open is not None and self._open.kind == "merged":
+        if self._walls is not None and self._open is not None and self._open.kind == "merged" and wanted("walls"):
             name = "walls_" + Path(self._open.file.format(kind="merged", f_hi=self._open.bands[0][1])).stem + ".msh"
             self.walls_mesh = self._build("walls", self.folder / name, reuse, self._mesh_walls,
                                           info=dict(role="inside air of the walls",
@@ -385,6 +394,8 @@ class Scene:
             self.band_meshes = []
             o = self._open
             for f_lo, f_hi in o.bands:
+                if not wanted(f"{o.kind}_{f_hi:.0f}"):
+                    continue
                 h = min(o.max_size, self.c / f_hi / o.points_per_wavelength)
                 path = self.folder / o.file.format(kind=o.kind, f_hi=f_hi)
                 built = self._build(f"{o.kind}_{f_hi:.0f}", path, reuse,
