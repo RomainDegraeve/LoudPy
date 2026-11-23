@@ -263,7 +263,8 @@ class Document:
             lines += [f"    # {s['name']}"] + [f"    {ln}" for ln in _study_code(s, target, path, results)]
         if not self.studies:
             lines.append("    print('no study: add one')")
-        return "\n".join(lines) + "\n"
+        from loudpy.codefmt import wrap_lines
+        return "\n".join(wrap_lines(lines)) + "\n"
 
 
 # ── helpers ────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -294,8 +295,8 @@ def _study_code(s: dict, target: str, path, results: str) -> list[str]:
         study, solve = make(_node(s), target)
     out = f"HERE / {results!r} / {s['name'] + '.h5'!r}"
     if s["type"] == "FrequencyResponse" and target == "scene" and not any(a.startswith("store=") for a in solve):
-        return [f"{study}.solve({', '.join(solve + [f'store={out}'])})"]
-    return [f"{study}.solve({', '.join(solve)}).save({out})"]
+        return [f"study = {study}", f"study.solve({', '.join(solve + [f'store={out}'])})"]
+    return [f"study = {study}", f"res = study.solve({', '.join(solve)})", f"res.save({out})"]
 
 
 def _relative(p: str, base: Path) -> str:

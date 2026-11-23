@@ -19,6 +19,7 @@ from pathlib import Path
 
 import numpy as np
 
+from loudpy.codefmt import wrap_lines
 from loudpy.errors import ModelError
 
 NAMES = ["Model", "Parameters", "P", "Material", "Solid", "Air", "PML", "Clamped", "Coil", "FluidStructure",
@@ -106,7 +107,7 @@ def model_script(model, folder=None, title: str | None = None, flat=None) -> str
         lines += [f"    {item_code(it)}," for it in items]
         lines.append(")")
     lines.append("")
-    return "\n".join(lines)
+    return "\n".join(wrap_lines(lines))
 
 
 def scene_script(scene, folder=None, title: str | None = None, flat=None) -> str:
@@ -170,4 +171,4 @@ def scene_script(scene, folder=None, title: str | None = None, flat=None) -> str
     if getattr(s, "_keep", ()):
         lines.append(f"scene.keep({list(s._keep)!r})")
     lines.append("")
-    return "\n".join(lines)
+    return "\n".join(wrap_lines(lines))
