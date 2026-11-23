@@ -24,6 +24,7 @@ from .model import (
     Material, MaterialLibrary, air, load_materials, materials,
 )
 from .geometry import Frame, Mesh, Group, Box, Near, Interface, BoundaryOf
+from .geometry.mesh_files import mesh_info
 from .results import (load, load_data, spl, compare, read_comsol, Output, Results, FrequencyResults, ModeResults, TimeResults, Data, Field,
                       Point, Points, Polar, Arc, Line)
 from .study import (Modes, FrequencyResponse, PerWavelength, Transient, Sweep, SweepResults, Adaptive,
@@ -51,7 +52,7 @@ __all__ = [
     "Rayleigh", "Hysteretic", "Undamped", "Force", "Voltage",
     "Material", "MaterialLibrary", "air", "load_materials", "materials",
     # geometry and selections
-    "Frame", "Mesh", "Group", "Box", "Near", "Interface", "BoundaryOf",
+    "Frame", "Mesh", "Group", "Box", "Near", "Interface", "BoundaryOf", "mesh_info",
     # studies
     "Modes", "FrequencyResponse", "PerWavelength", "Transient", "Sweep", "SweepResults", "Adaptive", "Convergence",
     "convergence",

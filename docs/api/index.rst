@@ -43,6 +43,7 @@ Geometry and selections
    Near
    Interface
    BoundaryOf
+   mesh_info
 
 Studies
 -------

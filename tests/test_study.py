@@ -19,9 +19,33 @@ def test_perwavelength_bands():
         lp.PerWavelength().split([1, 2])
 
 
+def test_perwavelength_plan_sizes_the_air_at_the_band_top(tmp_path):
+    """The air of a band is sized at its top frequency (the next band's start, else its last frequency), the PML at
+    its start; size_at="start" keeps the former rule; the band meshes are listed with their state, nothing meshed."""
+    model = api.speaker_model(acoustic=True)
+    c = lp.materials["Air"].c
+    rule = lp.PerWavelength(bands=[400, 1600], air_elements=6, folder=tmp_path)
+    plan = rule.plan(model, [400.0, 800.0, 1600.0, 2400.0])
+    assert [(b["start"], b["top"]) for b in plan] == [(400.0, 1600.0), (1600.0, 2400.0)]
+    np.testing.assert_allclose([b["wavelength"] for b in plan], [c / 1600.0, c / 2400.0])
+    np.testing.assert_allclose([b["pml_wavelength"] for b in plan], [c / 400.0, c / 1600.0])
+    twin = rule.band_model(model, plan[1])
+    assert twin["subacou"].mesh_size == min(c / 2400.0 / 6, 0.01) and twin["PML"].tuned_to == 1600.0
+    assert np.isclose(twin["PML"].thickness, 0.25 * c / 1600.0) and model["PML"].thickness == 0.1
+    old = lp.PerWavelength(bands=[400, 1600], size_at="start").plan(model, [400.0, 800.0])
+    assert old[0]["top"] == 400.0
+    assert lp.PerWavelength(every=2).plan(model, [100.0, 200.0, 300.0])[0]["top"] == 200.0
+    files = rule.mesh_files(model, [400.0, 800.0, 1600.0, 2400.0])
+    assert [(f["title"], f["path"].name, f["state"]) for f in files] == [
+        ("air 400–1600 Hz", "mesh_400Hz.msh", "missing"), ("air 1600–2400 Hz", "mesh_1600Hz.msh", "missing")]
+    with pytest.raises(ValueError, match="size_at"):
+        lp.PerWavelength(bands=[20], size_at="middle")
+
+
 @pytest.mark.slow
 def test_remeshed_coupled_sweep(tmp_path):
-    """One mesh per band, the air / PML sized by the band wavelength; the model is restored afterwards."""
+    """One mesh per band, the air / PML sized by the band wavelength; the model is restored afterwards; the
+    structure's mesh is the same in every band (only the air is remeshed); the meshes say what they are."""
     model = api.speaker_model(acoustic=True)
     air, pml = model["subacou"], model["PML"]
     before = (air.mesh_size, pml.thickness, pml.mesh_size, pml.tuned_to)
@@ -32,10 +56,20 @@ def test_remeshed_coupled_sweep(tmp_path):
     assert sorted(p.name for p in tmp_path.glob("mesh_*Hz.msh")) == ["mesh_1600Hz.msh", "mesh_400Hz.msh"]
     lam = [b.meta["wavelength"] for b in res.blocks]
     c = lp.materials["Air"].c
-    np.testing.assert_allclose(lam, [c / 400.0, c / 1600.0])
+    np.testing.assert_allclose(lam, [c / 1600.0, c / 2400.0])                 # the bands' tops
+    np.testing.assert_allclose([b.meta["pml_wavelength"] for b in res.blocks], [c / 400.0, c / 1600.0])
     assert res.blocks[0].meshes["air"].n_nodes != res.blocks[1].meshes["air"].n_nodes
+    u0, u1 = (b.mesh_of("u").coords for b in res.blocks)
+    assert np.array_equal(u0, u1)                                              # the structure is not remeshed
     assert (air.mesh_size, pml.thickness, pml.mesh_size, pml.tuned_to) == before
     assert res.spl(at=(0.0, 0.1)).shape == (4,)
+    assert [f["state"] for f in rule.mesh_files(model, [400.0, 800.0, 1600.0, 2400.0])] == ["built", "built"]
+    info = lp.mesh_info(tmp_path / "mesh_1600Hz.msh")
+    assert info["role"] == "air 1600–2400 Hz" and info["band"] == [1600.0, 2400.0] and info["nodes"] > 0
+    assert "subacou" in " ".join(info["groups"]["2"]) and info["elements"]
+    from loudpy.geometry.mesh_files import fingerprint, listing
+    assert res.blocks[1].meta["mesh_fingerprint"] == fingerprint(tmp_path / "mesh_1600Hz.msh")
+    assert [m["role"] for m in listing(tmp_path)] == ["air 1600–2400 Hz", "air 400–1600 Hz"]
 
 
 def test_drive_checks(mesh_dir):

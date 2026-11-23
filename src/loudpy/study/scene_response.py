@@ -187,6 +187,12 @@ def _driver_volume_disp(scene, drivers, mesh_path):
     return np.asarray(Bc).sum(axis=0)
 
 
+def _mesh_meta(path) -> dict:
+    """A block's mesh: its file and the fingerprint of its signature (a result knows on which mesh it was computed)."""
+    from loudpy.geometry.mesh_files import fingerprint
+    return {"mesh": str(path), "mesh_fingerprint": fingerprint(path) or ""}
+
+
 def solve(study, freqs, store=None, chunk_hz=50.0, rtol=1e-7, log=None):
     """Frequency response of a scene in its configuration (cavity, cavity + exterior, merged); the 3D
     pressure field is streamed to `store` when given. Returns SceneResults."""
@@ -286,7 +292,7 @@ def solve(study, freqs, store=None, chunk_hz=50.0, rtol=1e-7, log=None):
     if store:
         writer = StreamWriter(store, "frequency", meta, results_class="SceneResults")
         wblocks = [writer.block(f"{scene.band_meshes[bi]['f_hi']:.0f}Hz", freqs[sel], {"air": _fe_mesh(ext)},
-                                {"p": (len(ext.nodes),)}, meta={"mesh": str(scene.band_meshes[bi]["path"])})
+                                {"p": (len(ext.nodes),)}, meta=_mesh_meta(scene.band_meshes[bi]["path"]))
                    for (bi, sel), (_, _, ext) in zip(bmap, bands)]
     row_of = {i: (k, j) for k, (_, sel) in enumerate(bmap) for j, i in enumerate(sel)}
 
@@ -322,7 +328,7 @@ def solve(study, freqs, store=None, chunk_hz=50.0, rtol=1e-7, log=None):
             for name, v in extra.items():
                 writer.extra(wblocks[k_], name, v)
         blocks.append(Block({"air": _fe_mesh(bands[k_][2])}, freqs[sel], {}, extra,
-                            {"mesh": str(scene.band_meshes[bi]["path"])}, f"{scene.band_meshes[bi]['f_hi']:.0f}Hz"))
+                            _mesh_meta(scene.band_meshes[bi]["path"]), f"{scene.band_meshes[bi]['f_hi']:.0f}Hz"))
     log(f"  sweep: {len(freqs)} frequencies in {(time.time() - t0) / 60:.1f} min "
         f"(GMRES iterations: mean {iters.mean():.0f}, max {iters.max()})")
     if writer is not None:

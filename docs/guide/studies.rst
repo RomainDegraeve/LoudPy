@@ -41,6 +41,12 @@ the wavelength:
                              pml_thickness=0.25, pml_elements=4, folder="Results/Files")
    res = study.solve(freqs, remesh=remesh)      # one result block per mesh
 
+The air of each band has ``air_elements`` per wavelength at the band's top frequency (the next band's start, or
+the band's last frequency), and the PML is ``pml_thickness`` wavelengths thick at the band's first frequency.
+``size_at="start"`` sizes the air at the band's first frequency, as loudpy did before 0.2.2, so meshes built then
+are reused. ``remesh.plan(model, freqs)`` lists the band meshes, and ``remesh.mesh_files(model, freqs)`` gives
+their state without meshing. Only the air and PML are remeshed: the structure's mesh is the same in every band.
+
 Transient
 ---------
 

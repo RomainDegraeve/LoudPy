@@ -28,15 +28,22 @@ from loudpy.errors import ModelError, StateError
 @dataclass
 class PerWavelength:
     """
-    Air and PML meshes that follow the wavelength λ = c / f0, f0 = first frequency of each band.
+    Air and PML meshes that follow the wavelength: one mesh per frequency band.
 
     bands          : frequencies where a new band (and mesh) starts: a frequency f is in the band
                      of the largest edge ≤ f.   Or every: a new mesh every `every` frequencies.
-    air_elements   : air element size λ / air_elements, at most air_max_size
-                     (default: the mesh_size given to the Air region)
-    pml_thickness  : PML thickness in wavelengths;  pml_elements: elements across it
+    air_elements   : air elements per wavelength at the band's top frequency (the next band's start; the last
+                     frequency of the last band, or of a group of every=): element size λ_top / air_elements,
+                     at most air_max_size (default: the mesh_size given to the Air region)
+    pml_thickness  : PML thickness in wavelengths at the band's start (its longest wavelength);
+                     pml_elements: elements across it
     c              : speed of sound for λ (default: the Air material)
     folder         : where the band meshes are written (default: next to the geometry)
+    size_at        : "top" (above); "start": the air sized at the band's first frequency, as before 0.2.2
+                     (meshes built then are reused; the band's top has fewer elements per wavelength)
+
+        rule.plan(model, freqs)        the meshes of a sweep: one per band, with its frequencies and sizes
+        rule.mesh_files(model, freqs)  those meshes with their state (built, out of date, missing)
     """
     bands: list = field(default_factory=list)
     every: int | None = None
@@ -46,6 +53,7 @@ class PerWavelength:
     pml_elements: float = 4.0
     c: float | None = None
     folder: str | Path | None = None
+    size_at: str = "top"
 
     def __post_init__(self):
         from loudpy.checks import check
@@ -56,6 +64,8 @@ class PerWavelength:
         check(self.pml_thickness, "wavelengths", "PerWavelength.pml_thickness")
         check(self.pml_elements, "positive", "PerWavelength.pml_elements")
         check(self.c, "speed_of_sound", "PerWavelength.c")
+        if self.size_at not in ("top", "start"):
+            raise ModelError(f"PerWavelength.size_at: 'top' or 'start', got {self.size_at!r}")
 
     def split(self, freqs) -> list[np.ndarray]:
         """The frequencies grouped by band (in the given order)."""
@@ -71,6 +81,64 @@ class PerWavelength:
             if i == len(freqs) or key[i] != key[start]:
                 out.append(freqs[start:i])
                 start = i
+        return out
+
+    def _top(self, band) -> float:
+        """The highest frequency the band's air mesh is made for."""
+        if self.size_at == "start":
+            return float(band[0])
+        if not self.every and len(self.bands):
+            edges = np.asarray(self.bands, float)
+            k = int(np.searchsorted(edges, float(band[0]), side="right"))
+            if k < len(edges):
+                return float(edges[k])                          # the next band's start
+        return float(np.max(band))
+
+    def plan(self, model, freqs) -> list[dict]:
+        """
+        The meshes of a sweep of `model` at `freqs`: one per band, [{"freqs", "start", "top", "wavelength" (at the
+        top: the air's elements), "pml_wavelength" (at the start: the PML's thickness), "path"}].
+        """
+        air = [r for r in model.regions if isinstance(r, Air) and not isinstance(r, PML)]
+        if not air:
+            raise ModelError("PerWavelength sizes the air mesh: the model has no lp.Air region")
+        c = float(self.c or model.materials.resolve(air[0].material).c)  # type: ignore[arg-type]
+        folder = Path(self.folder) if self.folder else Path(model.geometry).parent
+        out = []
+        for band in self.split(np.atleast_1d(np.asarray(freqs, float))):
+            f0, top = float(band[0]), self._top(band)
+            out.append(dict(freqs=band, start=f0, top=top, wavelength=c / top, pml_wavelength=c / f0,
+                            path=folder / f"mesh_{f0:.0f}Hz.msh"))
+        return out
+
+    def band_model(self, model, band: dict):
+        """A copy of `model` (parameters resolved) with the air and PML sized for one band of plan()."""
+        cap = self.air_max_size
+        twin = model.resolved()
+        for r in twin.regions:
+            if isinstance(r, PML):
+                r.thickness = self.pml_thickness * band["pml_wavelength"]
+                r.mesh_size = r.thickness / self.pml_elements
+                r.tuned_to = band["start"]
+            elif isinstance(r, Air):
+                r.mesh_size = min(band["wavelength"] / self.air_elements, cap if cap is not None else r.mesh_size)
+        return twin
+
+    def mesh_files(self, model, freqs) -> list[dict]:
+        """
+        The band meshes a sweep at `freqs` uses, as Scene.mesh_files gives them: [{"what", "title", "path", "state",
+        "band"}], state "built", "out of date" (made with other settings: built again) or "missing". Nothing is
+        meshed.
+        """
+        out = []
+        for b in self.plan(model, freqs):
+            path = Path(b["path"])
+            if not path.exists():
+                state = "missing"
+            else:
+                state = "built" if self.band_model(model, b).mesh_reusable(path) else "out of date"
+            out.append(dict(what=f"air_{b['start']:.0f}", title=f"air {b['start']:g}–{b['top']:g} Hz", path=path,
+                            state=state, band=[b["start"], b["top"]]))
         return out
 
 
@@ -136,7 +204,8 @@ class FrequencyResponse(Study):
         fields = {"u": nodal(np.array(U), len(s.meca.unique_tags), 2)}
         if P:
             fields["p"] = nodal(np.array(P), len(s.acou.unique_tags), 1)
-        meta = {"mesh": str(model._mesh_path)}
+        from loudpy.geometry.mesh_files import fingerprint
+        meta = {"mesh": str(model._mesh_path), "mesh_fingerprint": fingerprint(model._mesh_path) or ""}
         self.solver_stats = dict(factorizations=solver.n_factor, gmres_solves=solver.n_gmres,
                                  gmres_iterations=solver.iters)
         bounds = model.boundary_nodes()
@@ -173,25 +242,17 @@ class FrequencyResponse(Study):
         """One mesh per band on a copy of the model (the user's model and items are never changed)."""
         if not self.coupled:
             raise ModelError("remesh= adapts the air mesh: it needs the coupled model")
-        air = [r for r in self.model.regions if isinstance(r, Air) and not isinstance(r, PML)]
-        c = float(rule.c or self.model.materials.resolve(air[0].material).c)  # type: ignore[arg-type]
-        cap = rule.air_max_size
-        folder = Path(rule.folder) if rule.folder else self.model.geometry.parent
+        from loudpy.geometry.mesh_files import annotate
         blocks, bounds = [], {}
-        for band in rule.split(freqs):
-            f0 = float(band[0])
-            lam = c / f0
-            band_model = self.model.resolved()
-            for r in band_model.regions:
-                if isinstance(r, PML):
-                    r.thickness = rule.pml_thickness * lam
-                    r.mesh_size = r.thickness / rule.pml_elements
-                    r.tuned_to = f0
-                elif isinstance(r, Air):
-                    r.mesh_size = min(lam / rule.air_elements, cap if cap is not None else r.mesh_size)
-            band_model.mesh(folder / f"mesh_{f0:.0f}Hz.msh")
+        for plan in rule.plan(self.model, freqs):
+            band, f0 = plan["freqs"], plan["start"]
+            band_model = rule.band_model(self.model, plan)
+            band_model.mesh(plan["path"])
+            annotate(plan["path"], role=f"air {f0:g}–{plan['top']:g} Hz", band=[f0, plan["top"]],
+                     air_elements=rule.air_elements, size_at=rule.size_at)
             block, b = self._solve_block(band, label=f"{f0:.0f}Hz", model=band_model)
-            block.meta.update(wavelength=lam, band_start=f0)
+            block.meta.update(wavelength=plan["wavelength"], band_start=f0, band_top=plan["top"],
+                              pml_wavelength=plan["pml_wavelength"])
             blocks.append(block)
             bounds.update(b)
             self._meshed_copy = band_model                 # physical data of the groups for the description

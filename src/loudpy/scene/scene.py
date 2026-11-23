@@ -39,6 +39,7 @@ import logging
 import numpy as np
 
 from loudpy.geometry.gmsh_session import gmsh_module
+from loudpy.geometry.mesh_files import same_signature, write_sidecar
 from loudpy.model.materials import Material, materials
 from loudpy.errors import MeshError, ModelError, StateError
 
@@ -85,6 +86,7 @@ class _Walls:
     f_max: float | None = None             # wall modes kept [Hz] (None: the cavity's f_max)
     angle: float = 30.0                    # a fold sharper than this is a panel edge [deg]
     panels: dict | None = None             # {panel key: lp.cabinets.Panel} (a STEP solid's index, a Box side)
+    mesh_size: tuple | None = None         # merged air: (near the drivers, far) [m] of the shells' inside-air mesh
 
 
 @dataclass
@@ -223,7 +225,7 @@ class Scene:
         return self
 
     def walls(self, material="MDF", thickness=0.018, damping=None, fixed="edges", f_max=None, angle=30.0,
-              panels=None):
+              panels=None, mesh_size=None):
         """
         Elastic cabinet walls: shells (MITC3) on the walls of the cavity mesh, coupled to the cavity air through
         their in-vacuo modes (configuration cavity). material: library name or lp.Material; thickness [m] (or
@@ -240,6 +242,9 @@ class Scene:
         damping)} — a STEP solid by its index in the file (0, 1, …) or a Box side ("left", "right", "bottom", "top",
         "back", "front"); what a Panel leaves None is the walls' own. Faces on no panel (driver plugs, the ground,
         port tubes) stay rigid.
+
+        mesh_size: with one merged air domain, the element sizes (near the drivers, far) [m] of the inside-air mesh
+        the shells lie on (None: 3 mm, 12 mm); with cavity modes the shells lie on the cavity mesh: its own sizes.
         """
         from loudpy.scene.cabinets import Panel
         panels = {int(k) if isinstance(k, str) and k.isdigit() else k: v      # a STEP solid's index (JSON: text)
@@ -249,7 +254,8 @@ class Scene:
                 raise ModelError(f"walls panels: {key!r} → lp.cabinets.Panel(material, thickness, damping), "
                                  f"got {pnl!r}")
         self._walls = self._walls_spec = _Walls(material, thickness, damping, fixed, f_max, angle,
-                                                dict(panels) if panels else None)
+                                                dict(panels) if panels else None,
+                                                None if mesh_size is None else tuple(mesh_size))
         return self
 
     def exterior(self, ground="y", level=0.0, margin=0.05, bands=((20.0, 1000.0),), points_per_wavelength=4.0,
@@ -299,11 +305,17 @@ class Scene:
         self._cavity = resolve(self._cavity_spec, self.parameters)          # lp.P → values
         self._open = resolve(self._open_spec, self.parameters)
         self._walls = resolve(self._walls_spec, self.parameters)
+        if self._walls is not None and self._walls.mesh_size is not None and self._cavity is not None:
+            raise ModelError("walls(mesh_size=) is for one merged air domain: with cavity modes the shells lie on "
+                             "the cavity mesh (set cavity(mesh_size=))")
         if self._cavity is not None:
-            self.cavity_mesh = self._build("cavity", self.folder / self._cavity.file, reuse, self._mesh_cavity)
+            self.cavity_mesh = self._build("cavity", self.folder / self._cavity.file, reuse, self._mesh_cavity,
+                                           info=dict(role="cavity", mesh_size=list(self._cavity.mesh_size)))
         if self._walls is not None and self._open is not None and self._open.kind == "merged":
             name = "walls_" + Path(self._open.file.format(kind="merged", f_hi=self._open.bands[0][1])).stem + ".msh"
-            self.walls_mesh = self._build("walls", self.folder / name, reuse, self._mesh_walls)
+            self.walls_mesh = self._build("walls", self.folder / name, reuse, self._mesh_walls,
+                                          info=dict(role="inside air of the walls",
+                                                    mesh_size=list(self._walls_sizes().mesh_size)))
         if self._open is not None:
             self.hemisphere = self._hemisphere()
             self.band_meshes = []
@@ -312,7 +324,8 @@ class Scene:
                 h = min(o.max_size, self.c / f_hi / o.points_per_wavelength)
                 path = self.folder / o.file.format(kind=o.kind, f_hi=f_hi)
                 built = self._build(f"{o.kind}_{f_hi:.0f}", path, reuse,
-                                    lambda p, h=h: self._mesh_open(p, h), extra={"h": h})
+                                    lambda p, h=h: self._mesh_open(p, h), extra={"h": h},
+                                    info=dict(role=f"{o.kind} air {f_lo:g}–{f_hi:g} Hz", band=[f_lo, f_hi], h=h))
                 self.band_meshes.append(dict(f_lo=f_lo, f_hi=f_hi, path=built, h=h))
         log.info(f"Scene ({config}): {len(self.drivers)} driver(s)"
               + (f", cavity mesh {self.cavity_mesh.name}" if self.cavity_mesh else "")
@@ -352,7 +365,8 @@ class Scene:
                 if path.exists():
                     sig_path = Path(str(path) + ".json")
                     try:
-                        same = sig_path.exists() and json.loads(sig_path.read_text()) == self._signature(what, extra)
+                        same = sig_path.exists() and same_signature(json.loads(sig_path.read_text()),
+                                                                     self._signature(what, extra))
                     except (OSError, ValueError):
                         same = False
                     state = "built" if same else "out of date"
@@ -379,7 +393,10 @@ class Scene:
                      "open": ("kind", "ground", "level", "margin", "points_per_wavelength", "max_size",
                               "driver_size", "near", "plug_from")}
         kind = "cavity" if what in ("cavity", "walls") else "open"  # a mesh depends on its own settings only
-        v = (self._cavity or _Cavity()) if kind == "cavity" else self._open
+        if what == "walls":
+            v = self._walls_sizes()
+        else:
+            v = (self._cavity or _Cavity()) if kind == "cavity" else self._open
         settings = {kind: {n: getattr(v, n) for n in mesh_keys[kind]}}
         sig = dict(what=what, cabinet=hashlib.sha256(src.encode()).hexdigest()[:16], drivers=drivers,
                    settings=settings, extra=extra, p2_nodes="curved")           # mid-edge nodes on the surfaces
@@ -395,15 +412,15 @@ class Scene:
             return False
         return len(args) >= 2 and args[1] in ("p", "params", "parameters")
 
-    def _build(self, what, path, reuse, builder, extra=None):
+    def _build(self, what, path, reuse, builder, extra=None, info=None):
         sig_path = Path(str(path) + ".json")
         sig = self._signature(what, extra)
         if path.exists() and (reuse == "always" or
-                              (reuse and sig_path.exists() and json.loads(sig_path.read_text()) == sig)):
-            log.info(f"  mesh reused: {path}")
+                              (reuse and sig_path.exists() and same_signature(json.loads(sig_path.read_text()), sig))):
+            log.info(f"  mesh reused: {path}")              # (a sidecar written before says what it is by "what")
             return path
         builder(path)
-        sig_path.write_text(json.dumps(sig, indent=1))
+        write_sidecar(path, sig, **(info or {}))
         return path
 
     def _start(self, name):
@@ -450,11 +467,17 @@ class Scene:
                     z_b[0] if self._single() else z_b, cv.mesh_size[0], cv.mesh_size[1], cv.near[0], cv.near[1])
         g.clear()
 
+    def _walls_sizes(self) -> "_Cavity":
+        """The sizes of the inside-air mesh the shells lie on in a merged air domain (walls(mesh_size=), else the
+        cavity's defaults)."""
+        w = self._walls
+        return _Cavity(mesh_size=tuple(w.mesh_size)) if w is not None and w.mesh_size is not None else _Cavity()
+
     def _mesh_walls(self, path):
         """The inside air meshed for the shells of the elastic walls (a merged air domain has no cavity of its own):
-        the cavity's default sizes."""
+        walls(mesh_size=), else the cavity's default sizes."""
         saved = self._cavity
-        self._cavity = _Cavity()
+        self._cavity = self._walls_sizes()
         try:
             self._mesh_cavity(path)
         finally:

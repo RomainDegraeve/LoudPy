@@ -100,6 +100,13 @@ saved by earlier versions (signature version 1) are rebuilt once. A 3D scene's m
 of its walls, each air band) are reused the same way; ``scene.mesh_files(folder)`` lists them with their state
 (built, out of date, missing) without meshing.
 
+The signature is kept in a sidecar file next to each mesh (``<mesh>.msh.json``). Its ``info`` part says what the mesh
+is for (its role, its frequency band, its element sizes) and is not compared for reuse. ``lp.mesh_info(path)``
+gives that with the mesh's counts (nodes, elements per type, groups, bounds), read once and kept while the file is
+unchanged. Each result block records the file of its mesh and a fingerprint of its signature
+(``block.meta["mesh_fingerprint"]``), so a result computed on a mesh that has since been built again can be told
+apart.
+
 File layout of an example
 -------------------------
 

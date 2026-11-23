@@ -1073,7 +1073,7 @@ Study options
 ``lp.PerWavelength``
 ^^^^^^^^^^^^^^^^^^^^
 
-Air and PML meshes that follow the wavelength λ = c / f0, f0 = first frequency of each band.
+Air and PML meshes that follow the wavelength: one mesh per frequency band.
 
 .. list-table::
    :header-rows: 1
@@ -1124,6 +1124,11 @@ Air and PML meshes that follow the wavelength λ = c / f0, f0 = first frequency 
      - 
      - ``None``
      - where the band meshes go (empty: next to the geometry)
+   * - ``size_at``
+     - choice
+     - 
+     - ``'top'``
+     - top: air elements per wavelength at the band's top frequency · start: at its first frequency (meshes made before 0.2.2) Choices: top, start.
 
 ``lp.Output``
 ^^^^^^^^^^^^^
@@ -1844,6 +1849,11 @@ Given by the context: scene.
      - 
      - ``None``
      - panels of their own: {a STEP solid's index (0, 1 …) or a Box side (left, right, bottom, top, back, front): a Panel}
+   * - ``mesh_size``
+     - pair
+     - m
+     - ``None``
+     - one merged air domain: element size of the inside-air mesh the shells lie on (near the drivers, far; empty: 3 mm, 12 mm); with cavity modes, the cavity's
 
 Only in a script: fixed (function): f(points) → mask of the clamped nodes.
 
@@ -1895,6 +1905,7 @@ Public names of loudpy that a simulation is not made of:
 - ``Driver``: made by Driver.from_modes (and placed by Driver.place)
 - ``Cabinet``: what a Python cabinet builder returns: code only (cabinets.Box / Step are the blocks)
 - ``Mesh``: the result of meshing
+- ``mesh_info``: reads a mesh file (what it is for, its counts)
 - ``Convergence``: the result of an Adaptive study
 - ``convergence``: the result of an Adaptive study
 - ``Results``: results

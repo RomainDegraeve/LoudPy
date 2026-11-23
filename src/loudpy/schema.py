@@ -389,7 +389,9 @@ def _catalog() -> dict[str, Block]:
             _p("c", "number", "m/s", "speed of sound for λ (empty: the Air material's)", "Air", optional=True,
                min=0),
             _p("folder", "file", help="where the band meshes go (empty: next to the geometry)", group="Files",
-               optional=True)]),
+               optional=True),
+            _p("size_at", "choice", help="top: air elements per wavelength at the band's top frequency · start: at its "
+               "first frequency (meshes made before 0.2.2)", group="Air", choices=("top", "start"))]),
         _make("Output", "study_options", lp.Output, [
             _p("fields", "texts", help="fields kept (empty: all)", optional=True),
             _p("every", "integer", help="keep every n-th entry", min=0),
@@ -509,7 +511,10 @@ def _catalog() -> dict[str, Block]:
                min=0),
             _p("angle", "number", "°", "a fold sharper than this is a panel edge", "Supports", min=0),
             _p("panels", "mapping", help="panels of their own: {a STEP solid's index (0, 1 …) or a Box side "
-               "(left, right, bottom, top, back, front): a Panel}", group="Panels", optional=True)],
+               "(left, right, bottom, top, back, front): a Panel}", group="Panels", optional=True),
+            _p("mesh_size", "pair", "m", "one merged air domain: element size of the inside-air mesh the shells lie "
+               "on (near the drivers, far; empty: 3 mm, 12 mm); with cavity modes, the cavity's", "Mesh",
+               optional=True)],
             context=("scene",), code_only={"fixed (function)": "f(points) → mask of the clamped nodes"}),
         _make("cabinets.Panel", "scene.panels", cab.Panel, [
             _p("material", "material", help="its material (empty: the walls')", optional=True),
@@ -539,6 +544,7 @@ NOT_BLOCKS = {
     "Driver": "made by Driver.from_modes (and placed by Driver.place)",
     "Cabinet": "what a Python cabinet builder returns: code only (cabinets.Box / Step are the blocks)",
     "Mesh": "the result of meshing",
+    "mesh_info": "reads a mesh file (what it is for, its counts)",
     "Convergence": "the result of an Adaptive study", "convergence": "the result of an Adaptive study",
     "Results": "results", "FrequencyResults": "results", "ModeResults": "results", "TimeResults": "results",
     "SweepResults": "results", "Data": "results", "Field": "results",

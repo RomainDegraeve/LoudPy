@@ -482,14 +482,14 @@ def test_walls_in_a_merged_air_domain(driver, tmp_path):
     from loudpy.study import scene_response as sr
     freqs = np.array([120.0, 300.0, 480.0])
 
-    def scene_of(walls=None):
+    def scene_of(walls=None, mesh=True):
         box = lp.cabinets.Box(W, H, D, wall=0.012, ports=(lp.cabinets.Port((0.05, 0.05), 0.015, 0.03, wall=0.0),))
         s = lp.Scene(box, [driver.place("main", at=(W / 2 + 0.03, H / 2))])
         s.merged(bands=[(20.0, 500.0)], driver_size=0.004, max_size=0.07, margin=0.04,
                  file="merged_walls_{f_hi:.0f}Hz.msh")                # 4 mm: the 1 mm front wall needs it
         if walls:
             s.walls(**walls)
-        return s.mesh(tmp_path)
+        return s.mesh(tmp_path) if mesh else s
     mdf = dict(material="MDF", thickness=None, damping=lp.Undamped(), f_max=3000.0,
                panels={"front": lp.cabinets.Panel(thickness=0.012)})
     scene = scene_of(mdf)
@@ -502,6 +502,15 @@ def test_walls_in_a_merged_air_domain(driver, tmp_path):
     assert [f["state"] for f in scene.mesh_files()] == ["built", "out of date"]
     sig.write_text(kept)
     assert [f["state"] for f in scene.mesh_files(tmp_path / "elsewhere")] == ["missing", "missing"]
+    info = lp.mesh_info(scene.walls_mesh)                         # what a mesh is for, and its counts
+    assert info["role"] == "inside air of the walls" and info["mesh_size"] == [0.003, 0.012] and info["nodes"] > 0
+    assert lp.mesh_info(files[1]["path"])["band"] == [20.0, 500.0] and "Tetrahedron 10" in info["elements"]
+    assert [f["state"] for f in scene.mesh_files()] == ["built", "built"]     # its counts kept: still up to date
+    finer = scene_of({**mdf, "mesh_size": (0.003, 0.010)}, mesh=False)        # the shells' mesh of its own sizes
+    assert [f["state"] for f in finer.mesh_files(tmp_path)] == ["out of date", "built"]
+    cav = lp.Scene(lp.cabinets.Box(W, H, D), [driver.place("main", at=(W / 2, H / 2))]).cavity()
+    with pytest.raises(lp.errors.ModelError, match="merged air"):
+        cav.walls(mesh_size=(0.003, 0.01)).mesh(tmp_path / "cavity")
     walls = sr.scene_walls(scene, None)
     assert len(walls) >= 3 and set(walls.shell.panels) == {"left", "right", "top", "back", "front"}
     band = scene.band_meshes[0]
