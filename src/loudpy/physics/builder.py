@@ -381,13 +381,25 @@ def _radiation(b, s, parts, drive, form, extra):
 
 
 def _coil(b, s, parts, drive, form, extra):
-    """The drive on the coil: a force (load on u) or a voltage with its circuit (field I).
-    Nothing in the symmetric form (free modes)."""
+    """The drive on the coil: a force (load on u), a voltage with its circuit (field I), or a circuit
+    (loudpy.circuit: its MNA unknowns, field e, its one coil on the model's coil). Nothing in the symmetric form
+    (free modes)."""
+    from loudpy.circuit import Circuit
     from loudpy.model.drives import Force, Voltage
     if form == "symmetric":
         return
     if s.F is None:
         raise ModelError("the model has no coil boundary (lp.Coil): nothing drives it")
+    if isinstance(drive, Circuit):
+        drive.check()
+        if len(drive.coils) != 1:
+            raise ModelError(f"a 2D model has one coil: its circuit holds one Coil part ({len(drive.coils)} given)")
+        qe, eq = drive.coupling({drive.coils[0].name: np.asarray(s.F, float).reshape(-1)})
+        b.add_field(Field("e", drive.size, info=dict(circuit=drive)))
+        b.add(Term("u", "e", sp.csr_matrix(qe)), Term("e", "u", sp.csr_matrix(eq), power=1),
+              Term("e", "e", lambda z: sp.csr_matrix(drive.matrix(z))))
+        b.add_load(Load("e", drive.rhs()))
+        return
     if isinstance(drive, Voltage):
         n = 1.0 if drive.n is None else float(drive.n)
         f = s.F.reshape(-1, 1)                                   # coil force pattern, sums to 1
@@ -400,7 +412,7 @@ def _coil(b, s, parts, drive, form, extra):
     elif isinstance(drive, Force):
         b.add_load(Load("u", s.F * drive.amplitude))
     else:
-        raise ModelError(f"drive must be lp.Force or lp.Voltage, got {drive!r}")
+        raise ModelError(f"drive must be lp.Force, lp.Voltage or lp.Circuit, got {drive!r}")
 
 
 # role → contribution (a new physics: one function here and its role in physics.registry)

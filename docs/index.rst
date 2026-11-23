@@ -41,6 +41,7 @@ NumPy, pandas and files.
    guide/postprocessing
    guide/plotting
    guide/scenes
+   guide/circuits
    guide/shells
    guide/examples
 

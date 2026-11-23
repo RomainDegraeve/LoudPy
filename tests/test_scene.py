@@ -635,3 +635,43 @@ def test_voltage_drive_two_drivers(driver, mesh_dir):
         lp.FrequencyResponse(scene, drive={"left": v}).solve(freqs)
     with pytest.raises(lp.errors.ResultsError, match="name one"):
         both.impedance()
+
+
+@pytest.mark.parametrize("kind", ["cavity", "cavity+exterior", "merged"])
+def test_circuit_drive(driver, mesh_dir, kind, tmp_path):
+    """A circuit drives a scene in the same solve as the modes (loudpy.circuit): an amplifier and the coil is the
+    voltage drive; a filter block and a series resistor before the coil: the coil's voltage is the filtered one
+    less the resistor's drop (the coil's impedance, motional part included, does not depend on what drives it);
+    the results keep the circuit (saved and read back)."""
+    from loudpy.circuit import Coil, Filter, Resistor, Semi, Source, butterworth
+    if kind == "cavity":
+        scene = lp.Scene(box_cabinet, [driver.place("main", at=(W / 2, H / 2))])
+        scene.cavity(f_max=3000.0, eta=0.02, file="box_one_driver.msh", cache_modes=False)
+        scene.mesh(mesh_dir, reuse="always")
+    else:
+        scene = _small(kind, driver, mesh_dir)
+    freqs = np.array([60.0, 250.0, 600.0])
+    U, Re, Bl, Le, n = 2.83, 6.0, 5.0, 3e-4, 0.8
+    volt = lp.FrequencyResponse(scene, drive=lp.Voltage(U, Re=Re, Bl=Bl, Le=Le, n=n)).solve(freqs)
+    coil = Coil("vc", "c", "0", Semi(Re=Re, Bl=Bl, Le=Le, n=n), driver="main")
+    circ = lp.FrequencyResponse(scene, drive=lp.Circuit(Source("amp", "c", U=U), coil)).solve(freqs)
+    np.testing.assert_allclose(circ.q, volt.q, rtol=1e-8, atol=1e-10 * np.abs(volt.q).max())
+    np.testing.assert_allclose(circ.coil_current().values, volt.coil_current().values, rtol=1e-8)
+    np.testing.assert_allclose(circ.impedance().values, volt.impedance().values, rtol=1e-8)
+    np.testing.assert_allclose(circ.input_impedance().values, volt.impedance().values, rtol=1e-8)
+    if kind != "cavity":
+        return
+    lp_ = butterworth(2, 300.0)
+    net = lp.Circuit(Source("amp", "a", U=U), Filter("lp", "a", "f", lp_), Resistor("Rs", "f", "c", 1.5), coil)
+    res = lp.FrequencyResponse(scene, drive=net).solve(freqs)
+    Zc = res.impedance("main").values
+    np.testing.assert_allclose(Zc, volt.impedance().values, rtol=1e-8)
+    np.testing.assert_allclose(res.voltage("c").values, lp_.response(freqs) * U * Zc / (Zc + 1.5), rtol=1e-8)
+    np.testing.assert_allclose(res.transfer("f").values, lp_.response(freqs), rtol=1e-10)
+    res.save(tmp_path / "circuit.h5")
+    back = lp.load(tmp_path / "circuit.h5")
+    np.testing.assert_allclose(back.input_impedance().values, res.input_impedance().values, rtol=1e-12)
+    assert [p.name for p in back.circuit.circuit.parts] == ["amp", "lp", "Rs", "vc"]
+    with pytest.raises(lp.errors.ModelError, match="name the driver"):
+        lp.FrequencyResponse(scene, drive=lp.Circuit(Source("amp", "c", U=U), Coil("x", "c", "0", Semi(6.0, 5.0)))
+                             ).solve(freqs)

@@ -44,6 +44,7 @@ Geometry and selections
    Interface
    BoundaryOf
    mesh_info
+   Circuit
 
 Studies
 -------

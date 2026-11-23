@@ -51,6 +51,31 @@ def coil_circuits(scene, drivers, drive) -> dict | None:
                 n=np.array([x.n for x in v], float), U=np.array([complex(x.amplitude) for x in v], complex))
 
 
+def circuit_drive(scene, drivers, drive):
+    """A circuit drive: (Circuit, {coil name: its driver's unit coil force on the modes}); None otherwise. Each coil
+    names a driver of the scene, each driver at most one coil (a driver with none is not driven)."""
+    from loudpy.circuit import Circuit
+    if not isinstance(drive, Circuit):
+        return None
+    drive.check()
+    names = [d.name for d in scene.drivers]
+    used = [c.driver for c in drive.coils]
+    bad = [c.name for c in drive.coils if c.driver not in names]
+    if bad:
+        raise ModelError(f"coil(s) {bad}: name the driver each one belongs to (driver=…; drivers: {names})")
+    twice = sorted({n for n in used if used.count(n) > 1})
+    if twice:
+        raise ModelError(f"driver(s) {twice} have several coils in the circuit: one coil per driver")
+    Fc = np.asarray(drivers.coil_forces([d.driver.coil_nodes for d in scene.drivers]), float)
+    return drive, {c.name: Fc[:, names.index(c.driver)] for c in drive.coils}
+
+
+def _padded_circuit(circuit, n_y: int):
+    if circuit is None:
+        return None
+    return circuit[0], {k: np.concatenate([v, np.zeros(n_y - len(v))]) for k, v in circuit[1].items()}
+
+
 def _padded(coils: dict | None, n_y: int) -> dict | None:
     """The coil circuits with zero rows for the modes after the drivers' (walls, extra coordinates)."""
     if coils is None or coils["Fc"].shape[0] >= n_y:
@@ -250,8 +275,11 @@ def solve(study, freqs, store=None, chunk_hz=50.0, rtol=1e-7, log=None):
                              f"(scene.merged / exterior(bands=lp.Scene.bands({freqs.max():g})), or f_max= of "
                              f"lp.Scene.sealed_box / vented_box) and mesh again")
     drivers = multidriver(scene)
-    coils = coil_circuits(scene, drivers, study.drive)                  # a voltage drive: one current per driver
-    F = coil_force(scene, drivers, study.drive) if coils is None else np.zeros(coils["Fc"].shape[0], complex)
+    circuit = circuit_drive(scene, drivers, study.drive)               # a circuit: its MNA unknowns
+    coils = None if circuit is not None else coil_circuits(scene, drivers, study.drive)   # a voltage drive
+    electric = coils is not None or circuit is not None
+    n_s = sum(len(d.driver.modes.freq) for d in scene.drivers)
+    F = np.zeros(n_s, complex) if electric else coil_force(scene, drivers, study.drive)
     config = scene.configuration
 
     meta = dict(study="FrequencyResponse", scene=True, configuration=config, drive=repr(study.drive))
@@ -281,6 +309,8 @@ def solve(study, freqs, store=None, chunk_hz=50.0, rtol=1e-7, log=None):
     attachments["drive"] = dict(F=np.asarray(F, complex))                # modal force, stacked drivers
     if coils is not None:                                              # a voltage drive: the coil circuits
         attachments["drive"].update({k: np.asarray(v) for k, v in coils.items()})
+    if circuit is not None:                                            # a circuit: itself, as data (JSON)
+        attachments["circuit"] = dict(meta=circuit[0].to_dict())
     if cav is not None:
         attachments["cavity"] = dict(nodes=cav.nodes, tets=cav.tets, psi=cav.psi.astype(np.float32), kappa2=cav.kappa2,
                                      meta=dict(f_max=scene._cavity.f_max, volume=float(cav.volume)))
@@ -292,10 +322,11 @@ def solve(study, freqs, store=None, chunk_hz=50.0, rtol=1e-7, log=None):
 
     if config == "cavity":                                          # A: no FE air
         extra = {}
-        if coils is None:
+        if not electric:
             q, P = cpl.forced(freqs, F)
         else:
-            q, P, extra["I"] = cpl.forced(freqs, F, coils=coils)
+            q, P, E = cpl.forced(freqs, F, coils=coils, circuit=circuit)
+            extra["I" if coils is not None else "e"] = E
         block = Block({}, freqs, {}, {"q": q, "P_cavity": P, **extra}, {"configuration": config})
         res = finish(study, SceneResults([block], meta, {}))
         res.attachments = attachments
@@ -349,9 +380,10 @@ def solve(study, freqs, store=None, chunk_hz=50.0, rtol=1e-7, log=None):
         S, R = np.zeros((len(w_s), 0)), np.zeros((len(w_s), len(w_s)))
     Fq = np.concatenate([np.asarray(F), np.zeros((len(w_s) - len(F),) + np.shape(F)[1:], complex)])
     out = coupled_sweep(bands, freqs, Fq, w_s, zeta, S, R, kappa2, eta, scene.rho, scene.c, chunk_hz, rtol,
-                        on_frequency, log=log, coils=_padded(coils, len(w_s)))
+                        on_frequency, log=log, coils=_padded(coils, len(w_s)),
+                        circuit=_padded_circuit(circuit, len(w_s)))
     q, coefs, iters = out[:3]
-    currents = out[3] if coils is not None else None
+    currents = out[3] if electric else None
     n_h = np.array([len(c) for c in coefs])
     C = np.zeros((len(freqs), n_h.max()), complex)
     for i, c in enumerate(coefs):
@@ -365,7 +397,7 @@ def solve(study, freqs, store=None, chunk_hz=50.0, rtol=1e-7, log=None):
     for k_, (bi, sel) in enumerate(bmap):
         extra = {"q": q[sel], "dtn": C[sel], "dtn_n": n_h[sel], "iters": iters[sel]}
         if currents is not None:
-            extra["I"] = currents[sel]
+            extra["I" if coils is not None else "e"] = currents[sel]
         if P is not None:
             extra["P_cavity"] = P[sel]
         if writer is not None:

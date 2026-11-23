@@ -145,7 +145,8 @@ class PerWavelength:
 class FrequencyResponse(Study):
     """Harmonic response of a Model (lp.Force or lp.Voltage on the coil) or of an lp.Scene
     (lp.Force or lp.Voltage on every driver's coil, or {driver name: lp.Force} / {driver name: lp.Voltage}: a
-    Voltage solves one current per driver with the modes, its back-EMF included).
+    Voltage solves one current per driver with the modes, its back-EMF included; or an lp.Circuit: amplifier,
+    filters, passive parts and the coils, solved the same way — loudpy.circuit).
 
         res = lp.FrequencyResponse(model, drive=lp.Force(1.0)).solve(np.geomspace(20, 20000, 200))"""
     accepts_scene = True
@@ -154,21 +155,25 @@ class FrequencyResponse(Study):
         super().__init__(model)
         self.drive = drive if drive is not None else Force(1.0)
         if self.is_scene:                                    # 3D scene: Force / Voltage, or one per driver
+            from loudpy.circuit import Circuit
+            if isinstance(self.drive, Circuit):                     # amplifier, filters, coils: loudpy.circuit
+                return
             drives = self.drive.values() if isinstance(self.drive, dict) else [self.drive]
             if not all((isinstance(d, Force) and not d.is_signal) or isinstance(d, Voltage) for d in drives):
-                raise ModelError("a scene is driven by lp.Force (harmonic) or lp.Voltage, or {driver name: one of "
-                                 "them}")
+                raise ModelError("a scene is driven by lp.Force (harmonic), lp.Voltage or an lp.Circuit, or {driver "
+                                 "name: a Force / Voltage}")
             return
-        if not isinstance(self.drive, (Force, Voltage)):
-            raise ModelError(f"drive must be lp.Force or lp.Voltage, got {self.drive!r}")
+        from loudpy.circuit import Circuit
+        if not isinstance(self.drive, (Force, Voltage, Circuit)):
+            raise ModelError(f"drive must be lp.Force, lp.Voltage or lp.Circuit, got {self.drive!r}")
         if isinstance(self.drive, Force) and self.drive.is_signal:
             raise ModelError("FrequencyResponse needs a harmonic Force (a complex amplitude), not a signal")
         has_air = any(isinstance(r, Air) for r in model.regions)
         self.coupled = has_air if coupled is None else coupled
         if self.coupled and not has_air:
             raise ModelError("coupled=True needs an air region (lp.Air) in the model")
-        if isinstance(self.drive, Voltage) and not self.coupled:
-            raise NotImplementedError("a Voltage drive is available for the coupled structure + air model")
+        if isinstance(self.drive, (Voltage, Circuit)) and not self.coupled:
+            raise NotImplementedError("a Voltage or Circuit drive is available for the coupled structure + air model")
         self.reuse_factorization = reuse_factorization
 
     # ── one mesh ───────────────────────────────────────────────────────────
@@ -186,7 +191,7 @@ class FrequencyResponse(Study):
         solver = SweepSolver()
         solver.reuse = self.reuse_factorization and solver.reuse
         d = self.drive
-        U, P, attrs = [], [], []
+        U, P, E, attrs = [], [], [], []
         from loudpy import progress
         for k_f, f in enumerate(np.asarray(freqs, float)):
             progress.step("frequency", k_f + 1, len(freqs))
@@ -197,6 +202,13 @@ class FrequencyResponse(Study):
             a = {"omega": float(w)}
             if "p" in x:
                 P.append(x["p"])
+            if "e" in x:                                            # a circuit: its unknowns, its coil
+                circ = builder.fields["e"].info["circuit"]
+                coil = circ.coils[0]
+                v = lambda n: 0.0 if n == "0" else x["e"][circ.index(n)]      # noqa: E731
+                E.append(x["e"])
+                a.update(I_coil=complex(x["e"][circ.index(coil.name)]), U=complex(v(coil.a) - v(coil.b)),
+                         Ze=complex(coil.model.impedance(z)), Bl=float(coil.model.Bl))
             if "I" in x:
                 c = builder.fields["I"].info
                 a.update(I_coil=complex(x["I"][0]), Ze=complex(c["Re"] + z ** c["n"] * c["Le"]), Re=c["Re"],
@@ -211,7 +223,10 @@ class FrequencyResponse(Study):
         self.solver_stats = dict(factorizations=solver.n_factor, gmres_solves=solver.n_gmres,
                                  gmres_iterations=solver.iters)
         bounds = model.boundary_nodes()
-        return Block(ms, np.asarray(freqs, float), fields, records.scalars(attrs), meta, label, bounds), bounds
+        extra = records.scalars(attrs)
+        if E:
+            extra["e"] = np.array(E)
+        return Block(ms, np.asarray(freqs, float), fields, extra, meta, label, bounds), bounds
 
     # ── public ─────────────────────────────────────────────────────────────
     def solve(self, freqs, remesh: PerWavelength | None = None, store=None, output=None, **options) -> FrequencyResults:
@@ -231,6 +246,9 @@ class FrequencyResponse(Study):
         check(freqs, "frequency", "FrequencyResponse.solve(freqs)")
         meta = {"study": "FrequencyResponse", "drive": repr(self.drive), "coupled": self.coupled,
                 "geometry": str(self.model.geometry)}
+        from loudpy.circuit import Circuit
+        if isinstance(self.drive, Circuit):
+            meta["circuit"] = self.drive.to_dict()
         if remesh is None:
             block, bounds = self._solve_block(freqs)
             blocks = [block]

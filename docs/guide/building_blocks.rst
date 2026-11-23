@@ -886,7 +886,7 @@ Only in a script: options: solver options (f_targets, mac_tol, coupled-mode cove
 ``lp.FrequencyResponse``
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
-Harmonic response of a Model (lp.Force or lp.Voltage on the coil) or of an lp.Scene (lp.Force or lp.Voltage on every driver's coil, or {driver name: lp.Force} / {driver name: lp.Voltage}: a Voltage solves one current per driver with the modes, its back-EMF included).
+Harmonic response of a Model (lp.Force or lp.Voltage on the coil) or of an lp.Scene (lp.Force or lp.Voltage on every driver's coil, or {driver name: lp.Force} / {driver name: lp.Voltage}: a Voltage solves one current per driver with the modes, its back-EMF included; or an lp.Circuit: amplifier, filters, passive parts and the coils, solved the same way — loudpy.circuit).
 
 Given by the context: model.
 
@@ -1955,3 +1955,5 @@ Public names of loudpy that a simulation is not made of:
 - ``plot``: module
 - ``schema``: module: this description
 - ``Document``: a whole simulation (model or scene, and studies) as nodes of these blocks
+- ``Circuit``: the electrical side of a drive (loudpy.circuit): its parts as data (Circuit.to_dict)
+- ``circuit``: module: amplifier, filter blocks, passive parts, coil models

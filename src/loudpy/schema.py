@@ -560,6 +560,8 @@ NOT_BLOCKS = {
     "cabinets": "module: cabinets.Box / Step / Brace / Port are blocks", "signals": "module: signals.* are blocks",
     "errors": "module", "progress": "module", "plot": "module", "schema": "module: this description",
     "Document": "a whole simulation (model or scene, and studies) as nodes of these blocks",
+    "Circuit": "the electrical side of a drive (loudpy.circuit): its parts as data (Circuit.to_dict)",
+    "circuit": "module: amplifier, filter blocks, passive parts, coil models",
 }
 
 

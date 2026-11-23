@@ -31,7 +31,8 @@ from .study import (Modes, FrequencyResponse, PerWavelength, Transient, Sweep, S
                     Convergence, convergence)
 from .scene import Driver, Profile, Scene, Cabinet, cabinets
 
-from . import errors, progress, schema, signals
+from . import circuit, errors, progress, schema, signals
+from .circuit import Circuit
 from .document import Document
 from ._log import set_verbosity
 
@@ -58,6 +59,8 @@ __all__ = [
     "convergence",
     # 3D scenes
     "Driver", "Profile", "Scene", "Cabinet", "cabinets",
+    # the electrical side: amplifier, filters, coils
+    "Circuit", "circuit",
     # results and evaluation
     "load", "load_data", "spl", "compare", "read_comsol", "Output", "Results", "FrequencyResults", "ModeResults", "TimeResults", "Data", "Field",
     "Point", "Points", "Polar", "Arc", "Line",

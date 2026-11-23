@@ -167,15 +167,30 @@ class SceneResults(FrequencyResults):
             raise ResultsError(f"several drivers: name one ({names})")
         return names.index(name), drive
 
+    def _circuit_coil(self, driver):
+        """A circuit-driven scene: the coil part of a driver (default: the only coil)."""
+        coils = self.circuit.circuit.coils
+        name = driver if driver is not None else (coils[0].driver if len(coils) == 1 else None)
+        c = next((c for c in coils if c.driver == name), None)
+        if c is None:
+            raise ResultsError(f"no coil for driver {driver!r} in the circuit (coils of {[c.driver for c in coils]}"
+                               "; several: name the driver)")
+        return c
+
     def coil_current(self, driver: str | None = None) -> Data:
-        """The coil current I [A] of a voltage-driven scene over frequency (driver: its name; default the only
-        one)."""
+        """The coil current I [A] of a voltage- or circuit-driven scene over frequency (driver: its name; default the
+        only one)."""
+        if "circuit" in self.attachments:
+            return self.circuit.current(self._circuit_coil(driver).name)
         j, _ = self._coil(driver)
-        return Data(self._stacked("I")[:, j], {"f": self.frequencies}, "I", meta=self._meta(on=self.drivers[j]))
+        return Data(self._stacked("I")[:, j], {"f": self.frequencies}, "I_coil", meta=self._meta(on=self.drivers[j]))
 
     def impedance(self, driver: str | None = None) -> Data:
         """The electrical input impedance U / I [Ω] of a driver's coil (voltage-driven scene): its blocked
-        impedance Re + (jω)ⁿ Le plus the motional part, the air, the walls and the other drivers included."""
+        impedance Re + (jω)ⁿ Le plus the motional part, the air, the walls and the other drivers included; a
+        circuit-driven scene: the coil's own)."""
+        if "circuit" in self.attachments:
+            return self.circuit.impedance(self._circuit_coil(driver).name)
         j, drive = self._coil(driver)
         U = complex(np.asarray(drive["U"]).reshape(-1)[j])
         return Data(U / self._stacked("I")[:, j], {"f": self.frequencies}, "Z", meta=self._meta(on=self.drivers[j]))

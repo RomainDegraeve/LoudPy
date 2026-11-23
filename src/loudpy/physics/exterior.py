@@ -244,7 +244,8 @@ def add_exterior(b, ext, c, field="p"):
 # ════════════════════════════════════════════════════════════════════════════
 #  Coupled sweep: driver + enclosure (modal) + exterior (FE + DtN)
 # ════════════════════════════════════════════════════════════════════════════
-def scene_builder(ext, F, w_s, zeta, S, R, kappa2, eta_air=0.0, rho=RHO_AIR, c=C_AIR, H_extra=None, coils=None):
+def scene_builder(ext, F, w_s, zeta, S, R, kappa2, eta_air=0.0, rho=RHO_AIR, c=C_AIR, H_extra=None, coils=None,
+                  circuit=None):
     """
     The 3D scene system on a SystemBuilder (time convention e^{st}, s = jω, k = ω/c):
 
@@ -271,14 +272,13 @@ def scene_builder(ext, F, w_s, zeta, S, R, kappa2, eta_air=0.0, rho=RHO_AIR, c=C
     Bq = sp.csr_matrix((Bf.ravel(), (np.repeat(pn, n_y), np.tile(np.arange(n_y), len(pn)))), shape=(n, n_y))
     b.add(Term("q", "p", Bq.T.tocsr()), Term("p", "q", -rho * Bq, power=2))
     b.add_load(Load("q", np.asarray(F, complex)))
-    if coils is not None:
-        from loudpy.physics.modal import add_coils
-        add_coils(b, **coils)
+    from loudpy.physics.modal import add_electric
+    add_electric(b, coils, circuit)                                   # a voltage drive / a circuit (or nothing)
     return b
 
 
 def coupled_sweep(bands, freqs, F, w_s, zeta, S, R, kappa2, eta_air=0.0, rho=RHO_AIR, c=C_AIR,
-                  chunk_hz=50.0, rtol=1e-7, on_frequency=None, log=None, H_extra=None, coils=None):
+                  chunk_hz=50.0, rtol=1e-7, on_frequency=None, log=None, H_extra=None, coils=None, circuit=None):
     """
     bands: list of (f_lo, f_hi, ExteriorFE with couple_driver done); each frequency is solved on
     the band containing it. Returns q (n_f, n_y) and, per frequency, the DtN coefficients c_h
@@ -286,7 +286,8 @@ def coupled_sweep(bands, freqs, F, w_s, zeta, S, R, kappa2, eta_air=0.0, rho=RHO
     H_extra(ω): dynamic matrix of extra generalised coordinates appended after the driver modes
     (e.g. the two mouths of a port); S, R, Bf and F then have n_y = n_modes + n_extra columns.
     Without a cavity, pass S of shape (n_y, 0), R = 0 and an empty kappa2. coils (a voltage drive: one current
-    per driver, modal.add_coils): the currents are eliminated with q, and returned too — (q, coefs, iters, I).
+    per driver, modal.add_coils) or circuit ((Circuit, forces), modal.add_circuit): its unknowns are eliminated
+    with q, and returned too — (q, coefs, iters, E).
 
     The system is the scene builder (scene_builder) solved by the generic BlockSolver: the modal field q
     eliminated exactly at each frequency, GMRES on the exterior field p with an LU preconditioner of
@@ -297,7 +298,9 @@ def coupled_sweep(bands, freqs, F, w_s, zeta, S, R, kappa2, eta_air=0.0, rho=RHO
         from loudpy._log import info as log
     n_x = 0 if H_extra is None else H_extra(1.0).shape[0]
     q_all = np.zeros((len(freqs), len(w_s) + n_x), complex)
-    I_all = None if coils is None else np.zeros((len(freqs), np.shape(coils["Fc"])[1]), complex)
+    fld = "I" if coils is not None else "e" if circuit is not None else None
+    n_e = np.shape(coils["Fc"])[1] if coils is not None else circuit[0].size if circuit is not None else 0
+    I_all = None if fld is None else np.zeros((len(freqs), n_e), complex)
     coefs, iters = [None] * len(freqs), np.zeros(len(freqs), int)
     for b, (f_lo, f_hi, ext) in enumerate(bands):
         idx = [i for i, f in enumerate(freqs) if f_lo <= f <= f_hi and coefs[i] is None]
@@ -305,9 +308,9 @@ def coupled_sweep(bands, freqs, F, w_s, zeta, S, R, kappa2, eta_air=0.0, rho=RHO
             continue
         log(f"  band {f_lo:.0f}–{f_hi:.0f} Hz: {len(ext.nodes)} nodes, {len(ext.gnodes)} on Γ, "
             f"{len(ext.pnodes)} on the driver, n ≤ {ext.n_max_band}")
-        solver = BlockSolver(scene_builder(ext, F, w_s, zeta, S, R, kappa2, eta_air, rho, c, H_extra, coils),
-                             small="q" if coils is None else ["q", "I"], big="p", rtol=rtol, restart=150,
-                             maxiter=20)
+        solver = BlockSolver(scene_builder(ext, F, w_s, zeta, S, R, kappa2, eta_air, rho, c, H_extra, coils,
+                                           circuit),
+                             small="q" if fld is None else ["q", fld], big="p", rtol=rtol, restart=150, maxiter=20)
         p_prev, f_c, Mpre = None, None, None
         for i in idx:
             f = freqs[i]
@@ -325,7 +328,7 @@ def coupled_sweep(bands, freqs, F, w_s, zeta, S, R, kappa2, eta_air=0.0, rho=RHO
                               ConvergenceWarning, stacklevel=2)
             q_all[i] = x["q"]
             if I_all is not None:
-                I_all[i] = x["I"]
+                I_all[i] = x[fld]
             coefs[i], iters[i], p_prev = ext.coefficients(p, k), it, p
             if on_frequency is not None:
                 on_frequency(i, b, p, coefs[i], q_all[i])

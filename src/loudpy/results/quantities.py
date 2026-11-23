@@ -92,6 +92,9 @@ QUANTITIES: dict[str, Quantity] = {
     "I_coil": _q("I_coil", "Coil current", "I", "A", "plain", True),
     "Z": _q("Z", "Electrical impedance", "Z_e", "Ω", "plain", True),
     "Ze": _q("Ze", "Blocked electrical impedance", "Z_{e,b}", "Ω", "plain", True),
+    "voltage": _q("voltage", "Voltage", "V", "V", "plain", True),
+    "current": _q("current", "Current", "I", "A", "plain", True),
+    "transfer": _q("transfer", "Transfer function", "H", "", "plain", True),
     # modal / mechanical scalars
     "zeta": _q("zeta", "Damping ratio", r"\zeta", ""),
     "s_eig": _q("s_eig", "Eigenvalue", "s", "rad/s", "plain", True),

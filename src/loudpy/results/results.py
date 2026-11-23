@@ -419,8 +419,34 @@ class FrequencyResults(Results):
             return cs.pop()
         raise ResultsError("give the speed of sound c= (these results do not describe one air)")
 
+    @property
+    def circuit(self):
+        """The circuit of a circuit-driven response over frequency (loudpy.circuit.CircuitResponse: voltage(node),
+        current(part), impedance(part), input_impedance(), transfer(node))."""
+        from loudpy.circuit import Circuit, CircuitResponse
+        data = self.meta.get("circuit") or (getattr(self, "attachments", None) or {}).get("circuit", {}).get("meta")
+        if not data:
+            raise ResultsError("these results were not driven by a circuit (lp.Circuit)")
+        return CircuitResponse(Circuit.from_dict(data), self.frequencies, self.extra("e"))
+
+    def input_impedance(self, source: str | None = None) -> Data:
+        """The impedance the amplifier of a circuit-driven response sees [Ω]."""
+        return self.circuit.input_impedance(source)
+
+    def voltage(self, node: str, ref: str = "0") -> Data:
+        """A circuit node's voltage [V]."""
+        return self.circuit.voltage(node, ref)
+
+    def current(self, part: str) -> Data:
+        """The current through a circuit part [A]."""
+        return self.circuit.current(part)
+
+    def transfer(self, node: str, source: str | None = None) -> Data:
+        """A circuit node's voltage over its source's U."""
+        return self.circuit.transfer(node, source)
+
     def impedance(self) -> Data:
-        """Electrical input impedance Z = U / I_coil over frequency (voltage drive) [Ω]."""
+        """Electrical input impedance Z = U / I_coil over frequency (voltage drive; a circuit: the coil's) [Ω]."""
         if "I_coil" not in self.scalars:
             raise ResultsError("no coil current in these results (lp.Voltage drive needed)")
         return Data(self.extra("U") / self.extra("I_coil"), {"f": self.frequencies}, "Z", meta=self._meta())
