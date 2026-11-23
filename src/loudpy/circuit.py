@@ -46,6 +46,7 @@ class Transfer:
     den: list = field(default_factory=lambda: [[1.0]])
     gain: float = 1.0
     delay: float = 0.0
+    parts: list = field(default_factory=list)              # the stages it was made of: [{"type", "params"}]
 
     def __call__(self, s):
         h = complex(self.gain) * np.exp(-s * self.delay)
@@ -54,7 +55,8 @@ class Transfer:
         return h
 
     def __mul__(self, other: "Transfer") -> "Transfer":
-        return Transfer(self.num + other.num, self.den + other.den, self.gain * other.gain, self.delay + other.delay)
+        return Transfer(self.num + other.num, self.den + other.den, self.gain * other.gain, self.delay + other.delay,
+                        self.parts + other.parts)
 
     def response(self, freqs) -> np.ndarray:
         """H(jω) at the frequencies [Hz]."""
@@ -65,19 +67,26 @@ def _w(f):
     return 2 * math.pi * float(f)
 
 
+def _stage(tf: Transfer, name: str, **params) -> Transfer:
+    """A transfer function that remembers the stage it is (its block: loudpy.schema)."""
+    tf.parts = [{"type": f"circuit.{name}", "params": params}]
+    return tf
+
+
 def gain(db: float) -> Transfer:
     """A gain [dB]."""
-    return Transfer(gain=10 ** (db / 20))
+    return _stage(Transfer(gain=10 ** (db / 20)), "gain", db=db)
 
 
 def delay(t: float) -> Transfer:
     """A pure delay [s]."""
-    return Transfer(delay=float(t))
+    return _stage(Transfer(delay=float(t)), "delay", t=t)
 
 
 def biquad(num, den) -> Transfer:
     """A section num(s)/den(s), coefficients from the highest power of s down."""
-    return Transfer([list(map(float, num))], [list(map(float, den))])
+    num, den = list(map(float, num)), list(map(float, den))
+    return _stage(Transfer([num], [den]), "biquad", num=num, den=den)
 
 
 def butterworth(order: int, fc: float, kind: str = "low") -> Transfer:
@@ -96,7 +105,7 @@ def butterworth(order: int, fc: float, kind: str = "low") -> Transfer:
     if n % 2:                                                     # the real pole
         den.append([1.0, w])
         num.append([w] if kind == "low" else [1.0, 0.0])
-    return Transfer(num, den)
+    return _stage(Transfer(num, den), "butterworth", order=n, fc=fc, kind=kind)
 
 
 def linkwitz_riley(order: int, fc: float, kind: str = "low") -> Transfer:
@@ -105,27 +114,29 @@ def linkwitz_riley(order: int, fc: float, kind: str = "low") -> Transfer:
     if int(order) % 2 or int(order) < 2:
         raise ModelError("linkwitz_riley: an even order (2, 4, 8 …)")
     b = butterworth(int(order) // 2, fc, kind)
-    return b * b
+    return _stage(b * b, "linkwitz_riley", order=int(order), fc=fc, kind=kind)
 
 
 def peq(f0: float, gain_db: float, q: float) -> Transfer:
     """A parametric EQ (peaking) at f0 [Hz], gain [dB], quality factor q (the analog RBJ form)."""
     a, w = 10 ** (gain_db / 40), _w(f0)
-    return biquad([1.0, a * w / q, w * w], [1.0, w / (a * q), w * w])
+    return _stage(Transfer([[1.0, a * w / q, w * w]], [[1.0, w / (a * q), w * w]]), "peq", f0=f0, gain_db=gain_db,
+                  q=q)
 
 
 def low_shelf(f0: float, gain_db: float, q: float = 1 / math.sqrt(2)) -> Transfer:
     """A low shelf at f0 [Hz], gain [dB] below it (the analog RBJ form)."""
     a, w = 10 ** (gain_db / 40), _w(f0)
     r = math.sqrt(a) / q * w
-    return Transfer([[a, a * r, a * a * w * w]], [[a, r, w * w]])
+    return _stage(Transfer([[a, a * r, a * a * w * w]], [[a, r, w * w]]), "low_shelf", f0=f0, gain_db=gain_db, q=q)
 
 
 def high_shelf(f0: float, gain_db: float, q: float = 1 / math.sqrt(2)) -> Transfer:
     """A high shelf at f0 [Hz], gain [dB] above it (the analog RBJ form)."""
     a, w = 10 ** (gain_db / 40), _w(f0)
     r = math.sqrt(a) / q * w
-    return Transfer([[a * a, a * r, a * w * w]], [[1.0, r, a * w * w]])
+    return _stage(Transfer([[a * a, a * r, a * w * w]], [[1.0, r, a * w * w]]), "high_shelf", f0=f0,
+                  gain_db=gain_db, q=q)
 
 
 # ── coil models (the magnetic side): Z(s) of the blocked coil, and its force factor ─────────────────────────────────
@@ -227,6 +238,9 @@ class Source:
     U: complex = 1.0
     R_out: float = 0.0
 
+    def __post_init__(self):
+        self.U = complex(self.U)
+
 
 @dataclass
 class Filter:
@@ -235,7 +249,17 @@ class Filter:
     name: str
     inp: str
     out: str
-    H: Transfer = field(default_factory=Transfer)
+    H: Any = field(default_factory=Transfer)
+
+    def __post_init__(self):
+        if isinstance(self.H, (list, tuple)):                      # its stages (blocks): their product
+            h = self.H[0] if self.H else Transfer()
+            for t in self.H[1:]:
+                h = h * t
+            self.H = h
+        if not isinstance(self.H, Transfer):
+            raise ModelError(f"filter {self.name}: H is a transfer function (loudpy.circuit: butterworth, "
+                             f"linkwitz_riley, peq …), got {self.H!r}")
 
 
 @dataclass
@@ -419,7 +443,7 @@ class Circuit:
         """The circuit as plain data (JSON): its parts with their values."""
         def value(v):
             if isinstance(v, Transfer):
-                return {"num": v.num, "den": v.den, "gain": v.gain, "delay": v.delay}
+                return {"num": v.num, "den": v.den, "gain": v.gain, "delay": v.delay, "parts": v.parts}
             if isinstance(v, COIL_MODELS):
                 return {"type": type(v).__name__, **{k: getattr(v, k) for k in v.__dataclass_fields__}}
             if isinstance(v, complex):
@@ -503,3 +527,180 @@ class CircuitResponse:
         src = [p for p in self.circuit.parts if isinstance(p, Source)]
         p = src[0] if source is None else self.circuit[source]
         return self._data(self._v(node) / complex(p.U), "transfer", at=node)
+
+
+# ── SPICE netlists ───────────────────────────────────────────────────────────────────────────────────────────────
+_SI = {"t": 1e12, "g": 1e9, "meg": 1e6, "k": 1e3, "mil": 25.4e-6, "m": 1e-3, "u": 1e-6, "µ": 1e-6, "n": 1e-9,
+       "p": 1e-12, "f": 1e-15}
+
+
+def spice_value(text: str) -> float:
+    """A SPICE number with its scale suffix and unit ("4.7k", "10uF", "1.5mH", "2Meg") → a float."""
+    import re
+    m = re.match(r"^([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)(meg|mil|[tgkmunpfµ])?", str(text).strip(), re.I)
+    if m is None:
+        raise ModelError(f"{text!r} is not a SPICE number")
+    return float(m.group(1)) * _SI.get((m.group(2) or "").lower(), 1.0)
+
+
+def _laplace(expr: str) -> Transfer:
+    """A rational function of s written as an expression (LTspice's Laplace=…: + − * / ** ^, numbers, s)."""
+    import ast
+    P = np.polynomial.polynomial
+
+    def rat(node):
+        if isinstance(node, ast.Expression):
+            return rat(node.body)
+        if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+            return np.array([float(node.value)]), np.array([1.0])
+        if isinstance(node, ast.Name) and node.id.lower() == "s":
+            return np.array([0.0, 1.0]), np.array([1.0])
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd)):
+            n, d = rat(node.operand)
+            return (-n if isinstance(node.op, ast.USub) else n), d
+        if isinstance(node, ast.BinOp):
+            (an, ad), op = rat(node.left), node.op
+            if isinstance(op, ast.Pow):
+                k = node.right
+                if not (isinstance(k, ast.Constant) and float(k.value).is_integer() and k.value >= 0):
+                    raise ModelError(f"Laplace={expr}: a power must be a whole number ≥ 0")
+                return P.polypow(an, int(k.value)), P.polypow(ad, int(k.value))
+            bn, bd = rat(node.right)
+            if isinstance(op, ast.Add):
+                return P.polyadd(P.polymul(an, bd), P.polymul(bn, ad)), P.polymul(ad, bd)
+            if isinstance(op, ast.Sub):
+                return P.polysub(P.polymul(an, bd), P.polymul(bn, ad)), P.polymul(ad, bd)
+            if isinstance(op, ast.Mult):
+                return P.polymul(an, bn), P.polymul(ad, bd)
+            if isinstance(op, ast.Div):
+                return P.polymul(an, bd), P.polymul(ad, bn)
+        raise ModelError(f"Laplace={expr}: only numbers, s, + − * / and whole powers")
+    num, den = rat(ast.parse(expr.replace("^", "**"), mode="eval"))
+    return biquad(list(num[::-1]), list(den[::-1]))
+
+
+def _poly_text(c) -> str:
+    """A polynomial in s (coefficients from the highest power) as an expression."""
+    n = len(c) - 1
+    terms = [f"{float(a):.12g}" + ("" if k == n else "*s" if n - k == 1 else f"*s**{n - k}")
+             for k, a in enumerate(c) if a != 0]
+    return "(" + ("+".join(terms).replace("+-", "-") or "0") + ")"
+
+
+def _laplace_text(H: Transfer) -> str:
+    out = [f"{H.gain:.12g}"] + [f"{_poly_text(n)}/{_poly_text(d)}" for n, d in zip(H.num, H.den)]
+    if H.delay:
+        out.append(f"exp(-s*{H.delay:.12g})")
+    return "*".join(out)
+
+
+def to_spice(circuit: "Circuit", title: str = "loudpy circuit") -> str:
+    """
+    The circuit as a SPICE netlist (LTspice reads it): R, L, C as they are; the amplifier as V (AC) behind its
+    output resistance; a filter block as a Laplace voltage source (E … Laplace=…, LTspice's); a coil as its blocked
+    R (and L: Semi n = 1, LR-2) — each of those preceded by a "* loudpy {…}" line holding the part exactly, which
+    from_spice reads back instead of the approximation.
+    """
+    import json
+    lines = [f"* {title}", "* written by loudpy (lp.circuit.to_spice): '* loudpy' lines hold parts exactly"]
+
+    def nm(prefix, name):
+        return name if name[:1].upper() == prefix else f"{prefix}{name}"
+    for p in circuit.parts:
+        if isinstance(p, Resistor):
+            lines.append(f"{nm('R', p.name)} {p.a} {p.b} {p.R:.12g}")
+        elif isinstance(p, Capacitor):
+            lines.append(f"{nm('C', p.name)} {p.a} {p.b} {p.C:.12g}")
+        elif isinstance(p, Inductor):
+            lines.append(f"{nm('L', p.name)} {p.a} {p.b} {p.L:.12g}")
+        else:
+            part = {"type": type(p).__name__, **{k: v for k, v in Circuit([p]).to_dict()["parts"][0].items()
+                                                  if k != "type"}}
+            lines.append("* loudpy " + json.dumps(part))
+            if isinstance(p, Source):
+                u = complex(p.U)
+                node = p.a if not p.R_out else f"{p.name}_int"
+                lines.append(f"{nm('V', p.name)} {node} {p.b} AC {abs(u):.12g} {np.degrees(np.angle(u)):.12g}")
+                if p.R_out:
+                    lines.append(f"R{p.name}_out {node} {p.a} {p.R_out:.12g}")
+            elif isinstance(p, Filter):
+                lines.append(f"{nm('E', p.name)} {p.out} 0 {p.inp} 0 Laplace={_laplace_text(p.H)}")
+            elif isinstance(p, Coil):
+                m = p.model
+                Le = getattr(m, "Le", 0.0) if getattr(m, "n", 1.0) == 1.0 else 0.0
+                if Le:
+                    lines += [f"R{p.name}_Re {p.a} {p.name}_n {m.Re:.12g}", f"L{p.name}_Le {p.name}_n {p.b} {Le:.12g}"]
+                else:
+                    lines.append(f"R{p.name}_Re {p.a} {p.b} {m.Re:.12g}")
+            lines.append("* loudpy end")
+    return "\n".join(lines + [".end", ""])
+
+
+def from_spice(text: str) -> "Circuit":
+    """
+    A circuit from a SPICE netlist (LTspice's, ngspice's): R, L, C; V (its AC amplitude and phase, else its DC
+    value) as the amplifier; E (a voltage-controlled source to ground: its gain, or LTspice's Laplace=…) as a filter
+    block; "* loudpy {…}" lines (to_spice) as the parts they hold, exactly. Nodes GND / gnd are the ground "0".
+    Dot commands are left out; other elements (diodes, transistors, subcircuits) are refused.
+    """
+    import json
+    lines: list[str] = []
+    for raw in str(text).splitlines():
+        line = raw.strip()
+        if line.startswith("+") and lines:
+            lines[-1] += " " + line[1:].strip()
+        elif line:
+            lines.append(line)
+    parts, skip, bad = [], False, []
+
+    def node(n):
+        return "0" if n.lower() == "gnd" else n
+    for line in lines:
+        low = line.lower()
+        if low.startswith("* loudpy end"):
+            skip = False
+            continue
+        if low.startswith("* loudpy {"):
+            parts.extend(Circuit.from_dict({"parts": [json.loads(line[len("* loudpy "):])]}).parts)
+            skip = True
+            continue
+        if skip or line.startswith(("*", ";", ".")):
+            continue
+        tok = line.split()
+        kind, name = tok[0][0].upper(), tok[0]
+        try:
+            if kind in "RLC":
+                v = spice_value(tok[3])
+                cls = {"R": Resistor, "L": Inductor, "C": Capacitor}[kind]
+                parts.append(cls(name, node(tok[1]), node(tok[2]), v))
+            elif kind == "V":
+                rest = [t.lower() for t in tok[3:]]
+                if "ac" in rest:
+                    i = rest.index("ac")
+                    mag = spice_value(tok[3 + i + 1]) if len(tok) > 4 + i else 1.0
+                    ph = spice_value(tok[3 + i + 2]) if len(tok) > 5 + i and not rest[i + 2].isalpha() else 0.0
+                    u = mag * np.exp(1j * np.radians(ph))
+                else:
+                    vals = [t for t in tok[3:] if t.lower() != "dc"]
+                    u = spice_value(vals[0]) if vals else 1.0
+                parts.append(Source(name, node(tok[1]), node(tok[2]), U=complex(u)))
+            elif kind == "E":
+                if node(tok[2]) != "0" or node(tok[4]) != "0":
+                    raise ModelError(f"{name}: a filter block reads and drives nodes to ground (E … out 0 in 0 …)")
+                tail = " ".join(tok[5:])
+                if tail.lower().startswith("laplace"):
+                    H = _laplace(tail.split("=", 1)[1].strip().strip("{}"))
+                else:
+                    H = biquad([spice_value(tok[5])], [1.0])
+                parts.append(Filter(name, node(tok[3]), node(tok[1]), H))
+            else:
+                bad.append(name)
+        except (IndexError, ValueError) as e:
+            raise ModelError(f"SPICE line {line!r}: {e}") from None
+    if bad:
+        raise ModelError(f"SPICE elements loudpy does not model: {bad} (R, L, C, V, E only)")
+    return Circuit(*parts)
+
+
+Circuit.to_spice = to_spice                  # type: ignore[attr-defined]
+Circuit.from_spice = staticmethod(from_spice)  # type: ignore[attr-defined]

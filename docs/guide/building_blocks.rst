@@ -565,6 +565,26 @@ Voltage drive of an electro-mechanical coil: amplitude [V], resistance Re [Ω], 
      - ``1.0``
      - semi-inductance exponent: Z_L = Le (jω)^n (1: a plain inductance) Range: > 0, ≤ 1.
 
+``lp.Circuit``
+^^^^^^^^^^^^^^
+
+The electrical side of a loudspeaker (module docstring): parts on named nodes, "0" the ground.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 18 14 8 16 44
+
+   * - parameter
+     - value
+     - unit
+     - default
+     - meaning
+   * - ``parts``
+     - blocks (circuit.parts)
+     - 
+     - required
+     - the amplifier, filter blocks, passive parts and the drivers' coils, on named nodes ('0': the ground)
+
 Selectors
 ---------
 
@@ -1912,6 +1932,605 @@ One panel of elastic cabinet walls (Scene.walls(panels={key: Panel(…)})): its 
      - ``None``
      - its damping (empty: the walls')
 
+Circuit parts
+-------------
+
+``lp.circuit.Source``
+^^^^^^^^^^^^^^^^^^^^^
+
+The amplifier: a voltage U [V] (complex amplitude) between a (+) and b (−) behind its output resistance R_out [Ω]; its current is the one it delivers out of a.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 18 14 8 16 44
+
+   * - parameter
+     - value
+     - unit
+     - default
+     - meaning
+   * - ``name``
+     - text
+     - 
+     - required
+     - its name
+   * - ``a``
+     - text
+     - 
+     - required
+     - its + node
+   * - ``b``
+     - text
+     - 
+     - ``'0'``
+     - its − node ('0': the ground)
+   * - ``U``
+     - complex
+     - V
+     - ``1.0``
+     - the amplifier's voltage (a complex amplitude)
+   * - ``R_out``
+     - number
+     - Ω
+     - ``0.0``
+     - its output resistance Range: ≥ 0.
+
+``lp.circuit.Filter``
+^^^^^^^^^^^^^^^^^^^^^
+
+An ideal filter block (an active or DSP filter): v(out) = H(s) v(inp), both to ground; it drives `out` whatever the load.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 18 14 8 16 44
+
+   * - parameter
+     - value
+     - unit
+     - default
+     - meaning
+   * - ``name``
+     - text
+     - 
+     - required
+     - its name
+   * - ``inp``
+     - text
+     - 
+     - required
+     - the node it reads (to ground)
+   * - ``out``
+     - text
+     - 
+     - required
+     - the node it drives (to ground)
+   * - ``H``
+     - blocks (circuit.filters)
+     - 
+     - ``Transfer(num=[[1.0]], den=[[1.0]], gain=1.0, delay=0.0, parts=[])``
+     - its stages, cascaded: low / high pass, EQ, shelving, gain, delay
+
+``lp.circuit.Resistor``
+^^^^^^^^^^^^^^^^^^^^^^^
+
+A resistance R [Ω] between nodes a and b.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 18 14 8 16 44
+
+   * - parameter
+     - value
+     - unit
+     - default
+     - meaning
+   * - ``name``
+     - text
+     - 
+     - required
+     - its name
+   * - ``a``
+     - text
+     - 
+     - required
+     - a node
+   * - ``b``
+     - text
+     - 
+     - required
+     - the other node
+   * - ``R``
+     - number
+     - Ω
+     - required
+     - its resistance Range: > 0.
+
+``lp.circuit.Capacitor``
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+A capacitance C [F] between nodes a and b.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 18 14 8 16 44
+
+   * - parameter
+     - value
+     - unit
+     - default
+     - meaning
+   * - ``name``
+     - text
+     - 
+     - required
+     - its name
+   * - ``a``
+     - text
+     - 
+     - required
+     - a node
+   * - ``b``
+     - text
+     - 
+     - required
+     - the other node
+   * - ``C``
+     - number
+     - F
+     - required
+     - its capacitance Range: > 0.
+
+``lp.circuit.Inductor``
+^^^^^^^^^^^^^^^^^^^^^^^
+
+An inductance L [H] between nodes a and b (its current a → b an unknown).
+
+.. list-table::
+   :header-rows: 1
+   :widths: 18 14 8 16 44
+
+   * - parameter
+     - value
+     - unit
+     - default
+     - meaning
+   * - ``name``
+     - text
+     - 
+     - required
+     - its name
+   * - ``a``
+     - text
+     - 
+     - required
+     - a node
+   * - ``b``
+     - text
+     - 
+     - required
+     - the other node
+   * - ``L``
+     - number
+     - H
+     - required
+     - its inductance Range: > 0.
+
+``lp.circuit.Coil``
+^^^^^^^^^^^^^^^^^^^
+
+A driver's coil between nodes a and b: its blocked impedance and force factor (model: Semi, Leach, LR2, Wright) and its driver (a scene's driver by name; None: the coil of a 2D model).
+
+.. list-table::
+   :header-rows: 1
+   :widths: 18 14 8 16 44
+
+   * - parameter
+     - value
+     - unit
+     - default
+     - meaning
+   * - ``name``
+     - text
+     - 
+     - required
+     - its name
+   * - ``a``
+     - text
+     - 
+     - required
+     - its + node
+   * - ``b``
+     - text
+     - 
+     - required
+     - its − node
+   * - ``model``
+     - block (circuit.coils)
+     - 
+     - required
+     - the blocked coil and its force factor Bl
+   * - ``driver``
+     - text
+     - 
+     - ``None``
+     - the scene's driver it moves (empty: a 2D model's coil)
+
+Filter stages
+-------------
+
+``lp.circuit.butterworth``
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A Butterworth low or high pass ("low" / "high") of `order` at fc [Hz] (−3 dB there).
+
+.. list-table::
+   :header-rows: 1
+   :widths: 18 14 8 16 44
+
+   * - parameter
+     - value
+     - unit
+     - default
+     - meaning
+   * - ``order``
+     - integer
+     - 
+     - required
+     - 1, 2, 3 … Range: > 0.
+   * - ``fc``
+     - number
+     - Hz
+     - required
+     - −3 dB frequency Range: > 0.
+   * - ``kind``
+     - choice
+     - 
+     - ``'low'``
+     - low or high pass Choices: low, high.
+
+``lp.circuit.linkwitz_riley``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A Linkwitz–Riley low or high pass of even `order` (2, 4, 8) at fc [Hz]: two Butterworths of half the order (−6 dB at fc; the low and high pass sum flat, in phase for order 4).
+
+.. list-table::
+   :header-rows: 1
+   :widths: 18 14 8 16 44
+
+   * - parameter
+     - value
+     - unit
+     - default
+     - meaning
+   * - ``order``
+     - integer
+     - 
+     - required
+     - an even order: 2, 4, 8 Range: > 0.
+   * - ``fc``
+     - number
+     - Hz
+     - required
+     - crossover frequency (−6 dB) Range: > 0.
+   * - ``kind``
+     - choice
+     - 
+     - ``'low'``
+     - low or high pass Choices: low, high.
+
+``lp.circuit.peq``
+^^^^^^^^^^^^^^^^^^
+
+A parametric EQ (peaking) at f0 [Hz], gain [dB], quality factor q (the analog RBJ form).
+
+.. list-table::
+   :header-rows: 1
+   :widths: 18 14 8 16 44
+
+   * - parameter
+     - value
+     - unit
+     - default
+     - meaning
+   * - ``f0``
+     - number
+     - Hz
+     - required
+     - centre frequency Range: > 0.
+   * - ``gain_db``
+     - number
+     - dB
+     - required
+     - gain at f0
+   * - ``q``
+     - number
+     - 
+     - required
+     - quality factor Range: > 0.
+
+``lp.circuit.low_shelf``
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+A low shelf at f0 [Hz], gain [dB] below it (the analog RBJ form).
+
+.. list-table::
+   :header-rows: 1
+   :widths: 18 14 8 16 44
+
+   * - parameter
+     - value
+     - unit
+     - default
+     - meaning
+   * - ``f0``
+     - number
+     - Hz
+     - required
+     - corner frequency Range: > 0.
+   * - ``gain_db``
+     - number
+     - dB
+     - required
+     - gain below
+   * - ``q``
+     - number
+     - 
+     - ``0.7071067811865475``
+     - slope (0.707: Butterworth) Range: > 0.
+
+``lp.circuit.high_shelf``
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A high shelf at f0 [Hz], gain [dB] above it (the analog RBJ form).
+
+.. list-table::
+   :header-rows: 1
+   :widths: 18 14 8 16 44
+
+   * - parameter
+     - value
+     - unit
+     - default
+     - meaning
+   * - ``f0``
+     - number
+     - Hz
+     - required
+     - corner frequency Range: > 0.
+   * - ``gain_db``
+     - number
+     - dB
+     - required
+     - gain above
+   * - ``q``
+     - number
+     - 
+     - ``0.7071067811865475``
+     - slope (0.707: Butterworth) Range: > 0.
+
+``lp.circuit.gain``
+^^^^^^^^^^^^^^^^^^^
+
+A gain [dB].
+
+.. list-table::
+   :header-rows: 1
+   :widths: 18 14 8 16 44
+
+   * - parameter
+     - value
+     - unit
+     - default
+     - meaning
+   * - ``db``
+     - number
+     - dB
+     - required
+     - gain
+
+``lp.circuit.delay``
+^^^^^^^^^^^^^^^^^^^^
+
+A pure delay [s].
+
+.. list-table::
+   :header-rows: 1
+   :widths: 18 14 8 16 44
+
+   * - parameter
+     - value
+     - unit
+     - default
+     - meaning
+   * - ``t``
+     - number
+     - s
+     - required
+     - delay Range: ≥ 0.
+
+``lp.circuit.biquad``
+^^^^^^^^^^^^^^^^^^^^^
+
+A section num(s)/den(s), coefficients from the highest power of s down.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 18 14 8 16 44
+
+   * - parameter
+     - value
+     - unit
+     - default
+     - meaning
+   * - ``num``
+     - numbers
+     - 
+     - required
+     - numerator coefficients (highest power of s first)
+   * - ``den``
+     - numbers
+     - 
+     - required
+     - denominator coefficients (highest power of s first)
+
+Coil models
+-----------
+
+``lp.circuit.Semi``
+^^^^^^^^^^^^^^^^^^^
+
+Re + (s)ⁿ Le: a resistance and a (semi-)inductance (n = 1: an inductance; n < 1: eddy-current losses).
+
+.. list-table::
+   :header-rows: 1
+   :widths: 18 14 8 16 44
+
+   * - parameter
+     - value
+     - unit
+     - default
+     - meaning
+   * - ``Re``
+     - number
+     - Ω
+     - required
+     - resistance Range: > 0.
+   * - ``Bl``
+     - number
+     - T·m
+     - required
+     - force factor
+   * - ``Le``
+     - number
+     - H
+     - ``0.0``
+     - (semi-)inductance Range: ≥ 0.
+   * - ``n``
+     - number
+     - 
+     - ``1.0``
+     - exponent: Le (jω)^n (1: an inductance) Range: > 0, ≤ 1.
+
+``lp.circuit.Leach``
+^^^^^^^^^^^^^^^^^^^^
+
+Leach's model: Re + K (s)ⁿ (the semi-inductance under its usual names).
+
+.. list-table::
+   :header-rows: 1
+   :widths: 18 14 8 16 44
+
+   * - parameter
+     - value
+     - unit
+     - default
+     - meaning
+   * - ``Re``
+     - number
+     - Ω
+     - required
+     - resistance Range: > 0.
+   * - ``Bl``
+     - number
+     - T·m
+     - required
+     - force factor
+   * - ``K``
+     - number
+     - 
+     - ``0.0``
+     - Leach's K Range: ≥ 0.
+   * - ``n``
+     - number
+     - 
+     - ``0.7``
+     - Leach's exponent Range: > 0, ≤ 1.
+
+``lp.circuit.LR2``
+^^^^^^^^^^^^^^^^^^
+
+The LR-2 model: Re + s Le + (R2 ∥ s L2) — the coil inductance and the eddy-current branch.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 18 14 8 16 44
+
+   * - parameter
+     - value
+     - unit
+     - default
+     - meaning
+   * - ``Re``
+     - number
+     - Ω
+     - required
+     - resistance Range: > 0.
+   * - ``Bl``
+     - number
+     - T·m
+     - required
+     - force factor
+   * - ``Le``
+     - number
+     - H
+     - ``0.0``
+     - inductance Range: ≥ 0.
+   * - ``R2``
+     - number
+     - Ω
+     - ``0.0``
+     - eddy-current resistance Range: ≥ 0.
+   * - ``L2``
+     - number
+     - H
+     - ``0.0``
+     - eddy-current inductance Range: ≥ 0.
+
+``lp.circuit.Wright``
+^^^^^^^^^^^^^^^^^^^^^
+
+Wright's empirical model: Re + Krm ω^Erm + j Kxm ω^Exm (ω = 2πf).
+
+.. list-table::
+   :header-rows: 1
+   :widths: 18 14 8 16 44
+
+   * - parameter
+     - value
+     - unit
+     - default
+     - meaning
+   * - ``Re``
+     - number
+     - Ω
+     - required
+     - resistance Range: > 0.
+   * - ``Bl``
+     - number
+     - T·m
+     - required
+     - force factor
+   * - ``Krm``
+     - number
+     - 
+     - ``0.0``
+     - resistive coefficient Range: ≥ 0.
+   * - ``Erm``
+     - number
+     - 
+     - ``1.0``
+     - resistive exponent
+   * - ``Kxm``
+     - number
+     - 
+     - ``0.0``
+     - reactive coefficient Range: ≥ 0.
+   * - ``Exm``
+     - number
+     - 
+     - ``1.0``
+     - reactive exponent
+
 Not building blocks
 -------------------
 
@@ -1955,5 +2574,4 @@ Public names of loudpy that a simulation is not made of:
 - ``plot``: module
 - ``schema``: module: this description
 - ``Document``: a whole simulation (model or scene, and studies) as nodes of these blocks
-- ``Circuit``: the electrical side of a drive (loudpy.circuit): its parts as data (Circuit.to_dict)
-- ``circuit``: module: amplifier, filter blocks, passive parts, coil models
+- ``circuit``: module: circuit.Source / Filter / Coil …, its filter stages and coil models are blocks

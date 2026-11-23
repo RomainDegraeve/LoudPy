@@ -42,3 +42,13 @@ current and voltage per frequency (``res.impedance()``) and the whole circuit (`
 
 **Alone.** ``circuit.solve(freqs)`` solves the circuit with its coils blocked (no back-EMF): the filters'
 transfer functions, the loads; ``Circuit.to_dict`` / ``from_dict`` give it as plain data (the results keep it).
+
+**SPICE netlists.** ``circuit.to_spice(title)`` writes a netlist LTspice reads (the amplifier as ``V … AC``, a filter
+block as LTspice's ``E … Laplace=…``, a coil as its blocked R and L), each part SPICE cannot hold exactly preceded by
+a ``* loudpy {…}`` line; ``lp.Circuit.from_spice(text)`` reads such a netlist back exactly, and plain SPICE ones:
+R, L, C, V (its AC amplitude and phase), E (a gain or ``Laplace=``), scale suffixes (``4.7k``, ``10uF``, ``2Meg``)
+and ``GND``. Coils are added in loudpy (a netlist has no ``Bl``).
+
+**In documents and scripts.** A circuit is a node of the simulation document (``lp.schema``: ``Circuit`` and the
+``circuit.*`` blocks; a filter's stages kept as they were made), so a saved study keeps its circuit and its script
+writes it as ``lp.Circuit(lp.circuit.Source(…), …)``.

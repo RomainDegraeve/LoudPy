@@ -69,6 +69,17 @@ SAMPLES = [
     lp.MeshSize(lp.Near((0.0, 0.1)) - lp.Group("x"), 5e-4),
     lp.Material("x", rho=1000.0, E=1e9, nu=0.3, rayleigh=(1.0, 1e-6), loss_factor=0.02),
     lp.Rayleigh(alpha=2.0), lp.Voltage(2.83, Re=8.0, Bl=7.0, Le=4e-3, n=0.8), lp.Force(1 + 2j),
+    lp.Circuit(lp.circuit.Source("amp", "a", U=2.83, R_out=0.1),
+               lp.circuit.Filter("x", "a", "b", lp.circuit.linkwitz_riley(4, 2e3) * lp.circuit.peq(80.0, 3.0, 1.0)
+                                 * lp.circuit.low_shelf(100.0, 2.0) * lp.circuit.high_shelf(5e3, -2.0)
+                                 * lp.circuit.gain(-1.0) * lp.circuit.delay(1e-4) * lp.circuit.biquad([1.0], [1.0, 1e3])
+                                 * lp.circuit.butterworth(1, 30.0, "high")),
+               lp.circuit.Resistor("R", "b", "c", 0.5), lp.circuit.Capacitor("C", "c", "0", 1e-5),
+               lp.circuit.Inductor("L", "c", "d", 1e-4),
+               lp.circuit.Coil("vc", "d", "0", lp.circuit.LR2(5.6, 6.1, 3e-4, 2.0, 1e-4), driver="main")),
+    lp.Circuit(lp.circuit.Source("amp", "a"), lp.circuit.Coil("vc", "a", "0", lp.circuit.Semi(6.0, 5.0)),
+               lp.circuit.Coil("v2", "a", "0", lp.circuit.Leach(6.0, 5.0, 1e-3)),
+               lp.circuit.Coil("v3", "a", "0", lp.circuit.Wright(6.0, 5.0, 1e-3, 0.8, 1e-3, 0.7))),
     lp.PerWavelength(bands=[20, 1000], air_elements=8), lp.Output(fields=("u",), every=2, probes={"tip": (0.0, 0.01)}),
     lp.cabinets.Box(0.2, 0.3, 0.18, wall=0.015, braces=(lp.cabinets.Brace(0.08),),
                     ports=(lp.cabinets.Port((0.06, 0.06), 0.02, 0.06),)),

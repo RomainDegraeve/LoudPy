@@ -168,6 +168,7 @@ def _catalog() -> dict[str, Block]:
     import loudpy as lp
     from loudpy.geometry import selectors as sel
     from loudpy.scene import cabinets as cab
+    from loudpy import circuit as circ
 
     NAME = _p("name", "text", help="a label: nothing physical is read from it", group="Identity")
     ON = _p("on", "selection", help="the groups (or a selector) it applies to; default: the groups named like it",
@@ -286,6 +287,83 @@ def _catalog() -> dict[str, Block]:
             _p("Le", "number", "H", "coil (semi-)inductance", "Coil", min=0, min_inclusive=True),
             _p("n", "number", help="semi-inductance exponent: Z_L = Le (jω)^n (1: a plain inductance)",
                group="Coil", min=0, max=1, max_inclusive=True)]),
+        _make("Circuit", "drives", lp.Circuit, [
+            _p("parts", "blocks", help="the amplifier, filter blocks, passive parts and the drivers' coils, on named "
+               "nodes ('0': the ground)", group="Circuit", of="circuit.parts")], varargs="parts"),
+        # a circuit's parts (loudpy.circuit)
+        _make("circuit.Source", "circuit.parts", circ.Source, [
+            _p("name", "text", help="its name", group="Part"),
+            _p("a", "text", help="its + node", group="Nodes"),
+            _p("b", "text", help="its − node ('0': the ground)", group="Nodes"),
+            _p("U", "complex", "V", "the amplifier's voltage (a complex amplitude)", "Amplifier"),
+            _p("R_out", "number", "Ω", "its output resistance", "Amplifier", min=0, min_inclusive=True)]),
+        _make("circuit.Filter", "circuit.parts", circ.Filter, [
+            _p("name", "text", help="its name", group="Part"),
+            _p("inp", "text", help="the node it reads (to ground)", group="Nodes"),
+            _p("out", "text", help="the node it drives (to ground)", group="Nodes"),
+            _p("H", "blocks", help="its stages, cascaded: low / high pass, EQ, shelving, gain, delay",
+               group="Filter", of="circuit.filters")]),
+        _make("circuit.Resistor", "circuit.parts", circ.Resistor, [
+            _p("name", "text", help="its name", group="Part"), _p("a", "text", help="a node", group="Nodes"),
+            _p("b", "text", help="the other node", group="Nodes"),
+            _p("R", "number", "Ω", "its resistance", "Value", min=0)]),
+        _make("circuit.Capacitor", "circuit.parts", circ.Capacitor, [
+            _p("name", "text", help="its name", group="Part"), _p("a", "text", help="a node", group="Nodes"),
+            _p("b", "text", help="the other node", group="Nodes"),
+            _p("C", "number", "F", "its capacitance", "Value", min=0)]),
+        _make("circuit.Inductor", "circuit.parts", circ.Inductor, [
+            _p("name", "text", help="its name", group="Part"), _p("a", "text", help="a node", group="Nodes"),
+            _p("b", "text", help="the other node", group="Nodes"),
+            _p("L", "number", "H", "its inductance", "Value", min=0)]),
+        _make("circuit.Coil", "circuit.parts", circ.Coil, [
+            _p("name", "text", help="its name", group="Part"), _p("a", "text", help="its + node", group="Nodes"),
+            _p("b", "text", help="its − node", group="Nodes"),
+            _p("model", "block", help="the blocked coil and its force factor Bl", group="Coil", of="circuit.coils"),
+            _p("driver", "text", help="the scene's driver it moves (empty: a 2D model's coil)", group="Coil",
+               optional=True)]),
+        # a filter's stages
+        _make("circuit.butterworth", "circuit.filters", circ.butterworth, [
+            _p("order", "integer", help="1, 2, 3 …", min=0), _p("fc", "number", "Hz", "−3 dB frequency", min=0),
+            _p("kind", "choice", help="low or high pass", choices=("low", "high"))]),
+        _make("circuit.linkwitz_riley", "circuit.filters", circ.linkwitz_riley, [
+            _p("order", "integer", help="an even order: 2, 4, 8", min=0),
+            _p("fc", "number", "Hz", "crossover frequency (−6 dB)", min=0),
+            _p("kind", "choice", help="low or high pass", choices=("low", "high"))]),
+        _make("circuit.peq", "circuit.filters", circ.peq, [
+            _p("f0", "number", "Hz", "centre frequency", min=0), _p("gain_db", "number", "dB", "gain at f0"),
+            _p("q", "number", help="quality factor", min=0)]),
+        _make("circuit.low_shelf", "circuit.filters", circ.low_shelf, [
+            _p("f0", "number", "Hz", "corner frequency", min=0), _p("gain_db", "number", "dB", "gain below"),
+            _p("q", "number", help="slope (0.707: Butterworth)", min=0)]),
+        _make("circuit.high_shelf", "circuit.filters", circ.high_shelf, [
+            _p("f0", "number", "Hz", "corner frequency", min=0), _p("gain_db", "number", "dB", "gain above"),
+            _p("q", "number", help="slope (0.707: Butterworth)", min=0)]),
+        _make("circuit.gain", "circuit.filters", circ.gain, [_p("db", "number", "dB", "gain")]),
+        _make("circuit.delay", "circuit.filters", circ.delay, [_p("t", "number", "s", "delay", min=0,
+                                                                   min_inclusive=True)]),
+        _make("circuit.biquad", "circuit.filters", circ.biquad, [
+            _p("num", "numbers", help="numerator coefficients (highest power of s first)"),
+            _p("den", "numbers", help="denominator coefficients (highest power of s first)")]),
+        # coil models (the motor)
+        _make("circuit.Semi", "circuit.coils", circ.Semi, [
+            _p("Re", "number", "Ω", "resistance", min=0), _p("Bl", "number", "T·m", "force factor"),
+            _p("Le", "number", "H", "(semi-)inductance", min=0, min_inclusive=True),
+            _p("n", "number", help="exponent: Le (jω)^n (1: an inductance)", min=0, max=1, max_inclusive=True)]),
+        _make("circuit.Leach", "circuit.coils", circ.Leach, [
+            _p("Re", "number", "Ω", "resistance", min=0), _p("Bl", "number", "T·m", "force factor"),
+            _p("K", "number", help="Leach's K", min=0, min_inclusive=True),
+            _p("n", "number", help="Leach's exponent", min=0, max=1, max_inclusive=True)]),
+        _make("circuit.LR2", "circuit.coils", circ.LR2, [
+            _p("Re", "number", "Ω", "resistance", min=0), _p("Bl", "number", "T·m", "force factor"),
+            _p("Le", "number", "H", "inductance", min=0, min_inclusive=True),
+            _p("R2", "number", "Ω", "eddy-current resistance", min=0, min_inclusive=True),
+            _p("L2", "number", "H", "eddy-current inductance", min=0, min_inclusive=True)]),
+        _make("circuit.Wright", "circuit.coils", circ.Wright, [
+            _p("Re", "number", "Ω", "resistance", min=0), _p("Bl", "number", "T·m", "force factor"),
+            _p("Krm", "number", help="resistive coefficient", min=0, min_inclusive=True),
+            _p("Erm", "number", help="resistive exponent"),
+            _p("Kxm", "number", help="reactive coefficient", min=0, min_inclusive=True),
+            _p("Exm", "number", help="reactive exponent")]),
         # selectors
         _make("Group", "selectors", sel.Group, [
             _p("labels", "texts", help="names of physical groups of the geometry")], varargs="labels"),
@@ -535,7 +613,8 @@ def _catalog() -> dict[str, Block]:
 _CATALOG: dict[str, Block] | None = None
 SECTIONS = ("model", "materials", "regions", "boundaries", "mesh_controls", "damping", "drives",
             "selectors", "profiles", "studies", "study_options", "signals", "scene", "scene.cabinet",
-            "scene.cabinet_parts", "scene.drivers", "scene.placement", "scene.air", "scene.walls", "scene.panels")
+            "scene.cabinet_parts", "scene.drivers", "scene.placement", "scene.air", "scene.walls", "scene.panels",
+            "circuit.parts", "circuit.filters", "circuit.coils")
 
 # Public names of loudpy that are not building blocks of a simulation, and why (the completeness test reads this).
 NOT_BLOCKS = {
@@ -560,8 +639,7 @@ NOT_BLOCKS = {
     "cabinets": "module: cabinets.Box / Step / Brace / Port are blocks", "signals": "module: signals.* are blocks",
     "errors": "module", "progress": "module", "plot": "module", "schema": "module: this description",
     "Document": "a whole simulation (model or scene, and studies) as nodes of these blocks",
-    "Circuit": "the electrical side of a drive (loudpy.circuit): its parts as data (Circuit.to_dict)",
-    "circuit": "module: amplifier, filter blocks, passive parts, coil models",
+    "circuit": "module: circuit.Source / Filter / Coil …, its filter stages and coil models are blocks",
 }
 
 
@@ -616,6 +694,9 @@ def to_value(x) -> Any:
         return [to_value(v) for v in x]
     if isinstance(x, dict):
         return {str(k): to_value(v) for k, v in x.items()}
+    from loudpy.circuit import Transfer
+    if isinstance(x, Transfer):                                       # a filter's H: the stages it was made of
+        return [dict(p) for p in x.parts]
     return describe(x)
 
 
@@ -681,6 +762,8 @@ def _type_of(obj) -> str:
         return _SELECTOR_TYPES[name]
     if mod.endswith("scene.cabinets"):
         return f"cabinets.{name}"
+    if mod == "loudpy.circuit" and name != "Circuit":
+        return f"circuit.{name}"
     return name
 
 
@@ -899,7 +982,8 @@ SECTION_TITLES = {
     "profiles": "Wet profiles of a driver", "studies": "Studies", "study_options": "Study options",
     "signals": "Transient signals", "scene": "3D scene", "scene.cabinet": "Cabinets",
     "scene.cabinet_parts": "Cabinet parts", "scene.drivers": "Drivers", "scene.placement": "Driver placement",
-    "scene.air": "Scene air and meshes", "scene.walls": "Elastic walls", "scene.panels": "Wall panels"}
+    "scene.air": "Scene air and meshes", "scene.walls": "Elastic walls", "scene.panels": "Wall panels",
+    "circuit.parts": "Circuit parts", "circuit.filters": "Filter stages", "circuit.coils": "Coil models"}
 
 
 def reference_rst() -> str:
