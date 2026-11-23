@@ -137,7 +137,7 @@ class PerWavelength:
                 state = "missing"
             else:
                 state = "built" if self.band_model(model, b).mesh_reusable(path) else "out of date"
-            out.append(dict(what=f"air_{b['start']:.0f}", title=f"air {b['start']:g}–{b['top']:g} Hz", path=path,
+            out.append(dict(what=f"air_{b['start']:.0f}", title=f"air {b['start']:.0f}–{b['top']:.0f} Hz", path=path,
                             state=state, band=[b["start"], b["top"]]))
         return out
 
@@ -248,7 +248,7 @@ class FrequencyResponse(Study):
             band, f0 = plan["freqs"], plan["start"]
             band_model = rule.band_model(self.model, plan)
             band_model.mesh(plan["path"])
-            annotate(plan["path"], role=f"air {f0:g}–{plan['top']:g} Hz", band=[f0, plan["top"]],
+            annotate(plan["path"], role=f"air {f0:.0f}–{plan['top']:.0f} Hz", band=[f0, plan["top"]],
                      air_elements=rule.air_elements, size_at=rule.size_at)
             block, b = self._solve_block(band, label=f"{f0:.0f}Hz", model=band_model)
             block.meta.update(wavelength=plan["wavelength"], band_start=f0, band_top=plan["top"],
