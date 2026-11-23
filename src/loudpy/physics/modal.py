@@ -398,7 +398,28 @@ def add_driver_modes(b, w_s, zeta, S, R, kappa2, rho=RHO_AIR, c=C_AIR, eta_air=0
         b.add(Term(field, field, rho * np.asarray(R, complex), power=2))
 
 
-def solve_forced(freqs, F, w_s, zeta, S, R, kappa2, rho=RHO_AIR, c=C_AIR, eta_air=0.0):
+def add_coils(b, Fc, Bl, Re, Le, n, U, field="q"):
+    """
+    The drivers' coil circuits on a SystemBuilder (time convention e^{st}): one current per driver (field "I"),
+    coupled to the modal field `field` through the unit coil forces Fc (n_y, n_d; zero rows for the walls and
+    extra coordinates):
+
+        q row:  … − Fc diag(Bl) I                         (the coil force Bl I on each driver)
+        I row:  s diag(Bl) Fcᵀ q + diag(Re + sⁿ Le) I = U   (the back-EMF Bl v_coil, the blocked impedance)
+
+    The same equations as the 2D voltage drive (physics.builder): solved with the modes, not iterated.
+    """
+    from loudpy.physics.builder import Field, Load, Term
+    Fc = np.asarray(Fc, float)
+    Bl, Re, Le, n = (np.asarray(x, float).reshape(-1) for x in (Bl, Re, Le, n))
+    b.add_field(Field("I", Fc.shape[1]))
+    b.add(Term(field, "I", -Fc * Bl[None, :]),
+          Term("I", field, Bl[:, None] * Fc.T, power=1),
+          Term("I", "I", lambda z: np.diag(Re + Le * z ** n)))
+    b.add_load(Load("I", np.asarray(U, complex).reshape(-1)))
+
+
+def solve_forced(freqs, F, w_s, zeta, S, R, kappa2, rho=RHO_AIR, c=C_AIR, eta_air=0.0, coils=None):
     """
     Forced response of the coupled system from its modal data (see the module docstring):
     q (n_f, n_s) driver modal amplitudes, P (n_f, n_a) cavity modal pressures.
@@ -406,6 +427,8 @@ def solve_forced(freqs, F, w_s, zeta, S, R, kappa2, rho=RHO_AIR, c=C_AIR, eta_ai
     F may be (n_s, n_rhs), e.g. one unit coil force per driver (MultiDriver.coil_forces): then
     q is (n_f, n_s, n_rhs) and P (n_f, n_a, n_rhs), one factorisation per frequency.
     The system is a SystemBuilder (add_driver_modes) solved directly by BlockSolver.
+    coils: dict(Fc, Bl, Re, Le, n, U) of add_coils — a voltage drive: F is then ignored and the coil currents
+    I (n_f, n_d) are returned too: (q, P, I).
     """
     from loudpy.physics.builder import BlockSolver, Field, SystemBuilder
     F = np.asarray(F)
@@ -413,6 +436,20 @@ def solve_forced(freqs, F, w_s, zeta, S, R, kappa2, rho=RHO_AIR, c=C_AIR, eta_ai
     b = SystemBuilder()
     b.add_field(Field("q", len(w_s)))
     add_driver_modes(b, w_s, zeta, S, R if S is not None else None, kappa2, rho, c, eta_air)
+    if coils is not None:
+        add_coils(b, **coils)
+        solver = BlockSolver(b, small=["q", "I"])
+        q = np.zeros((len(freqs), len(w_s)), complex)
+        I = np.zeros((len(freqs), b.fields["I"].size), complex)
+        P = np.zeros((len(freqs), len(kappa2)), complex)
+        for i, f in enumerate(freqs):
+            w = 2 * np.pi * f
+            x = solver.solve(1j * w)[0]
+            q[i], I[i] = x["q"], x["I"]
+            if S is not None:
+                D = 1.0 / (kappa2 - (w / c) ** 2 + 1j * eta_air * np.sqrt(kappa2) * w / c)
+                P[i] = -rho * w ** 2 * D * (S.T @ q[i])
+        return q, P, I
     solver = BlockSolver(b, small="q")
     q = np.zeros((len(freqs), len(w_s)) + rhs, complex)
     P = np.zeros((len(freqs), len(kappa2)) + rhs, complex)
@@ -598,16 +635,20 @@ class DriverCavityCoupling:
         """Unit coil force of each driver (columns), or Σ_j a_j F_j (MultiDriver.coil_forces)."""
         return self.drivers.coil_forces(coil_nodes, amplitudes)
 
-    def forced(self, freqs, F, loaded=True):
+    def forced(self, freqs, F, loaded=True, coils=None):
         """
         Modal amplitudes q (n_f, n_s) and cavity modal pressures P (n_f, n_a); with F of shape
-        (n_s, n_rhs) (e.g. coil_forces), one response per column: the transfer matrix.
+        (n_s, n_rhs) (e.g. coil_forces), one response per column: the transfer matrix. coils (a voltage
+        drive, solve_forced): (q, P, I) with the coil currents.
         """
         F = np.asarray(F)
         if F.shape[0] < len(self.w_s):                               # driver forces: zero on the wall modes
             F = np.concatenate([F, np.zeros((len(self.w_s) - F.shape[0],) + F.shape[1:], F.dtype)])
+        if coils is not None and np.shape(coils["Fc"])[0] < len(self.w_s):   # zero rows on the wall modes
+            pad = np.zeros((len(self.w_s) - np.shape(coils["Fc"])[0], np.shape(coils["Fc"])[1]))
+            coils = dict(coils, Fc=np.vstack([coils["Fc"], pad]))
         return solve_forced(freqs, F, self.w_s, self.zeta, self.S if loaded else None,
-                            self.R, self.cav.kappa2, self.rho, self.c, self.eta_air)
+                            self.R, self.cav.kappa2, self.rho, self.c, self.eta_air, coils=coils)
 
     # ── coupled modes ──────────────────────────────────────────────────────
     def coupled_modes(self, f_max=None):

@@ -153,6 +153,33 @@ class SceneResults(FrequencyResults):
         """Stacked driver modal amplitudes (n_f, n_modes of all drivers [+ extra coordinates])."""
         return self._stacked("q")
 
+    def _coil(self, driver):
+        """(index, its drive dict) of a driver's coil in a voltage-driven scene."""
+        drive = self.attachments.get("drive", {})
+        if "U" not in drive:
+            raise ResultsError("these results were driven by a force: no coil current (drive the scene with "
+                               "lp.Voltage)")
+        names = self.drivers
+        name = names[0] if driver is None else driver
+        if name not in names:
+            raise ResultsError(f"no driver {name!r} (drivers: {names})")
+        if driver is None and len(names) > 1:
+            raise ResultsError(f"several drivers: name one ({names})")
+        return names.index(name), drive
+
+    def coil_current(self, driver: str | None = None) -> Data:
+        """The coil current I [A] of a voltage-driven scene over frequency (driver: its name; default the only
+        one)."""
+        j, _ = self._coil(driver)
+        return Data(self._stacked("I")[:, j], {"f": self.frequencies}, "I", meta=self._meta(on=self.drivers[j]))
+
+    def impedance(self, driver: str | None = None) -> Data:
+        """The electrical input impedance U / I [Ω] of a driver's coil (voltage-driven scene): its blocked
+        impedance Re + (jω)ⁿ Le plus the motional part, the air, the walls and the other drivers included."""
+        j, drive = self._coil(driver)
+        U = complex(np.asarray(drive["U"]).reshape(-1)[j])
+        return Data(U / self._stacked("I")[:, j], {"f": self.frequencies}, "Z", meta=self._meta(on=self.drivers[j]))
+
     def driver(self, name: str) -> DriverResponse:
         """The response of one driver (DriverResponse): its modes, frame, modal amplitudes and drive."""
         from loudpy.geometry.frame import Frame

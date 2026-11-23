@@ -886,7 +886,7 @@ Only in a script: options: solver options (f_targets, mac_tol, coupled-mode cove
 ``lp.FrequencyResponse``
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
-Harmonic response of a Model (lp.Force or lp.Voltage on the coil) or of an lp.Scene (lp.Force, or {driver name: lp.Force}).
+Harmonic response of a Model (lp.Force or lp.Voltage on the coil) or of an lp.Scene (lp.Force or lp.Voltage on every driver's coil, or {driver name: lp.Force} / {driver name: lp.Voltage}: a Voltage solves one current per driver with the modes, its back-EMF included).
 
 Given by the context: model.
 
@@ -903,7 +903,7 @@ Given by the context: model.
      - block (drives)
      - 
      - ``None``
-     - Force or Voltage on the coil (a scene: a Force, or one per driver)
+     - Force or Voltage on the coil (a scene: on every driver's coil, or one per driver)
    * - ``coupled``
      - bool
      - 

@@ -144,7 +144,8 @@ class PerWavelength:
 
 class FrequencyResponse(Study):
     """Harmonic response of a Model (lp.Force or lp.Voltage on the coil) or of an lp.Scene
-    (lp.Force, or {driver name: lp.Force}).
+    (lp.Force or lp.Voltage on every driver's coil, or {driver name: lp.Force} / {driver name: lp.Voltage}: a
+    Voltage solves one current per driver with the modes, its back-EMF included).
 
         res = lp.FrequencyResponse(model, drive=lp.Force(1.0)).solve(np.geomspace(20, 20000, 200))"""
     accepts_scene = True
@@ -152,10 +153,11 @@ class FrequencyResponse(Study):
     def __init__(self, model, drive=None, coupled: bool | None = None, reuse_factorization: bool = True):
         super().__init__(model)
         self.drive = drive if drive is not None else Force(1.0)
-        if self.is_scene:                                    # 3D scene: Force or {driver name: Force}
+        if self.is_scene:                                    # 3D scene: Force / Voltage, or one per driver
             drives = self.drive.values() if isinstance(self.drive, dict) else [self.drive]
-            if not all(isinstance(d, Force) and not d.is_signal for d in drives):
-                raise ModelError("a scene is driven by lp.Force (harmonic) or {driver name: lp.Force}")
+            if not all((isinstance(d, Force) and not d.is_signal) or isinstance(d, Voltage) for d in drives):
+                raise ModelError("a scene is driven by lp.Force (harmonic) or lp.Voltage, or {driver name: one of "
+                                 "them}")
             return
         if not isinstance(self.drive, (Force, Voltage)):
             raise ModelError(f"drive must be lp.Force or lp.Voltage, got {self.drive!r}")

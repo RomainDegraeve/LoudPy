@@ -131,7 +131,14 @@ gives the air, walls and kept meshes as given and ``scene.restore(settings)`` se
 ``scene.air_hemisphere()`` measures the outside air's hemisphere without meshing.
 
 ``store=`` streams the 3D pressure field to the result file frequency by frequency (the field
-never has to fit in memory). Several drivers are driven together or separately:
+never has to fit in memory).
+
+A scene is driven by a force on the coils (``lp.Force``) or by a voltage (``lp.Voltage(U, Re=…, Bl=…, Le=…, n=…)``,
+or ``{driver name: lp.Voltage}`` naming every driver). A voltage adds one coil current per driver to the system
+solved at each frequency, with the modes: the coil force ``Bl·I`` on the driver's modes and the back-EMF
+``Bl·v_coil`` in its circuit, ``(Re + (jω)ⁿ Le) I + Bl v_coil = U``. Nothing is iterated: the air, the walls and the
+other drivers act on the current in the same solve. ``res.coil_current(driver)`` and ``res.impedance(driver)`` (U/I,
+the motional part, the air and the mutual coupling of several drivers included) come with the results. Several drivers are driven together or separately:
 ``drive={"top": lp.Force(1), "bottom": lp.Force(1j)}``.
 
 Scene results

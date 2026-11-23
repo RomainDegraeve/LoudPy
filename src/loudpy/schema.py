@@ -335,7 +335,8 @@ def _catalog() -> dict[str, Block]:
             context=("model",), solve=lp.Modes.solve,
             code_only={"options": "solver options (f_targets, mac_tol, coupled-mode covering …): see Modes.solve"}),
         _make("FrequencyResponse", "studies", lp.FrequencyResponse, [
-            _p("drive", "block", help="Force or Voltage on the coil (a scene: a Force, or one per driver)",
+            _p("drive", "block", help="Force or Voltage on the coil (a scene: on every driver's coil, or one per "
+               "driver)",
                group="Drive", of="drives", optional=True),
             _p("coupled", "bool", help="structure + air (empty: coupled when the model has air)", group="Study",
                optional=True),

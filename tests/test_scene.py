@@ -577,3 +577,61 @@ def test_walls_in_a_merged_air_domain(driver, tmp_path):
     assert sum(kw.get("scalars") == "u_n" for _, kw, _ in v.items) == 2
     Qd = back.driver_volume_velocity()                           # merged air: the drivers' rear patches
     assert np.all(np.abs(Qd.values) > 0) and np.all(np.abs(Q.values / Qd.values) < 0.5)
+
+
+@pytest.mark.parametrize("kind", ["cavity", "cavity+exterior", "merged"])
+def test_voltage_drive(driver, mesh_dir, kind):
+    """A scene driven by a voltage: one coil current solved with the modes, its back-EMF included. Linear, so it is
+    the force drive with F = Bl·I at each frequency; the impedance is the blocked Re + (jω)ⁿ Le plus Bl² times the
+    coil mobility (air and walls included); one air domain: the power put in is the coil's losses, what the modes
+    dissipate and what radiates."""
+    from loudpy.study import scene_response as sr
+    if kind == "cavity":
+        scene = lp.Scene(box_cabinet, [driver.place("main", at=(W / 2, H / 2))])
+        scene.cavity(f_max=3000.0, eta=0.02, file="box_one_driver.msh", cache_modes=False)
+        scene.mesh(mesh_dir, reuse="always")
+    else:
+        scene = _small(kind, driver, mesh_dir)
+    freqs = np.array([60.0, 250.0, 600.0])
+    U, Re, Bl, Le, n = 2.83, 6.0, 5.0, 3e-4, 0.8
+    res = lp.FrequencyResponse(scene, drive=lp.Voltage(U, Re=Re, Bl=Bl, Le=Le, n=n)).solve(freqs)
+    unit = lp.FrequencyResponse(scene, drive=lp.Force(1.0)).solve(freqs)          # the force drive, F = 1 N
+    I = res.coil_current().values
+    Z = res.impedance().values
+    np.testing.assert_allclose(Z, U / I, rtol=1e-12)
+    np.testing.assert_allclose(res.q, unit.q * (Bl * I)[:, None], rtol=1e-6, atol=1e-9 * np.abs(res.q).max())
+    w = 2 * np.pi * freqs
+    Fc = sr.multidriver(scene).coil_forces([driver.coil_nodes])[:, 0]
+    Y = 1j * w * (unit.q[:, :len(Fc)] @ Fc)                                    # coil velocity for 1 N
+    Ze = Re + (1j * w) ** n * Le
+    np.testing.assert_allclose(Z, Ze + Bl ** 2 * Y, rtol=1e-6)
+    assert np.all(Z.real > Re)                                                # the motional part adds losses
+    if kind == "merged":                                                      # power: in = losses + radiated
+        md = sr.multidriver(scene)
+        p_in = 0.5 * np.real(U * np.conj(I))
+        p_coil = 0.5 * Ze.real * np.abs(I) ** 2
+        p_d = 0.5 * np.sum(2 * md.zeta * 2 * np.pi * md.freq * (w[:, None] * np.abs(res.q[:, :len(md.freq)])) ** 2,
+                           axis=1)
+        np.testing.assert_allclose(p_in, p_coil + p_d + _radiated_power(res, scene), rtol=1e-4)
+
+
+def test_voltage_drive_two_drivers(driver, mesh_dir):
+    """Two drivers in one box, each its own circuit: driven alike they draw the same current (symmetry); the
+    current of one depends on what the other plays (their mutual impedance through the cavity air); a driver left
+    out of a {name: Voltage} drive is refused (its coil must be given)."""
+    centers = [(0.07, H / 2), (W - 0.07, H / 2)]
+    scene = lp.Scene(box_cabinet, [driver.place("left", at=centers[0]), driver.place("right", at=centers[1])])
+    scene.cavity(f_max=3000.0, eta=0.02, file="box_two_drivers.msh", cache_modes=False)
+    scene.mesh(mesh_dir, reuse="always")
+    freqs = np.array([80.0, 300.0])
+    v = lp.Voltage(2.0, Re=6.0, Bl=5.0, Le=3e-4)
+    both = lp.FrequencyResponse(scene, drive={"left": v, "right": v}).solve(freqs)
+    alone = lp.FrequencyResponse(scene, drive={"left": v, "right": lp.Voltage(0.0, Re=6.0, Bl=5.0, Le=3e-4)}
+                                 ).solve(freqs)
+    np.testing.assert_allclose(both.coil_current("left").values, both.coil_current("right").values,
+                               rtol=1e-4)                              # (the cavity mesh: symmetric to ~1e-5)
+    assert np.all(np.abs(both.impedance("left").values - alone.impedance("left").values) > 1e-3)
+    with pytest.raises(lp.errors.ModelError, match="names every driver"):
+        lp.FrequencyResponse(scene, drive={"left": v}).solve(freqs)
+    with pytest.raises(lp.errors.ResultsError, match="name one"):
+        both.impedance()

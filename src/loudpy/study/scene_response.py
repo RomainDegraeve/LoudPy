@@ -26,6 +26,39 @@ def multidriver(scene):
                        names=[d.name for d in scene.drivers])
 
 
+def coil_circuits(scene, drivers, drive) -> dict | None:
+    """
+    A voltage drive's coil circuits (modal.add_coils): dict(Fc, Bl, Re, Le, n, U) with Fc the unit coil forces
+    (n_modes, n_drivers); None for a force drive. drive: an lp.Voltage (every driver, each with these coil
+    values) or {driver name: lp.Voltage} naming every driver (each its own coil).
+    """
+    from loudpy.model.drives import Voltage
+    names = [d.name for d in scene.drivers]
+    per = drive if isinstance(drive, dict) else {n: drive for n in names}
+    if not any(isinstance(v, Voltage) for v in per.values()):
+        return None
+    if not all(isinstance(v, Voltage) for v in per.values()):
+        raise ModelError("a scene's drivers are all driven by a Force or all by a Voltage")
+    unknown = set(per) - set(names)
+    if unknown:
+        raise ModelError(f"drive: no driver {sorted(unknown)} (drivers: {names})")
+    if set(per) != set(names):
+        raise ModelError(f"a Voltage drive names every driver (each has its own coil: Re, Bl, Le): {names}")
+    v = [per[n] for n in names]
+    Fc = drivers.coil_forces([d.driver.coil_nodes for d in scene.drivers])
+    return dict(Fc=np.asarray(Fc, float).reshape(len(Fc), -1), Bl=np.array([x.Bl for x in v], float),
+                Re=np.array([x.Re for x in v], float), Le=np.array([x.Le for x in v], float),
+                n=np.array([x.n for x in v], float), U=np.array([complex(x.amplitude) for x in v], complex))
+
+
+def _padded(coils: dict | None, n_y: int) -> dict | None:
+    """The coil circuits with zero rows for the modes after the drivers' (walls, extra coordinates)."""
+    if coils is None or coils["Fc"].shape[0] >= n_y:
+        return coils
+    pad = np.zeros((n_y - coils["Fc"].shape[0], coils["Fc"].shape[1]))
+    return dict(coils, Fc=np.vstack([coils["Fc"], pad]))
+
+
 def coil_force(scene, drivers, drive):
     """Stacked modal force from a Force (every driver) or {driver name: Force}."""
     names = [d.name for d in scene.drivers]
@@ -217,7 +250,8 @@ def solve(study, freqs, store=None, chunk_hz=50.0, rtol=1e-7, log=None):
                              f"(scene.merged / exterior(bands=lp.Scene.bands({freqs.max():g})), or f_max= of "
                              f"lp.Scene.sealed_box / vented_box) and mesh again")
     drivers = multidriver(scene)
-    F = coil_force(scene, drivers, study.drive)
+    coils = coil_circuits(scene, drivers, study.drive)                  # a voltage drive: one current per driver
+    F = coil_force(scene, drivers, study.drive) if coils is None else np.zeros(coils["Fc"].shape[0], complex)
     config = scene.configuration
 
     meta = dict(study="FrequencyResponse", scene=True, configuration=config, drive=repr(study.drive))
@@ -245,6 +279,8 @@ def solve(study, freqs, store=None, chunk_hz=50.0, rtol=1e-7, log=None):
         except Exception as e:                                       # noqa: BLE001  (a diagnostic only)
             log(f"  (no driver volume displacement: {e})")
     attachments["drive"] = dict(F=np.asarray(F, complex))                # modal force, stacked drivers
+    if coils is not None:                                              # a voltage drive: the coil circuits
+        attachments["drive"].update({k: np.asarray(v) for k, v in coils.items()})
     if cav is not None:
         attachments["cavity"] = dict(nodes=cav.nodes, tets=cav.tets, psi=cav.psi.astype(np.float32), kappa2=cav.kappa2,
                                      meta=dict(f_max=scene._cavity.f_max, volume=float(cav.volume)))
@@ -255,8 +291,12 @@ def solve(study, freqs, store=None, chunk_hz=50.0, rtol=1e-7, log=None):
                 f"{cpl.walls.freq[-1] if len(cpl.walls) else 0:.0f} Hz")
 
     if config == "cavity":                                          # A: no FE air
-        q, P = cpl.forced(freqs, F)
-        block = Block({}, freqs, {}, {"q": q, "P_cavity": P}, {"configuration": config})
+        extra = {}
+        if coils is None:
+            q, P = cpl.forced(freqs, F)
+        else:
+            q, P, extra["I"] = cpl.forced(freqs, F, coils=coils)
+        block = Block({}, freqs, {}, {"q": q, "P_cavity": P, **extra}, {"configuration": config})
         res = finish(study, SceneResults([block], meta, {}))
         res.attachments = attachments
         if store:
@@ -308,8 +348,10 @@ def solve(study, freqs, store=None, chunk_hz=50.0, rtol=1e-7, log=None):
         zeta = np.concatenate([zeta, walls_m.zeta])
         S, R = np.zeros((len(w_s), 0)), np.zeros((len(w_s), len(w_s)))
     Fq = np.concatenate([np.asarray(F), np.zeros((len(w_s) - len(F),) + np.shape(F)[1:], complex)])
-    q, coefs, iters = coupled_sweep(bands, freqs, Fq, w_s, zeta, S, R, kappa2, eta,
-                                    scene.rho, scene.c, chunk_hz, rtol, on_frequency, log=log)
+    out = coupled_sweep(bands, freqs, Fq, w_s, zeta, S, R, kappa2, eta, scene.rho, scene.c, chunk_hz, rtol,
+                        on_frequency, log=log, coils=_padded(coils, len(w_s)))
+    q, coefs, iters = out[:3]
+    currents = out[3] if coils is not None else None
     n_h = np.array([len(c) for c in coefs])
     C = np.zeros((len(freqs), n_h.max()), complex)
     for i, c in enumerate(coefs):
@@ -322,6 +364,8 @@ def solve(study, freqs, store=None, chunk_hz=50.0, rtol=1e-7, log=None):
     blocks = []
     for k_, (bi, sel) in enumerate(bmap):
         extra = {"q": q[sel], "dtn": C[sel], "dtn_n": n_h[sel], "iters": iters[sel]}
+        if currents is not None:
+            extra["I"] = currents[sel]
         if P is not None:
             extra["P_cavity"] = P[sel]
         if writer is not None:
