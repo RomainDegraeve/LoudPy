@@ -167,5 +167,7 @@ def scene_script(scene, folder=None, title: str | None = None, flat=None) -> str
         fields = {f.name: getattr(spec, f.name) for f in dataclasses.fields(spec)}
         name = method or fields.pop("kind")
         lines.append(f"scene.{name}({', '.join(f'{k}={v!r}' for k, v in fields.items())})")
+    if getattr(s, "_keep", ()):
+        lines.append(f"scene.keep({list(s._keep)!r})")
     lines.append("")
     return "\n".join(lines)

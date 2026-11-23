@@ -1611,8 +1611,8 @@ Given by the context: driver.
      - ``None``
      - a direction fixing its rotation about the axis (empty: any)
 
-Scene air
----------
+Scene air and meshes
+--------------------
 
 ``lp.Scene.cavity``
 ^^^^^^^^^^^^^^^^^^^
@@ -1660,6 +1660,28 @@ Given by the context: scene.
      - 
      - ``True``
      - keep the cavity modes next to the mesh
+
+``lp.Scene.keep``
+^^^^^^^^^^^^^^^^^
+
+Meshes used as they are while their file exists, even when their settings changed since (out of date): "cavity", "walls" (the inside air of the elastic walls), "air" (every air band), one band by its top frequency ("air 2000"), or "all". keep() or keep([]): none — a mesh out of date is built again. A mesh file made elsewhere can take the place of one this way (it must carry the groups loudpy writes).     scene.keep(["cavity"])          # a fine cavity mesh kept while the bands are rebuilt
+
+Given by the context: scene.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 18 14 8 16 44
+
+   * - parameter
+     - value
+     - unit
+     - default
+     - meaning
+   * - ``meshes``
+     - texts
+     - 
+     - ``()``
+     - meshes used as they are while their file exists, even out of date: cavity, walls, air (every band), air <top frequency>, all
 
 ``lp.Scene.exterior``
 ^^^^^^^^^^^^^^^^^^^^^

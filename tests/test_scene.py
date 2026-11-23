@@ -508,6 +508,22 @@ def test_walls_in_a_merged_air_domain(driver, tmp_path):
     assert [f["state"] for f in scene.mesh_files()] == ["built", "built"]     # its counts kept: still up to date
     finer = scene_of({**mdf, "mesh_size": (0.003, 0.010)}, mesh=False)        # the shells' mesh of its own sizes
     assert [f["state"] for f in finer.mesh_files(tmp_path)] == ["out of date", "built"]
+    finer.keep(["walls"])                                         # used as it is, though out of date
+    assert [f["state"] for f in finer.mesh_files(tmp_path)] == ["kept", "built"]
+    assert finer.mesh(tmp_path).walls_mesh == scene.walls_mesh and "scene.keep(['walls'])" in finer.to_script()
+    lp.schema.build({"type": "Scene.keep", "params": {"meshes": ["air 500"]}}, scene=finer)   # the document's node
+    assert finer._keep == ("air 500",) and finer._kept("merged_500") and not finer._kept("walls")
+    before = finer.settings                                       # the settings as given, and back
+    assert before["air"].kind == "merged" and before["walls"].mesh_size == (0.003, 0.010)
+    assert before["keep"] == ("air 500",) and finer.restore({"air": before["air"]}).settings["walls"] is None
+    assert finer.restore(before).settings == before
+    with pytest.raises(lp.errors.ModelError, match="merged"):
+        finer.restore({"cavity": scene_of(mesh=False).cavity().settings["cavity"], "air": before["air"]})
+    fresh = scene_of(mdf, mesh=False)
+    h = fresh.air_hemisphere()                                    # measured as mesh() will, nothing meshed
+    assert h["radius"] == pytest.approx(scene.hemisphere["radius"]) and fresh.hemisphere is None
+    with pytest.raises(lp.errors.ModelError, match="keep"):
+        finer.keep(["cabinet"])
     cav = lp.Scene(lp.cabinets.Box(W, H, D), [driver.place("main", at=(W / 2, H / 2))]).cavity()
     with pytest.raises(lp.errors.ModelError, match="merged air"):
         cav.walls(mesh_size=(0.003, 0.01)).mesh(tmp_path / "cavity")

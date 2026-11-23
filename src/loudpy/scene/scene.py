@@ -140,6 +140,7 @@ class Scene:
         self.walls_mesh: Path | None = None                               # the inside air for the shells (merged)
         self.band_meshes: list[dict] = []
         self.hemisphere: dict | None = None
+        self._keep: tuple = ()                                            # meshes used as they are (keep())
 
     @property
     def rho(self) -> float:
@@ -278,6 +279,69 @@ class Scene:
                                                 plug_from, file)
         return self
 
+    def keep(self, meshes=()):
+        """
+        Meshes used as they are while their file exists, even when their settings changed since (out of date):
+        "cavity", "walls" (the inside air of the elastic walls), "air" (every air band), one band by its top
+        frequency ("air 2000"), or "all". keep() or keep([]): none — a mesh out of date is built again. A mesh file
+        made elsewhere can take the place of one this way (it must carry the groups loudpy writes).
+            scene.keep(["cavity"])          # a fine cavity mesh kept while the bands are rebuilt
+        """
+        names = [meshes] if isinstance(meshes, str) else list(meshes)
+        for n in names:
+            band = n.startswith("air ") and n[4:].replace(".", "", 1).isdigit()
+            ok = n in ("cavity", "walls", "air", "all") or band
+            if not ok:
+                raise ModelError(f"keep: 'cavity', 'walls', 'air', 'air <top frequency>' or 'all', got {n!r}")
+        self._keep = tuple(names)
+        return self
+
+    @property
+    def settings(self) -> dict:
+        """
+        The air, the walls and the kept meshes as given (lp.P references kept): {"cavity", "air", "walls", "keep"}.
+        "cavity", "air" (its kind: "exterior" or "merged") and "walls" are settings objects or None — read them, or
+        copy one changed with dataclasses.replace and give it back with restore(). Made by cavity(), exterior(),
+        merged(), walls() and keep().
+            before = scene.settings;  …;  scene.restore(before)          # undo
+        """
+        return {"cavity": self._cavity_spec, "air": self._open_spec, "walls": self._walls_spec, "keep": self._keep}
+
+    def restore(self, settings: dict) -> "Scene":
+        """Set the air, the walls and the kept meshes from a dict like scene.settings (a key left out: none)."""
+        cav, air, walls = settings.get("cavity"), settings.get("air"), settings.get("walls")
+        if cav is not None and air is not None and getattr(air, "kind", None) == "merged":
+            raise ModelError("a merged air domain replaces the cavity modes: give cavity=None with it")
+        self._cavity = self._cavity_spec = cav
+        self._open = self._open_spec = air
+        self._walls = self._walls_spec = walls
+        self._keep = tuple(settings.get("keep", ()))
+        return self
+
+    def air_hemisphere(self) -> dict | None:
+        """The hemisphere of the outside air's exact boundary {"center", "radius", "up"}: the meshed scene's, else
+        measured on the cabinet and drivers as mesh() will (nothing meshed); None without an outside air."""
+        if self._open_spec is None:
+            return None
+        if self.hemisphere:
+            return dict(self.hemisphere)
+        from loudpy.model.parameters import resolve
+        saved = self._open
+        self._open = resolve(self._open_spec, self.parameters)
+        try:
+            return dict(self._hemisphere())
+        finally:
+            self._open = saved
+
+    def _kept(self, what: str) -> bool:
+        """keep() names this mesh ("cavity", "walls", or a band "<kind>_<f_hi>")."""
+        k = set(self._keep)
+        if "all" in k or what in k:
+            return True
+        _kind, _, f_hi = what.partition("_")
+        return bool(f_hi) and ("air" in k or any(n.startswith("air ") and abs(float(n[4:]) - float(f_hi)) < 0.5
+                                                 for n in k))
+
     @property
     def configuration(self) -> str:
         """"cavity", "cavity+exterior", "exterior" or "merged", from the configured air."""
@@ -337,7 +401,8 @@ class Scene:
         """
         The meshes mesh(folder) builds, named as it names them — the cavity, the inside air the walls sit on
         (merged air with walls), each air band: [{"what", "title", "path", "state"}], state "built", "out of date"
-        (its settings, cabinet or drivers changed since: mesh() builds it again) or "missing". Nothing is meshed
+        (its settings, cabinet or drivers changed since: mesh() builds it again), "kept" (out of date, but keep()
+        names it: used as it is) or "missing". Nothing is meshed
         here. folder: the one the scene was meshed in by default.
         """
         from loudpy.model.parameters import resolve
@@ -369,7 +434,7 @@ class Scene:
                                                                      self._signature(what, extra))
                     except (OSError, ValueError):
                         same = False
-                    state = "built" if same else "out of date"
+                    state = "built" if same else "kept" if self._kept(what) else "out of date"
                 out.append(dict(what=what, title=title, path=path, state=state))
             return out
         finally:
@@ -415,9 +480,11 @@ class Scene:
     def _build(self, what, path, reuse, builder, extra=None, info=None):
         sig_path = Path(str(path) + ".json")
         sig = self._signature(what, extra)
-        if path.exists() and (reuse == "always" or
-                              (reuse and sig_path.exists() and same_signature(json.loads(sig_path.read_text()), sig))):
+        if path.exists() and (reuse and sig_path.exists() and same_signature(json.loads(sig_path.read_text()), sig)):
             log.info(f"  mesh reused: {path}")              # (a sidecar written before says what it is by "what")
+            return path
+        if path.exists() and reuse and (reuse == "always" or self._kept(what)):     # reuse=False: rebuilt
+            log.info(f"  mesh kept as it is: {path}")
             return path
         builder(path)
         write_sidecar(path, sig, **(info or {}))

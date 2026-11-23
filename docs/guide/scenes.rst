@@ -121,6 +121,14 @@ The exterior and merged air are meshed per frequency **band** (``bands=[(20, 100
 
    res = lp.FrequencyResponse(scene, drive=lp.Force(1.0)).solve(freqs, store="Results/Files/box.h5")
 
+Each mesh is rebuilt only when what it depends on changes (the cabinet, the drivers, its own settings), and
+``scene.mesh_files(folder)`` tells which are up to date without meshing. A mesh can be used as it is even when out
+of date with ``scene.keep(["cavity"])`` (``"walls"``, ``"air"`` for every band, ``"air 2000"`` for one band,
+``"all"``), for example a fine cavity mesh kept while the air bands change. With one merged air domain and elastic
+walls, ``scene.walls(…, mesh_size=(near, far))`` sets the inside-air mesh the shells lie on. ``scene.settings``
+gives the air, walls and kept meshes as given and ``scene.restore(settings)`` sets them back.
+``scene.air_hemisphere()`` measures the outside air's hemisphere without meshing.
+
 ``store=`` streams the 3D pressure field to the result file frequency by frequency (the field
 never has to fit in memory). Several drivers are driven together or separately:
 ``drive={"top": lp.Force(1), "bottom": lp.Force(1j)}``.

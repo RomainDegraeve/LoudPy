@@ -422,6 +422,8 @@ def _describe_scene(s) -> dict:
         settings.append({"type": t, "params": {k: schema.to_value(v) for k, v in values.items()
                                                if k in {p.name for p in b.params} and
                                                schema.to_value(v) != schema.to_value(b.param(k).default)}})
+    if getattr(s, "_keep", ()):
+        settings.append({"type": "Scene.keep", "params": {"meshes": list(s._keep)}})
     return {"type": "Scene", "params": params, "drivers": drivers, "settings": settings}
 
 

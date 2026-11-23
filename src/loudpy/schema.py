@@ -521,6 +521,10 @@ def _catalog() -> dict[str, Block]:
             _p("thickness", "number", "m", "its thickness (empty: the walls', else measured on the cabinet)",
                optional=True, min=0),
             _p("damping", "block", help="its damping (empty: the walls')", of="damping", optional=True)]),
+        _make("Scene.keep", "scene.air", lp.Scene.keep, [
+            _p("meshes", "texts", help="meshes used as they are while their file exists, even out of date: cavity, "
+               "walls, air (every band), air <top frequency>, all")],
+            context=("scene",)),
         open_air("Scene.exterior", lp.Scene.exterior, "exterior"),
         open_air("Scene.merged", lp.Scene.merged, "air"),
     ]
@@ -892,7 +896,7 @@ SECTION_TITLES = {
     "profiles": "Wet profiles of a driver", "studies": "Studies", "study_options": "Study options",
     "signals": "Transient signals", "scene": "3D scene", "scene.cabinet": "Cabinets",
     "scene.cabinet_parts": "Cabinet parts", "scene.drivers": "Drivers", "scene.placement": "Driver placement",
-    "scene.air": "Scene air", "scene.walls": "Elastic walls", "scene.panels": "Wall panels"}
+    "scene.air": "Scene air and meshes", "scene.walls": "Elastic walls", "scene.panels": "Wall panels"}
 
 
 def reference_rst() -> str:
