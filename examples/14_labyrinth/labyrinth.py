@@ -113,11 +113,11 @@ def cabinet(occ):
 
 
 def driver():
-    """The HPNEW driver (its azimuthal-order modes, ../02_azimuthal_modes) and its wet profiles."""
+    """The HPNEW driver (its azimuthal-order modes, ../02_azimuthal_modes), its wet profiles and its motor (the coil
+    a voltage or a circuit drives: Re 8 Ω, Bl 7 T·m, Le 4 mH semi-inductance n 0.8, as examples 06 / 17)."""
     import loudpy as lp
-    return lp.Driver.from_modes(eig_path, ORDERS, f_max=DRV_F_MAX, geometry=geo_path,
-                                rear=REAR,
-                                front=FRONT)
+    return lp.Driver.from_modes(eig_path, ORDERS, f_max=DRV_F_MAX, geometry=geo_path, rear=REAR, front=FRONT,
+                                motor=lp.circuit.Semi(Re=8.0, Bl=7.0, Le=4e-3, n=0.8))
 
 
 def export_cabinet(folder, r_hole):

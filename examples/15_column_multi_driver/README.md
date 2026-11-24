@@ -64,3 +64,12 @@ The sweep covers 211 frequencies, 20–1000 Hz, in 24 min on an M2 (8 GB). The m
 - **Rocking from the air load alone:** at the notches of the excursion (130, 226, 490 Hz), the m ≥ 1 orders carry up to 44 % (middle driver), 24 % (bottom) and 14 % (top) of the kinetic energy. The coil drives only m = 0, so this comes entirely from the non-uniform pressure along the column. With a single axisymmetric model this motion would be missing.
 - **Column directivity:** horizontally the column stays nearly omnidirectional up to about 150 Hz. Vertically, from about 250 Hz the three sources interfere: SPL 30° up has a 40 dB notch at 270 Hz, and above 400 Hz the vertical lobing is strong (directivity maps).
 - **No stuffing:** the line resonances (32, 106, 152, 230 Hz…) are sharp. Damping the line (equivalent fluid) is the natural next step.
+
+## Electrical side
+
+The drivers have their motor (`column.driver`: Semi, Re 8 Ω, Bl 7 T·m, Le 4 mH, n 0.8) and `run.py` defines two
+circuits: `parallel` (the three coils on one 2.83 V amplifier) and `two_way` (a Linkwitz–Riley 4 crossover at 300 Hz:
+the top driver high-passed, the middle and bottom ones low-passed). `python3 run.py circuit` solves the column driven by
+`parallel` (`column_circuit.h5`); each coil is then solved on its own, so `res.redrive(two_way)` — or any crossover
+drawn in the interface — gives its response without solving again. (The default run, one force on the three coils at
+once, is one response: it cannot be re-driven.)

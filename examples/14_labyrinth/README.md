@@ -36,3 +36,10 @@ python3 examples/14_labyrinth/plot_3d.py
 - **First script:** computes the driver modes. Skip it if `eigen_fourier.h5` already exists.
 - **Memory:** the default `F_MAX` is 2 kHz, which needs meshes of about 63k and 84k nodes. The 3 kHz mesh (147k nodes) is built too, but needs more than 8 GB of RAM to run without swapping. Set `F_MAX = 3000` on a larger machine.
 - **Run time:** about 25 minutes on an M2.
+
+## Electrical side
+
+The driver has its motor (`labyrinth.driver`: Semi, Re 8 Ω, Bl 7 T·m, Le 4 mH, n 0.8 — as examples 06 and 17) and
+`run.py` defines the circuit `amp` (a 2.83 V amplifier on the coil). The study is driven by 1 N; with one driver its
+result keeps the coil's unit response, so `res.redrive(amp)` (or any circuit drawn in the interface: Electrical) gives
+the amplifier-driven response without solving again.

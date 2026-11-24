@@ -95,7 +95,16 @@
        }
       },
       "coil": "interface_forced",
-      "name": "driver"
+      "name": "driver",
+      "motor": {
+       "type": "circuit.Semi",
+       "params": {
+        "Re": 8.0,
+        "Bl": 7.0,
+        "Le": 0.004,
+        "n": 0.8
+       }
+      }
      }
     },
     "place": {
@@ -131,6 +140,32 @@
     }
    }
   ]
+ },
+ "circuits": {
+  "amp": {
+   "type": "Circuit",
+   "params": {
+    "parts": [
+     {
+      "type": "circuit.Source",
+      "params": {
+       "name": "amp",
+       "a": "in",
+       "U": 2.83
+      }
+     },
+     {
+      "type": "circuit.Coil",
+      "params": {
+       "name": "coil",
+       "a": "in",
+       "b": "0",
+       "driver": "main"
+      }
+     }
+    ]
+   }
+  }
  },
  "studies": [
   {

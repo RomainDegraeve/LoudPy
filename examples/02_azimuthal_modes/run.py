@@ -57,7 +57,7 @@ model.add(
     lp.Solid("glue", "SolidGlue", mesh_size=size),
     lp.Solid("dustcap", "Polypropylene", mesh_size=size),
     lp.Clamped("rims", on=lp.Group("surround_rim", "spider_rim")), lp.Clamped("axis", dofs="r"),
-    lp.Coil("coil_drive"),
+    lp.Coil("coil_drive", motor=lp.circuit.Semi(Re=8.0, Bl=7.0, Le=4e-3, n=0.8)),   # its motor: kept in the modes file
     lp.FluidStructure("wet_front"),
 )
 if __name__ == "__main__":

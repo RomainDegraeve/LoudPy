@@ -26,9 +26,14 @@ REAR = lp.Profile(lp.BoundaryOf("air_rear"), start=(0.05435, Z_B), end=(0.00633,
 FRONT = lp.Profile(lp.Interface(SOLIDS, "air_front"), start=(0.05735, Z_F))
 
 
+MOTOR = lp.circuit.Semi(Re=8.0, Bl=7.0, Le=4e-3, n=0.8)   # the HPNEW motor (its coil item, as examples 06 / 17)
+
+
 def driver():
-    """The HPNEW driver (its azimuthal-order modes, ../02_azimuthal_modes) and its wet profiles."""
-    return lp.Driver.from_modes(eig_path, [0, 1, 2, 3], f_max=10000.0, geometry=geo_path, rear=REAR, front=FRONT)
+    """The HPNEW driver (its azimuthal-order modes, ../02_azimuthal_modes), its wet profiles and its motor (what a
+    voltage or a circuit drives)."""
+    return lp.Driver.from_modes(eig_path, [0, 1, 2, 3], f_max=10000.0, geometry=geo_path, rear=REAR, front=FRONT,
+                                motor=MOTOR)
 
 
 # ── the boxes ─────────────────────────────────────────────────────────────────────────────────────────────────

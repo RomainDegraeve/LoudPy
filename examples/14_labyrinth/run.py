@@ -22,6 +22,11 @@ What this produces (Results/Files/)
   - labyrinth_cabinet.step  : the cabinet (walls, panels, driver hole, mouth) for CAD
 Then run plot.py and plot_3d.py.
 
+Electrical side: the driver's motor (labyrinth.driver: Re 8 Ω, Bl 7 T·m, Le 4 mH, n 0.8) and the circuit `amp`
+(an amplifier of 2.83 V on the coil). The study is driven by 1 N; with one driver its result keeps the coil's unit
+response, so it can be driven by `amp` (or any circuit drawn in the interface) after the study, without solving again:
+res.redrive(amp). Or solve it driven by the amplifier: lp.FrequencyResponse(scene, drive=amp).
+
 The scene is built at the top (not meshed); meshing and solving run only when this file is run (python3 run.py),
 so the interface opens it without computing (python -m loudpy.ui on this folder or file).
 """
@@ -48,6 +53,8 @@ hp = driver()
 scene = lp.Scene(cabinet, [hp.place("main", at=(X0, Y0))])
 scene.merged(ground="y", bands=[b for b in BANDS if b[0] < FREQS.max()],
              points_per_wavelength=4.0, max_size=0.06, driver_size=0.003, margin=0.05)
+amp = lp.Circuit(lp.circuit.Source("amp", "in", U=2.83),           # the amplifier on the coil (its motor: the driver's)
+                 lp.circuit.Coil("coil", "in", "0", driver="main"))
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:                          # quick test: python3 run.py 40,70,100

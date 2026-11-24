@@ -40,3 +40,10 @@ by opposite volumes (−0.97 … −1.00), walls 100 × stiffer bring the respon
 power put in at the coil is what the modes dissipate plus what the hemisphere radiates (to 1e-10).
 
 Not run yet: the two responses take about an hour (estimate).
+
+## Electrical side
+
+The driver has its motor (`shared/enclosure.driver`, and the document: Semi, Re 8 Ω, Bl 7 T·m, Le 4 mH, n 0.8) and
+the simulation holds the circuit `amp` (a 2.83 V amplifier on the coil; Electrical in the interface). The studies are
+driven by 1 N; with one driver the result keeps the coil's unit response, so it can be driven by `amp` — or any circuit
+drawn in the interface — after the study, without solving again (`res.redrive(circuit)`).
