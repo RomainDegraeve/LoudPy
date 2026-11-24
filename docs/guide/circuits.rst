@@ -30,13 +30,34 @@ bound to the scene's driver by name).
 **Coil models** (the blocked coil and its force factor ``Bl``): ``Semi`` (Re + sⁿLe), ``Leach`` (Re + K sⁿ),
 ``LR2`` (Re + sLe + R2 ∥ sL2), ``Wright`` (Re + Krm ωᴱʳᵐ + j Kxm ωᴱˣᵐ).
 
-**How it is solved.** By modified nodal analysis: the node voltages and the currents of the inductors, sources,
-filters and coils are unknowns solved at each frequency with the drivers' modes, the air and the walls — nothing is
-iterated. A coil's row is ``Z(s) i + Bl v_coil − (v_a − v_b) = 0`` (its back-EMF through its driver's coil
-velocity) and its current pushes its driver with ``Bl i``. A circuit made of a source and one coil is exactly
-``lp.Voltage``.
+**How it is solved.** The structure and the air are linear: each driven coil is solved once for a unit force on it
+(its *unit response*: the modal amplitudes, the pressures, the field), with the drivers' modes, the air and the
+walls. The coils meet them only through the mobility matrix ``Y`` — the velocity of coil ``j`` for a unit force on
+coil ``k``, the air and the other drivers included. The circuit is then solved at each frequency by modified nodal
+analysis (the node voltages and the currents of the inductors, sources, filters and coils its unknowns), a coil's
+row ``Z(s) i_j − (v_a − v_b) + Bl_j Σ_k Y_jk Bl_k i_k = 0`` holding its back-EMF, and the coil forces ``Bl i``
+weight the unit responses. This is the coupled solution exactly (nothing is iterated). A circuit made of a source
+and one coil is exactly ``lp.Voltage``, which is solved the same way.
 
-**A 2D model** is driven the same way (``lp.FrequencyResponse(model, drive=circuit)``, a coupled model): the
+**Changing the circuit after the study.** Since the results keep the unit responses, their drive changes without
+solving again — another crossover, an EQ, other coil values, a voltage for a force:
+
+.. code-block:: python
+
+   res = lp.FrequencyResponse(scene, drive=circuit).solve(freqs, store="a.h5")
+   res2 = res.redrive(circuit2)               # instant: the field, SPL, impedance with circuit2
+   res2.spl(at=(0.1, 0.2, 1.0)), res2.impedance("main"), res2.save("b.h5")
+
+A result is redrivable (``res.redrivable``) when its study was driven by a voltage or a circuit, or by a force on
+one coil; one force on several drivers at once is solved as one response.
+
+**What a circuit must be.** ``circuit.check()`` (done before any solve) refuses, saying why: no source; a node joined
+to one part only; two parts setting the voltage of one node — sources and filter outputs are ideal, each fixes its
+node's voltage, so two filter outputs on one node contradict each other (chain their stages in one ``Filter``, or
+join the outputs through resistors); a node with no path to the ground through parts carrying a current (a filter's
+input draws none); equations without a single solution.
+
+**A 2D model** is driven the same way (``lp.FrequencyResponse(model, drive=circuit)``, with or without air): the
 circuit holds one coil, on the model's ``lp.Coil`` boundary (its ``driver`` left empty); the results keep the coil's
 current and voltage per frequency (``res.impedance()``) and the whole circuit (``res.circuit``).
 

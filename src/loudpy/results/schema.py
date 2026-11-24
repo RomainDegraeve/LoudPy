@@ -151,15 +151,45 @@ def _write_results(g, results) -> None:
         bg.attrs["meta"] = _json(b.meta)
         _dataset(bg, "values", b.values)
         _write_meshes(bg, b.meshes)
-        bg.create_group("fields").attrs["order"] = list(b.fields)
-        for name, arr in b.fields.items():
+        fields, extra = dict(b.fields), dict(b.extra)
+        if b.basis:                                                  # the unit responses, not their sum
+            for kind, out in (("fields", fields), ("extra", extra)):
+                for name, arrays in b.basis.get(kind, {}).items():
+                    out.pop(name, None)
+                    for k, arr in enumerate(arrays):
+                        out[name if k == 0 else f"{name}@{k}"] = arr
+            bg.attrs["meta"] = _json({**b.meta, "basis": {**b.meta.get("basis", {}), **_basis_names(b.basis)}})
+        bg.create_group("fields").attrs["order"] = list(fields)
+        for name, arr in fields.items():
             _dataset(bg["fields"], name, arr)
-        for name, arr in b.extra.items():
+        for name, arr in extra.items():
             _dataset(bg.require_group("extra"), name, np.asarray(arr))
         _write_boundaries(bg, b.boundaries)
     _write_boundaries(g, results.boundaries)
     _write_attachments(g, getattr(results, "attachments", None))
     _write_description(g, results)
+
+
+def _basis_names(basis: dict) -> dict:
+    """What a block keeps as unit responses: {"fields": [names], "extra": [names], "K": coils}."""
+    K = max((len(a) for kind in basis.values() for a in kind.values()), default=0)
+    return {"fields": list(basis.get("fields", {})), "extra": list(basis.get("extra", {})), "K": K}
+
+
+def _with_basis(block):
+    """A block read from a file with unit responses ("<name>", "<name>@k"): them kept, its fields their sum."""
+    desc = block.meta.get("basis") or {}
+    if not desc or "weights" not in block.extra:
+        return block
+    K = int(desc.get("K", 1))
+    basis: dict = {"fields": {}, "extra": {}}
+    for kind, store in (("fields", block.fields), ("extra", block.extra)):
+        for name in desc.get(kind, []):
+            if name in store:
+                basis[kind][name] = [store.pop(name if k == 0 else f"{name}@{k}") for k in range(K)]
+    block.basis = basis
+    block.meta = {**block.meta, "basis": {"coils": desc.get("coils")}}       # (as in memory)
+    return block.driven(block.extra["weights"])
 
 
 def _write_meshes(bg, meshes) -> None:
@@ -226,12 +256,12 @@ def _read_results(g, path):
             groups = {n: MeshGroup(n, int(d.attrs["dim"]), str(d.attrs["cell_type"]), d[()])
                       for n, d in _ordered(mg.get("groups"))}
             meshes[phys] = Mesh(mg["node_tags"][()], mg["coords"][()], groups, str(path))
-        blocks.append(Block(meshes, bg["values"][()],
+        blocks.append(_with_basis(Block(meshes, bg["values"][()],
                             {n: (LazyArray(path, d.name) if d.size > LAZY_ELEMENTS else d[()])
                              for n, d in _ordered(bg.get("fields"))},
                             {n: d[()] for n, d in bg.get("extra", {}).items()},
                             json.loads(bg.attrs.get("meta", "{}")), str(bg.attrs.get("label", "")),
-                            {n: {k: bd[k][()] for k in bd} for n, bd in bg.get("boundaries", {}).items()}))
+                            {n: {k: bd[k][()] for k in bd} for n, bd in bg.get("boundaries", {}).items()})))
     boundaries = {n: {k: bd[k][()] for k in bd} for n, bd in g.get("boundaries", {}).items()}
     meta = json.loads(g.attrs.get("meta", "{}"))
     cls = result_class(str(g.attrs.get("results_class", "")), kind)

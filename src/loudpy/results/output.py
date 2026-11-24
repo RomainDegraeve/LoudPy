@@ -96,7 +96,11 @@ def apply(res, output: Output | None):
             fields = {k: np.asarray(v)[keep] for k, v in b.fields.items()
                       if output.fields is None or k in output.fields}
             extra = {k: (np.asarray(v)[keep] if np.ndim(v) and len(v) == len(b) else v) for k, v in b.extra.items()}
-            blocks.append(Block(b.meshes, np.asarray(b.values)[keep], fields, extra, b.meta, b.label, b.boundaries))
+            basis = {kind: {k: [np.asarray(a)[keep] for a in arrays] for k, arrays in members.items()
+                            if kind == "extra" or output.fields is None or k in output.fields}
+                     for kind, members in b.basis.items()}                    # (unit responses: redrive still works)
+            blocks.append(Block(b.meshes, np.asarray(b.values)[keep], fields, extra, b.meta, b.label, b.boundaries,
+                                basis))
         res.blocks = blocks
     res.meta["output"] = output.describe()
     return res

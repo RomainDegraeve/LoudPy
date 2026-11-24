@@ -675,3 +675,52 @@ def test_circuit_drive(driver, mesh_dir, kind, tmp_path):
     with pytest.raises(lp.errors.ModelError, match="name the driver"):
         lp.FrequencyResponse(scene, drive=lp.Circuit(Source("amp", "c", U=U), Coil("x", "c", "0", Semi(6.0, 5.0)))
                              ).solve(freqs)
+
+
+@pytest.mark.parametrize("kind", ["cavity", "merged"])
+def test_redrive_scene(driver, mesh_dir, kind, tmp_path):
+    """A scene keeps one unit response per driven coil (its field streamed to the file): its drive changes after the
+    study exactly as solving again — another circuit, a force for a voltage; two drivers: a crossover redrawn (each
+    coil's back-EMF includes the other driver through the air). One force on several drivers at once is one
+    response: not redrivable."""
+    from loudpy.circuit import Coil, Filter, Resistor, Semi, Source, linkwitz_riley, peq
+    freqs = np.array([60.0, 250.0, 600.0])
+    if kind == "merged":
+        scene = _small(kind, driver, mesh_dir)
+        coil = Coil("vc", "c", "0", Semi(Re=6.0, Bl=5.0, Le=3e-4), driver="main")
+        a = lp.Circuit(Source("amp", "c", U=2.83), coil)
+        b = lp.Circuit(Source("amp", "a", U=2.0), Filter("eq", "a", "f", [peq(250.0, 6.0, 1.5)]),
+                       Resistor("R", "f", "c", 0.8), coil)
+        res = lp.FrequencyResponse(scene, drive=a).solve(freqs, store=tmp_path / "a.h5")   # read back: lazy field
+        direct = lp.FrequencyResponse(scene, drive=b).solve(freqs, store=tmp_path / "b.h5")
+        again = res.redrive(b)
+        pt = (W / 2, H / 2, api.Z_F + 0.1)
+        np.testing.assert_allclose(again.spl(at=pt).values, direct.spl(at=pt).values, atol=1e-6)
+        np.testing.assert_allclose(again.impedance().values, direct.impedance().values, rtol=1e-8)
+        np.testing.assert_allclose(again.q, direct.q, rtol=1e-6, atol=1e-9 * np.abs(direct.q).max())
+        again.save(tmp_path / "again.h5")
+        np.testing.assert_allclose(lp.load(tmp_path / "again.h5").spl(at=pt).values, direct.spl(at=pt).values,
+                                   atol=1e-6)
+        return
+    centers = [(0.07, H / 2), (W - 0.07, H / 2)]
+    scene = lp.Scene(box_cabinet, [driver.place("left", at=centers[0]), driver.place("right", at=centers[1])])
+    scene.cavity(f_max=3000.0, eta=0.02, file="box_two_drivers.msh", cache_modes=False)
+    scene.mesh(mesh_dir, reuse="always")
+    coils = [Coil(f"c_{d}", f"o_{d}", "0", Semi(Re=6.0, Bl=5.0, Le=3e-4), driver=d) for d in ("left", "right")]
+
+    def crossover(fc):
+        return lp.Circuit(Source("amp", "in", U=2.83), Filter("lo", "in", "o_left", linkwitz_riley(4, fc, "low")),
+                          Filter("hi", "in", "o_right", linkwitz_riley(4, fc, "high")), *coils)
+    v = lp.Voltage(2.83, Re=6.0, Bl=5.0, Le=3e-4)
+    both = lp.FrequencyResponse(scene, drive=v).solve(freqs)
+    for drive in (crossover(200.0), crossover(400.0), {"left": v, "right": lp.Voltage(0.0, Re=6.0, Bl=5.0, Le=3e-4)}):
+        direct = lp.FrequencyResponse(scene, drive=drive).solve(freqs)
+        again = both.redrive(drive)
+        np.testing.assert_allclose(again.q, direct.q, rtol=1e-6, atol=1e-9 * np.abs(direct.q).max())
+        for d in ("left", "right"):
+            np.testing.assert_allclose(again.coil_current(d).values, direct.coil_current(d).values, rtol=1e-8,
+                                       atol=1e-12)
+    force = lp.FrequencyResponse(scene, drive=lp.Force(1.0)).solve(freqs)
+    assert not force.redrivable
+    with pytest.raises(lp.errors.ResultsError, match="no unit response per coil"):
+        force.redrive(v)

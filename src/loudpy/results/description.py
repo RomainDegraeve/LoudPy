@@ -207,6 +207,12 @@ def model_script(model) -> tuple[str | None, str]:
         return None, str(e)
 
 
+def drive_description(drive) -> dict:
+    """A study's drive as the settings record it: a dataclass drive (Force, Voltage) with its values, else its type."""
+    return _item(drive) if dataclasses.is_dataclass(drive) and not isinstance(drive, type) else \
+        {"type": type(drive).__name__}
+
+
 def settings(study) -> dict:
     """The settings of a study: its type and its public, simple attributes (drive as a description)."""
     out: dict = {"type": type(study).__name__}

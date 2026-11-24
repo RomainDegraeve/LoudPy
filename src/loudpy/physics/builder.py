@@ -315,14 +315,26 @@ class BlockSolver:
                 out = out + op @ v
             return out - A_bs @ sla.lu_solve(lu, A_sb @ v) if self.small else out
         S = spla.LinearOperator((nb, nb), matvec=mv, dtype=complex)
-        it = [0]
-        rhs_b = b_b - A_bs @ sla.lu_solve(lu, b_s) if self.small else b_b
-        x_b, info = spla.gmres(S, rhs_b, x0=x0, M=preconditioner, rtol=self.rtol, restart=self.restart,
-                               maxiter=self.maxiter, callback=lambda r: it.__setitem__(0, it[0] + 1),
-                               callback_type="pr_norm")
+
+        def one(rb, rs, guess):
+            it = [0]
+            rhs_b = rb - A_bs @ sla.lu_solve(lu, rs) if self.small else rb
+            x_b, info = spla.gmres(S, rhs_b, x0=guess, M=preconditioner, rtol=self.rtol, restart=self.restart,
+                                   maxiter=self.maxiter, callback=lambda r: it.__setitem__(0, it[0] + 1),
+                                   callback_type="pr_norm")
+            return x_b, it[0], info
+        if np.ndim(b_b) == 1:
+            x_b, its, info = one(b_b, b_s if self.small else None, x0)
+            out = self._split_small(sla.lu_solve(lu, b_s - A_sb @ x_b)) if self.small else {}
+            out[self.big] = x_b
+            return out, its, info
+        # several right-hand sides (columns): one GMRES each, the eliminated block factorised once
+        cols = [one(b_b[:, j], b_s[:, j] if self.small else None, None if x0 is None else x0[:, j])
+                for j in range(b_b.shape[1])]
+        x_b = np.stack([c[0] for c in cols], axis=1)
         out = self._split_small(sla.lu_solve(lu, b_s - A_sb @ x_b)) if self.small else {}
         out[self.big] = x_b
-        return out, it[0], info
+        return out, max(c[1] for c in cols), max((c[2] for c in cols), key=abs)
 
     def _split_small(self, x_s):
         out, k = {}, 0

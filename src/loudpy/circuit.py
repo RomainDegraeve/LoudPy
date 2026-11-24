@@ -1,9 +1,10 @@
 """
 The electrical side of a loudspeaker as a circuit: an amplifier, ideal filter blocks (EQ, crossovers), passive parts
 and the drivers' coils, on named nodes ("0" is the ground). It drives a scene (lp.FrequencyResponse(scene,
-drive=circuit)) or a 2D model: solved by modified nodal analysis (MNA) inside the coupled system, its node voltages
-and branch currents a few more unknowns eliminated with the modes at each frequency — each coil's back-EMF Bl·v_coil
-in its branch, its current's force Bl·I on its driver.
+drive=circuit)) or a 2D model: solved by modified nodal analysis (MNA) on top of the structure and the air, which are
+solved once per coil for a unit force on it — each coil's back-EMF Bl·v_coil from the coils' mobility in its branch,
+its current's force Bl·I weighting its driver's unit response (loudpy.physics.electric). The circuit of a result can
+change afterwards: res.redrive(other_circuit).
 
     import loudpy as lp
     from loudpy.circuit import Source, Filter, Coil, Resistor, LR2, linkwitz_riley, peq
@@ -348,8 +349,13 @@ class Circuit:
         raise ModelError(f"{name!r} is neither a node nor a part with its own current (nodes {nodes}, branch parts "
                          f"{branches})")
 
-    def check(self) -> None:
-        """Refuses a circuit that cannot be solved: no source, a node joined to nothing else, no path to ground."""
+    def check(self, freqs=None) -> None:
+        """
+        Refuses a circuit that cannot be solved, saying why: no source; a node joined to one part only; two parts
+        setting the voltage of one node (sources and filter outputs are ideal: each fixes its node's voltage, two on a
+        node contradict each other); a node with no path to the ground through parts carrying a current (a filter's
+        input draws none); equations with no single solution (checked at `freqs` [Hz], default 20 Hz – 20 kHz).
+        """
         if not any(isinstance(p, Source) for p in self.parts):
             raise ModelError("a circuit needs a Source (the amplifier)")
         uses: dict = {}
@@ -361,6 +367,66 @@ class Circuit:
             raise ModelError(f"node(s) {loose} joined to one part only: wire them, or ground them ('0')")
         if GROUND not in uses:
             raise ModelError("no part is connected to the ground '0'")
+        self._check_setters()
+        self._check_grounded()
+        freqs = np.geomspace(20.0, 20000.0, 4) if freqs is None else np.atleast_1d(np.asarray(freqs, float))
+        pick = freqs[np.unique(np.linspace(0, len(freqs) - 1, min(len(freqs), 5)).round().astype(int))]
+        for f in pick:
+            A = self.matrix(2j * np.pi * f)
+            scale = np.abs(A).max(axis=1, keepdims=True)
+            scale[scale == 0] = 1.0
+            with np.errstate(all="ignore"):
+                cond = np.linalg.cond(A / scale)
+            if not np.isfinite(cond) or cond > 1e14:
+                raise ModelError(f"the circuit's equations have no single solution at {f:.4g} Hz (a loop of ideal "
+                                 "parts, or a part of the circuit left floating): check its wiring")
+
+    def _check_setters(self) -> None:
+        """Sources and filter outputs fix a voltage: two on one node (or a loop of them) contradict each other."""
+        parent: dict = {}
+
+        def find(x):
+            parent.setdefault(x, x)
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+        done: list = []
+        for p in self.parts:
+            if isinstance(p, Source):
+                a, b = p.a, p.b
+            elif isinstance(p, Filter):
+                a, b = p.out, GROUND
+            else:
+                continue
+            if find(a) == find(b):
+                root = find(a)
+                others = [q.name for q, x in done if find(x) == root]
+                node = a if a != GROUND else b
+                raise ModelError(
+                    f"{' and '.join(others[-1:] + [p.name])} both set the voltage of node {node!r}: sources and filter "
+                    "outputs are ideal, each fixes its node's voltage, so two on one node contradict each other — "
+                    "chain the stages in one Filter (H=[…, …]), or join two outputs through resistors")
+            parent[find(a)] = find(b)
+            done.append((p, a))
+
+    def _check_grounded(self) -> None:
+        """Every node reaches the ground through parts that carry a current (a filter: its output to ground)."""
+        links: dict = {}
+        for p in self.parts:
+            a, b = (p.out, GROUND) if isinstance(p, Filter) else (p.a, p.b)
+            links.setdefault(a, set()).add(b)
+            links.setdefault(b, set()).add(a)
+        seen, todo = {GROUND}, [GROUND]
+        while todo:
+            for m in links.get(todo.pop(), ()):
+                if m not in seen:
+                    seen.add(m)
+                    todo.append(m)
+        floating = [n for n in self.nodes if n not in seen]
+        if floating:
+            raise ModelError(f"node(s) {floating} have no path to the ground '0' through parts carrying a current (a "
+                             "filter's input draws none): connect that part of the circuit to the ground")
 
     # ── modified nodal analysis ─────────────────────────────────────────────────────────────────────────────────
     def matrix(self, s) -> np.ndarray:
@@ -517,10 +583,14 @@ class CircuitResponse:
         return self._data((self._v(a) - self._v(b)) / self.current(part).values, "Z", at=part)
 
     def input_impedance(self, source: str | None = None):
-        """The impedance the amplifier sees at its terminals [Ω]."""
+        """The impedance the amplifier sees at its terminals [Ω] (infinite where it delivers no current, e.g. into an
+        ideal filter block's input)."""
         src = [p for p in self.circuit.parts if isinstance(p, Source)]
         p = src[0] if source is None else self.circuit[source]
-        return self._data((self._v(p.a) - self._v(p.b)) / self.x[:, self.circuit.index(p.name)], "Z", at=p.name)
+        i = self.x[:, self.circuit.index(p.name)]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            z = np.where(i != 0, (self._v(p.a) - self._v(p.b)) / np.where(i != 0, i, 1.0), np.inf)
+        return self._data(z, "Z", at=p.name)
 
     def transfer(self, node: str, source: str | None = None):
         """A node's voltage over its source's U (a filter's or a network's transfer function)."""

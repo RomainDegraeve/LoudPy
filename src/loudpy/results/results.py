@@ -42,6 +42,7 @@ from loudpy.results.selection import as_selection
 from loudpy.errors import ResultsError
 
 PHYSICS_OF = {"u": "solid", "v": "solid", "a": "solid", "p": "air"}
+ELECTRIC_EXTRA = ("weights", "e", "I_coil", "U", "Ze", "Bl", "Re", "Le", "n", "I")    # set by the drive (redrive)
 DERIVED = ("strain", "stress", "von_mises", "v", "a", "particle_velocity", "intensity")   # results.derived
 ALIASES = {"u_meca": "u", "v_meca": "v", "a_meca": "a", "p_acou": "p"}     # former field names
 
@@ -61,9 +62,29 @@ class Block:
     meta: dict = dc_field(default_factory=dict)
     label: str = ""
     boundaries: dict = dc_field(default_factory=dict)  # name → {"node_tags", "edges"} on this block's meshes
+    basis: dict = dc_field(default_factory=dict)      # unit responses: {"fields" | "extra": {name: [one per coil]}}
 
     def __len__(self):
         return len(self.values)
+
+    @property
+    def coils(self) -> list | None:
+        """The coils of the unit responses (a scene's driver names, [None] for a 2D model's coil), None when the
+        block keeps none (one force on several drivers at once)."""
+        return self.meta.get("basis", {}).get("coils") if self.basis else None
+
+    def driven(self, W) -> "Block":
+        """This block driven by the coil forces W (n, K): its fields and per-entry arrays the unit responses
+        weighted and summed (fields read on demand when they are), "weights" W."""
+        from loudpy.results.lazy import combine
+        W = np.asarray(W, complex).reshape(len(self.values), -1)
+        fields, extra = dict(self.fields), dict(self.extra)
+        for name, arrays in self.basis.get("fields", {}).items():
+            fields[name] = combine(arrays, W)
+        for name, arrays in self.basis.get("extra", {}).items():
+            extra[name] = combine([np.asarray(a) for a in arrays], W)
+        extra["weights"] = W
+        return Block(self.meshes, self.values, fields, extra, self.meta, self.label, self.boundaries, self.basis)
 
     def mesh_of(self, name: str) -> Mesh:
         """The mesh of a field (by its physics, or the block's only mesh)."""
@@ -428,6 +449,55 @@ class FrequencyResults(Results):
         if not data:
             raise ResultsError("these results were not driven by a circuit (lp.Circuit)")
         return CircuitResponse(Circuit.from_dict(data), self.frequencies, self.extra("e"))
+
+    @property
+    def redrivable(self) -> bool:
+        """Whether the response keeps one unit response per coil (redrive works): a study driven by a voltage or a
+        circuit, or by a force on one coil."""
+        return bool(self.blocks) and all(b.coils is not None and "mobility" in b.extra for b in self.blocks)
+
+    def redrive(self, drive) -> Self:
+        """
+        The same response driven otherwise — another lp.Circuit (filters, crossover, EQ, coil values), an lp.Voltage
+        or an lp.Force — without solving the structure and the air again: they respond linearly to the coil forces,
+        kept per coil (its unit response) with the coils' mobility (loudpy.physics.electric). Exact.
+
+            res2 = res.redrive(circuit2)               # the crossover changed after the study
+            res2.spl(at=pt), res2.impedance(), res2.voltage("c")
+        """
+        from loudpy.physics import electric
+        if not self.redrivable:
+            raise ResultsError("these results keep no unit response per coil (computed with one force on several "
+                               "drivers together, or by an older loudpy): drive the study by an lp.Voltage or an "
+                               "lp.Circuit to change its drive afterwards")
+        blocks, circuit = [], None
+        for b in self.blocks:
+            coils = list(b.coils or [])
+            circuit = electric.as_circuit(drive, coils)
+            freqs = np.asarray(b.values, float)
+            extra_keep = {k: v for k, v in b.extra.items() if k not in ELECTRIC_EXTRA}
+            if circuit is None:
+                W, scalars = electric.force_weights(drive, coils, len(freqs)), {}
+            else:
+                W, E = electric.solve(circuit, freqs, b.extra["mobility"], coils)
+                scalars = {"e": E, **(electric.coil_scalars(circuit, E, freqs) if coils == [None] else {})}
+            base = Block(b.meshes, b.values, b.fields, extra_keep, b.meta, b.label, b.boundaries, b.basis)
+            nb = base.driven(W)
+            nb.extra.update(scalars)
+            blocks.append(nb)
+        out = self._like(blocks)
+        out.meta = dict(self.meta, drive=repr(drive))
+        out.attachments = dict(self.attachments)
+        out.meta.pop("circuit", None)
+        out.attachments.pop("circuit", None)
+        if circuit is not None:
+            if self.meta.get("scene"):
+                out.attachments["circuit"] = dict(meta=circuit.to_dict())
+            else:
+                out.meta["circuit"] = circuit.to_dict()
+        from loudpy.results.description import drive_description
+        out.study = {**(self.study or {}), "drive": drive_description(drive), "redriven": True}
+        return out
 
     def input_impedance(self, source: str | None = None) -> Data:
         """The impedance the amplifier of a circuit-driven response sees [Ω]."""

@@ -41,7 +41,7 @@ import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 from scipy.special import spherical_jn, spherical_yn, sph_harm_y
 
-from loudpy.errors import ConvergenceWarning
+from loudpy.errors import ConvergenceWarning, ModelError
 from loudpy.fem.tet10 import assemble_p2, surface_quadrature
 from loudpy.geometry.meshing3d import read_p2_mesh
 from loudpy.model.materials import C_AIR, RHO_AIR
@@ -282,7 +282,8 @@ def coupled_sweep(bands, freqs, F, w_s, zeta, S, R, kappa2, eta_air=0.0, rho=RHO
     """
     bands: list of (f_lo, f_hi, ExteriorFE with couple_driver done); each frequency is solved on
     the band containing it. Returns q (n_f, n_y) and, per frequency, the DtN coefficients c_h
-    (list) — on_frequency(i, band_index, p, c_h, q) receives the full exterior field.
+    (list) — on_frequency(i, band_index, p, c_h, q) receives the full exterior field. F (n_y, K): K responses at
+    once (e.g. a unit force per coil: loudpy.physics.electric), q (n_f, n_y, K), p (n, K), c_h (K, n_h).
     H_extra(ω): dynamic matrix of extra generalised coordinates appended after the driver modes
     (e.g. the two mouths of a port); S, R, Bf and F then have n_y = n_modes + n_extra columns.
     Without a cavity, pass S of shape (n_y, 0), R = 0 and an empty kappa2. coils (a voltage drive: one current
@@ -297,7 +298,11 @@ def coupled_sweep(bands, freqs, F, w_s, zeta, S, R, kappa2, eta_air=0.0, rho=RHO
     if log is None:                                   # progress messages: logger "loudpy"
         from loudpy._log import info as log
     n_x = 0 if H_extra is None else H_extra(1.0).shape[0]
-    q_all = np.zeros((len(freqs), len(w_s) + n_x), complex)
+    F = np.asarray(F, complex)
+    multi = F.ndim == 2                                # one response per column (e.g. a unit force per coil)
+    if multi and (coils is not None or circuit is not None):
+        raise ModelError("several right-hand sides, or a voltage / circuit inside the system: not both")
+    q_all = np.zeros((len(freqs), len(w_s) + n_x) + F.shape[1:], complex)
     fld = "I" if coils is not None else "e" if circuit is not None else None
     n_e = np.shape(coils["Fc"])[1] if coils is not None else circuit[0].size if circuit is not None else 0
     I_all = None if fld is None else np.zeros((len(freqs), n_e), complex)
@@ -308,9 +313,15 @@ def coupled_sweep(bands, freqs, F, w_s, zeta, S, R, kappa2, eta_air=0.0, rho=RHO
             continue
         log(f"  band {f_lo:.0f}–{f_hi:.0f} Hz: {len(ext.nodes)} nodes, {len(ext.gnodes)} on Γ, "
             f"{len(ext.pnodes)} on the driver, n ≤ {ext.n_max_band}")
-        solver = BlockSolver(scene_builder(ext, F, w_s, zeta, S, R, kappa2, eta_air, rho, c, H_extra, coils,
-                                           circuit),
-                             small="q" if fld is None else ["q", fld], big="p", rtol=rtol, restart=150, maxiter=20)
+        builder = scene_builder(ext, F[:, 0] if multi else F, w_s, zeta, S, R, kappa2, eta_air, rho, c, H_extra,
+                                coils, circuit)
+        solver = BlockSolver(builder, small="q" if fld is None else ["q", fld], big="p", rtol=rtol, restart=150,
+                             maxiter=20)
+        rhs = None
+        if multi:                                                    # the columns of F on the q rows
+            rhs = np.zeros((builder.size, F.shape[1]), complex)
+            o = builder.offsets["q"]
+            rhs[o:o + F.shape[0]] = F
         p_prev, f_c, Mpre = None, None, None
         for i in idx:
             f = freqs[i]
@@ -321,7 +332,7 @@ def coupled_sweep(bands, freqs, F, w_s, zeta, S, R, kappa2, eta_air=0.0, rho=RHO
                 Mpre = None                                   # free the previous LU first
                 Mpre = ext.preconditioner(2 * np.pi * f_c / c)
                 log(f"    LU at {f_c:.0f} Hz ({time.time() - t0:.0f} s)", flush=True)
-            x, it, info = solver.solve(1j * w, x0=p_prev, preconditioner=Mpre)
+            x, it, info = solver.solve(1j * w, rhs=rhs, x0=p_prev, preconditioner=Mpre)
             p = x["p"]
             if info != 0:
                 warnings.warn(f"GMRES did not reach rtol = {rtol:g} at {f:.0f} Hz (info {info}); the result is kept",
@@ -329,7 +340,9 @@ def coupled_sweep(bands, freqs, F, w_s, zeta, S, R, kappa2, eta_air=0.0, rho=RHO
             q_all[i] = x["q"]
             if I_all is not None:
                 I_all[i] = x[fld]
-            coefs[i], iters[i], p_prev = ext.coefficients(p, k), it, p
+            coefs[i] = (np.array([ext.coefficients(p[:, j], k) for j in range(p.shape[1])]) if multi else
+                        ext.coefficients(p, k))
+            iters[i], p_prev = it, p
             if on_frequency is not None:
                 on_frequency(i, b, p, coefs[i], q_all[i])
     return (q_all, coefs, iters) if I_all is None else (q_all, coefs, iters, I_all)

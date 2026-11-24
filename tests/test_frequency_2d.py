@@ -72,3 +72,48 @@ def test_fsi_circuit(mesh_dir, tmp_path):
     back = lp.load(tmp_path / "circuit2d.h5")
     np.testing.assert_allclose(back.voltage("c").values, res.voltage("c").values, rtol=1e-12)
     assert "I_coil" in back.scalars and [p.name for p in back.circuit.circuit.parts] == ["amp", "lp", "L", "vc"]
+
+
+def test_redrive_2d(mesh_dir, tmp_path):
+    """The structure and the air are solved for a unit force on the coil, the drive weights it: a result changes its
+    drive afterwards (Results.redrive) exactly as solving again — a circuit for another, a force for a voltage —
+    saved and read back, and through an lp.Output keeping every other frequency."""
+    from loudpy.circuit import Capacitor, Coil, Filter, Inductor, Resistor, Semi, Source, butterworth, peq
+    model = api.speaker_problem(mesh_dir, acoustic=True)
+    freqs = [150.0, 400.0, 700.0, 1500.0]
+    v = VOLTAGE
+    coil = Coil("vc", "c", "0", Semi(Re=v["Re"], Bl=v["Bl"], Le=v["Le"], n=v["n"]))
+    a = lp.Circuit(Source("amp", "a", U=v["u"]), Filter("lp", "a", "f", butterworth(2, 400.0)), Inductor("L", "f", "c", 5e-4),
+                   coil)
+    b = lp.Circuit(Source("amp", "a", U=2.0, R_out=0.1), Filter("eq", "a", "f", [peq(500.0, 6.0, 2.0)]),
+                   Resistor("R", "f", "c", 1.0), Capacitor("C", "c", "0", 2e-5), coil)
+    res_a = lp.FrequencyResponse(model, drive=a).solve(freqs)
+    direct = lp.FrequencyResponse(model, drive=b).solve(freqs)
+    assert res_a.redrivable
+    res_a.save(tmp_path / "a.h5")
+    for src in (res_a, lp.load(tmp_path / "a.h5")):
+        again = src.redrive(b)
+        for name in ("u", "p"):
+            ref = np.asarray(direct.blocks[0].fields[name])
+            np.testing.assert_allclose(np.asarray(again.blocks[0].fields[name]), ref, rtol=1e-7, atol=1e-9 * np.abs(ref).max())
+        np.testing.assert_allclose(again.voltage("c").values, direct.voltage("c").values, rtol=1e-9)
+        np.testing.assert_allclose(again.impedance().values, direct.impedance().values, rtol=1e-9)
+        assert again.circuit.circuit.to_dict() == b.to_dict() and again.study["drive"]["type"] == "Circuit"
+    force = lp.FrequencyResponse(model, drive=lp.Force(2.5)).solve(freqs)
+    volt = lp.FrequencyResponse(model, drive=lp.Voltage(v["u"], Re=v["Re"], Bl=v["Bl"], Le=v["Le"], n=v["n"])
+                                ).solve(freqs)
+    from_force = force.redrive(lp.Voltage(v["u"], Re=v["Re"], Bl=v["Bl"], Le=v["Le"], n=v["n"]))
+    np.testing.assert_allclose(from_force.impedance().values, volt.impedance().values, rtol=1e-9)
+    np.testing.assert_allclose(np.asarray(from_force.blocks[0].fields["u"]), np.asarray(volt.blocks[0].fields["u"]),
+                               rtol=1e-7, atol=1e-9 * np.abs(np.asarray(volt.blocks[0].fields["u"])).max())
+    back = volt.redrive(lp.Force(2.5))
+    np.testing.assert_allclose(np.asarray(back.blocks[0].fields["u"]), np.asarray(force.blocks[0].fields["u"]),
+                               rtol=1e-7, atol=1e-9 * np.abs(np.asarray(force.blocks[0].fields["u"])).max())
+    thin = lp.FrequencyResponse(model, drive=a).solve(freqs, output=lp.Output(every=2))
+    np.testing.assert_allclose(thin.redrive(b).impedance().values, direct.impedance().values[::2], rtol=1e-9)
+    meca = api.speaker_problem(mesh_dir)                                         # the structure alone, no air
+    z = lp.FrequencyResponse(meca, drive=lp.Voltage(v["u"], Re=v["Re"], Bl=v["Bl"])).solve(freqs).impedance().values
+    assert np.all(z.real >= v["Re"] - 1e-9) and np.all(np.abs(z - v["Re"]) > 1e-6)
+    with pytest.raises(lp.errors.ModelError, match="both set the voltage"):
+        res_a.redrive(lp.Circuit(Source("amp", "a"), Filter("F1", "a", "c", butterworth(2, 400.0)),
+                                 Filter("F2", "a", "c", butterworth(2, 900.0, "high")), coil))

@@ -170,6 +170,8 @@ class SceneResults(FrequencyResults):
     def _circuit_coil(self, driver):
         """A circuit-driven scene: the coil part of a driver (default: the only coil)."""
         coils = self.circuit.circuit.coils
+        if driver is None and len(coils) > 1:
+            raise ResultsError(f"several drivers: name one ({[c.driver for c in coils]})")
         name = driver if driver is not None else (coils[0].driver if len(coils) == 1 else None)
         c = next((c for c in coils if c.driver == name), None)
         if c is None:

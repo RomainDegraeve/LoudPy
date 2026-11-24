@@ -74,8 +74,7 @@ def test_remeshed_coupled_sweep(tmp_path):
 
 def test_drive_checks(mesh_dir):
     model = api.speaker_model()
-    with pytest.raises(NotImplementedError, match="coupled"):
-        lp.FrequencyResponse(model, drive=lp.Voltage(1.0, Re=8, Bl=7))
+    lp.FrequencyResponse(model, drive=lp.Voltage(1.0, Re=8, Bl=7))          # the structure alone too (its coil)
     with pytest.raises(ValueError, match="harmonic"):
         lp.FrequencyResponse(model, drive=lp.Force(np.ones(10), fs=1000))
     with pytest.raises(ValueError, match="signal"):

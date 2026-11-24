@@ -74,6 +74,18 @@ def test_checks_and_round_trip():
         lp.Circuit(Source("x", "a"), Resistor("x", "a", "0", 1.0))
     with pytest.raises(lp.errors.ModelError, match="model"):
         lp.Circuit(Coil("c", "a", "0", model=6.0))
+    coil = Coil("c", "n1", "0", Semi(Re=8.0, Bl=7.0, Le=4e-4))
+    with pytest.raises(lp.errors.ModelError, match="F1 and F2 both set the voltage of node 'n1'"):
+        lp.Circuit(Source("amp", "in"), Filter("F1", "in", "n1", butterworth(4, 400.0)),
+                   Filter("F2", "in", "n1", butterworth(4, 700.0, "high")), coil).check()   # two ideal outputs
+    with pytest.raises(lp.errors.ModelError, match="both set the voltage of node 'in'"):
+        lp.Circuit(Source("a1", "in"), Source("a2", "in", U=2.0), Coil("c", "in", "0", Semi(8.0, 7.0))).check()
+    with pytest.raises(lp.errors.ModelError, match=r"\['x', 'y'\] have no path to the ground"):
+        lp.Circuit(Source("amp", "in"), Filter("F", "in", "n1", butterworth(2, 400.0)), coil,
+                   Resistor("R1", "x", "y", 1.0), Resistor("R2", "x", "y", 2.0)).check()
+    summed = lp.Circuit(Source("amp", "in"), Filter("F1", "in", "l", butterworth(4, 400.0)), Resistor("Ra", "l", "n1", 4.0),
+                        Filter("F2", "in", "h", butterworth(4, 700.0, "high")), Resistor("Rb", "h", "n1", 4.0), coil)
+    summed.check()                                                    # the two outputs joined through resistors
     c = lp.Circuit(Source("amp", "in", U=2.83 + 0.5j, R_out=0.05),
                    Filter("x", "in", "w", linkwitz_riley(4, 2000.0) * peq(80.0, 3.0, 1.0) * delay(1e-4)),
                    Inductor("L", "w", "c", 2e-4), Capacitor("C", "c", "0", 1e-5),

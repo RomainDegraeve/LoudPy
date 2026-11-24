@@ -172,13 +172,15 @@ class FrequencyResponse(Study):
         self.coupled = has_air if coupled is None else coupled
         if self.coupled and not has_air:
             raise ModelError("coupled=True needs an air region (lp.Air) in the model")
-        if isinstance(self.drive, (Voltage, Circuit)) and not self.coupled:
-            raise NotImplementedError("a Voltage or Circuit drive is available for the coupled structure + air model")
         self.reuse_factorization = reuse_factorization
 
     # ── one mesh ───────────────────────────────────────────────────────────
     def _solve_block(self, freqs, label="", model=None):
-        """Responses at `freqs` on the mesh of `model` (default: the study's) → one Block."""
+        """Responses at `freqs` on the mesh of `model` (default: the study's) → one Block: the structure and the air
+        solved for a unit force on the coil (its unit response), the drive weighting it — a Force its amplitude, a
+        Voltage or a Circuit the coil force Bl·I of the circuit solved with the coil's mobility
+        (loudpy.physics.electric: exact, and Results.redrive changes the drive afterwards)."""
+        from loudpy.physics import electric
         from loudpy.physics.builder import coupled_builder
         from loudpy.physics.systems import assemble, meshes, nodal
         from loudpy.solvers.linear import SweepSolver
@@ -187,46 +189,44 @@ class FrequencyResponse(Study):
             raise StateError("mesh the model first: model.mesh(path)")
         parts = model.parts
         s = assemble(parts, air=self.coupled)
-        builder = coupled_builder(s, parts, self.drive, self.coupled)
+        builder = coupled_builder(s, parts, Force(1.0), self.coupled)          # the coil's unit response
+        f_coil = np.asarray(s.F, float).reshape(-1)
         solver = SweepSolver()
         solver.reuse = self.reuse_factorization and solver.reuse
-        d = self.drive
-        U, P, E, attrs = [], [], [], []
+        freqs = np.asarray(freqs, float)
+        U, P, Y, attrs = [], [], [], []
         from loudpy import progress
-        for k_f, f in enumerate(np.asarray(freqs, float)):
+        for k_f, f in enumerate(freqs):
             progress.step("frequency", k_f + 1, len(freqs))
             w = 2 * np.pi * f
             z = 1j * w
             x = builder.split(solver.solve(builder.at(z), builder.rhs(z)))
             U.append(s.meca.expand(x["u"]))
-            a = {"omega": float(w)}
+            Y.append(z * (f_coil @ x["u"]))                                  # coil velocity per newton
             if "p" in x:
                 P.append(x["p"])
-            if "e" in x:                                            # a circuit: its unknowns, its coil
-                circ = builder.fields["e"].info["circuit"]
-                coil = circ.coils[0]
-                v = lambda n: 0.0 if n == "0" else x["e"][circ.index(n)]      # noqa: E731
-                E.append(x["e"])
-                a.update(I_coil=complex(x["e"][circ.index(coil.name)]), U=complex(v(coil.a) - v(coil.b)),
-                         Ze=complex(coil.model.impedance(z)), Bl=float(coil.model.Bl))
-            if "I" in x:
-                c = builder.fields["I"].info
-                a.update(I_coil=complex(x["I"][0]), Ze=complex(c["Re"] + z ** c["n"] * c["Le"]), Re=c["Re"],
-                         Le=c["Le"], n=c["n"], Bl=c["Bl"], U=complex(d.amplitude))
-            attrs.append(a)
+            attrs.append({"omega": float(w)})
         ms = meshes(s, parts)
-        fields = {"u": nodal(np.array(U), len(s.meca.unique_tags), 2)}
+        basis = {"fields": {"u": [nodal(np.array(U), len(s.meca.unique_tags), 2)]}, "extra": {}}
         if P:
-            fields["p"] = nodal(np.array(P), len(s.acou.unique_tags), 1)
+            basis["fields"]["p"] = [nodal(np.array(P), len(s.acou.unique_tags), 1)]
         from loudpy.geometry.mesh_files import fingerprint
-        meta = {"mesh": str(model._mesh_path), "mesh_fingerprint": fingerprint(model._mesh_path) or ""}
+        meta = {"mesh": str(model._mesh_path), "mesh_fingerprint": fingerprint(model._mesh_path) or "",
+                "basis": {"coils": [None]}}
         self.solver_stats = dict(factorizations=solver.n_factor, gmres_solves=solver.n_gmres,
                                  gmres_iterations=solver.iters)
         bounds = model.boundary_nodes()
         extra = records.scalars(attrs)
-        if E:
-            extra["e"] = np.array(E)
-        return Block(ms, np.asarray(freqs, float), fields, extra, meta, label, bounds), bounds
+        extra["mobility"] = np.array(Y, complex).reshape(-1, 1, 1)
+        circuit = electric.as_circuit(self.drive, [None])
+        if circuit is None:
+            W, more = electric.force_weights(self.drive, [None], len(freqs)), {}
+        else:
+            W, E = electric.solve(circuit, freqs, extra["mobility"], [None])
+            more = {"e": E, **electric.coil_scalars(circuit, E, freqs)}
+        block = Block(ms, freqs, {}, extra, meta, label, bounds, basis).driven(W)
+        block.extra.update(more)
+        return block, bounds
 
     # ── public ─────────────────────────────────────────────────────────────
     def solve(self, freqs, remesh: PerWavelength | None = None, store=None, output=None, **options) -> FrequencyResults:
@@ -246,9 +246,11 @@ class FrequencyResponse(Study):
         check(freqs, "frequency", "FrequencyResponse.solve(freqs)")
         meta = {"study": "FrequencyResponse", "drive": repr(self.drive), "coupled": self.coupled,
                 "geometry": str(self.model.geometry)}
-        from loudpy.circuit import Circuit
-        if isinstance(self.drive, Circuit):
-            meta["circuit"] = self.drive.to_dict()
+        from loudpy.physics.electric import as_circuit
+        circuit = as_circuit(self.drive, [None])                 # a Voltage: as its amplifier and coil
+        if circuit is not None:
+            circuit.check(freqs)
+            meta["circuit"] = circuit.to_dict()
         if remesh is None:
             block, bounds = self._solve_block(freqs)
             blocks = [block]
