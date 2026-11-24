@@ -275,3 +275,41 @@ A simulation as a document
    study, kwargs = doc.study("fr", model)         # lp.FrequencyResponse(model, drive=…), {"freqs": …}
    Path("speaker/speaker_ui.py").write_text(doc.to_script())   # python3 speaker_ui.py meshes and runs both
 
+Its parts are reached by **paths** (``lp.docpath``: a list element by its index or its name):
+
+.. code-block:: python
+
+   doc.get("studies/fr/params/freqs/to")                 # 20000.0
+   doc.set("model/items/cone/params/mesh_size", 1e-3)    # the value before
+   doc.remove("model/items/rims"); doc.insert("model/items", node, at=2)
+   doc.problems()       # [(path, message)]: each problem with the node it is about
+   doc.readiness()      # what the simulation still needs: [Step(key, title, state, message, path)] — done / todo /
+                        # warning / optional: geometry, domains, materials, held, coil, motor, coupling, radiation,
+                        # studies (a scene: drivers, cabinet, air, motors, studies); lp.readiness(model, studies) too
+   doc.fingerprint("study:fr")   # a digest of what that study's results depend on (the study, the circuit it
+                                 # names, the model and its files): it changes with any of them
+
+A study built by ``doc.study(name)`` stamps its results with what made them: ``res.provenance`` →
+``{"study", "simulation", "fingerprint"}`` (kept in the result file), so a result knows its study and whether the
+simulation changed since (its fingerprint now differs).
+
+A simulation's **workspace** (``lp.Workspace``) is its folder and its document, edited by commands — what the
+interface does, and what a script can do too:
+
+.. code-block:: python
+
+   ws = lp.Workspace.open("speaker")                   # a folder (its <name>.loudpy.json) or the document's path
+   ws.set("studies/fr/params/freqs/to", 5000.0)        # checked on its node (lp.schema): refused, the document as
+                                                       # it was, when the node does not hold
+   with ws.batch("crossover at 400 Hz"):               # several changes, one undo step (one refused: none made)
+       ws.set("circuits/xo/params/parts/hi/params/H/0/params/fc", 400.0)
+       ws.set("circuits/xo/params/parts/lo/params/H/0/params/fc", 400.0)
+   ws.undo(); ws.redo()
+   ws.on_change(lambda paths: print(paths))            # the paths every change touched (undo / redo too)
+   ws.target                                           # the model or scene: built again only when it changed
+   ws.readiness()                                      # what it still needs
+   study, kwargs = ws.study("fr")                      # its results stamped (provenance)
+   ws.results()                                        # results/*.h5: [{"name", "study", "state": current /
+                                                       # out of date / unknown}]
+   ws.save()                                           # <name>.loudpy.json and <name>_ui.py
+

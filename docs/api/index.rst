@@ -133,6 +133,10 @@ Every building block with its parameters, for programs (the interface's forms): 
    schema.from_value
    schema.reference_rst
    Document
+   Workspace
+   readiness
+   docpath.get
+   docpath.put
    schema.Param
 
 Plotting

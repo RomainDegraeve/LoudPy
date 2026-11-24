@@ -2611,4 +2611,7 @@ Public names of loudpy that a simulation is not made of:
 - ``plot``: module
 - ``schema``: module: this description
 - ``Document``: a whole simulation (model or scene, and studies) as nodes of these blocks
+- ``docpath``: module: paths into a document's data
+- ``readiness``: what a simulation still needs (a checklist)
+- ``Workspace``: a simulation's folder and document, edited by commands
 - ``circuit``: module: circuit.Source / Filter / Coil …, its filter stages and coil models are blocks

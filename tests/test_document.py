@@ -78,3 +78,57 @@ def test_the_generated_script_builds_the_model_and_runs_the_studies(tmp_path):
     assert run.returncode == 0, run.stderr[-2000:]
     res = lp.load(tmp_path / "results" / "modes.h5")
     assert res.kind == "modes" and len(res) > 0 and (tmp_path / "meshes" / "plate.msh").exists()
+
+
+def test_paths_problems_readiness_fingerprints_provenance(tmp_path, mesh_dir):
+    """A document's parts by path (named items, studies, circuits), its problems with the path of their node, what the
+    simulation still needs (readiness), what a study's results depend on (fingerprints) and what made them."""
+    from loudpy.circuit import Coil, Semi, Source
+    model = _plate(tmp_path)
+    doc = lp.Document.of(model, [dict(s) for s in STUDIES], name="plate",
+                         circuits={"amp": lp.Circuit(Source("amp", "in"), Coil("vc", "in", "0"))})
+    assert doc.get("model/items/plate/params/mesh_size") == {"P": "size"}
+    assert doc.get("studies/fr/params/freqs/to") == 1000.0 and doc.get("studies/1/name") == "fr"
+    assert doc.get("circuits/amp/params/parts/vc/type") == "circuit.Coil"
+    assert doc.set("studies/fr/params/freqs/to", 2000.0) == 1000.0 and doc.find("fr")["params"]["freqs"]["to"] == 2000.0
+    assert doc.get("studies/nope", None) is None
+    with pytest.raises(lp.errors.ModelError, match="no 'nope'"):
+        doc.get("studies/nope")
+    gone = doc.remove("model/items/interface_constrained_r")
+    assert gone["type"] == "Clamped" and doc.insert("model/items", gone, at=2) == 2
+    before = doc.fingerprint("study:fr")
+    assert doc.fingerprint("study:modes") == doc.fingerprint("study:modes")
+    doc.set("studies/modes/params/f_max", 2000.0)
+    assert doc.fingerprint("study:fr") == before                                 # another study: no change
+    doc.set("studies/fr/params/freqs/points", 5)
+    assert doc.fingerprint("study:fr") != before
+    t = doc.fingerprint("target")
+    doc.set("model/items/plate/params/mesh_size", 0.005)
+    assert doc.fingerprint("target") != t
+
+    doc.set("studies/fr/params/freqs/points", "four")                         # a value its block refuses
+    assert any(path == "studies/fr" and "points" in msg for path, msg in doc.problems())
+    doc.set("studies/fr/params/freqs/points", 4)
+    assert doc.problems() == [] and doc.check() == []
+
+    steps = {s.key: s for s in doc.readiness()}
+    assert steps["geometry"].state == "done" and steps["domains"].state == "done"
+    assert steps["coil"].state == "todo"                                          # a forced response, no coil
+    bare = lp.Model(tmp_path / "geometry" / "plate.geo")
+    first = {s.key: s for s in lp.readiness(bare)}
+    assert first["domains"].state == "todo" and first["studies"].state == "todo" and first["domains"].items
+
+    speaker = api.speaker_problem(mesh_dir, acoustic=True)
+    sdoc = lp.Document.of(speaker, [{"name": "fr", "type": "FrequencyResponse", "params": {
+        "drive": {"type": "CircuitRef", "params": {"name": "amp"}}, "freqs": [200.0]}}],
+        circuits={"amp": lp.Circuit(Source("amp", "in"), Coil("vc", "in", "0"))})
+    steps = {s.key: s for s in sdoc.readiness(speaker)}
+    assert steps["coil"].state == "done" and steps["motor"].state == "todo"
+    assert steps["motor"].path.endswith("/params/motor")
+    next(b for b in speaker.boundaries if isinstance(b, lp.Coil)).motor = Semi(Re=6.0, Bl=5.0)
+    assert {s.key: s for s in sdoc.readiness(speaker)}["motor"].state == "done"
+    study, kw = sdoc.study("fr", speaker)
+    res = study.solve(**kw)
+    assert res.provenance == {"study": "fr", "simulation": sdoc.name, "fingerprint": sdoc.fingerprint("study:fr")}
+    back = lp.load(res.save(tmp_path / "fr.h5"))
+    assert back.provenance["fingerprint"] == sdoc.fingerprint("study:fr")

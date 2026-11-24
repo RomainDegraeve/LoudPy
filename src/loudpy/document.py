@@ -39,7 +39,7 @@ from typing import Any
 
 import numpy as np
 
-from loudpy import schema
+from loudpy import docpath, schema
 from loudpy.errors import ModelError
 
 FORMAT = "loudpy.document/1"
@@ -125,42 +125,131 @@ class Document:
     # ── checks and objects ─────────────────────────────────────────────────────────────────────────────────────────
     def check(self) -> list[str]:
         """The problems of the values (lp.schema.check of every node), [] when none."""
-        out: list[str] = []
+        return [msg for _, msg in self.problems()]
+
+    def problems(self) -> list[tuple[str, str]]:
+        """The problems of the values, each with the path of the node it is about (loudpy.docpath):
+        [("model/items/cone", "…"), ("studies/fr", "…"), …]."""
+        out: list[tuple[str, str]] = []
+        key = "model" if self.model is not None else "scene"
         part = self.model if self.model is not None else self.scene
         if part is None:
-            return ["the document holds neither a model nor a scene"]
+            return [("", "the document holds neither a model nor a scene")]
         params = dict(part.get("params", {}))
         if isinstance(params.get("cabinet"), dict) and "import" in params["cabinet"]:
             params.pop("cabinet")                                    # a Python builder: checked when built
             if part["type"] == "Scene" and ":" not in part["params"]["cabinet"]["import"]:
-                out.append("Scene.cabinet: an import is 'module.py:function'")
-        out += [e for e in schema.check({"type": part["type"], "params": params})
+                out.append((f"{key}/params/cabinet", "Scene.cabinet: an import is 'module.py:function'"))
+        out += [(key, e) for e in schema.check({"type": part["type"], "params": params})
                 if not e.startswith("Scene.cabinet: required")]
-        for n in part.get("items", []) + part.get("settings", []):
-            out += schema.check(n)
-        for d in part.get("drivers", []):
-            out += schema.check(d["driver"]) + schema.check(d["place"])
+        for kind in ("items", "settings"):
+            for i, n in enumerate(part.get(kind, [])):
+                where = (n.get("params") or {}).get("name") or (n.get("type") if kind == "settings" else i)
+                out += [(f"{key}/{kind}/{where}", e) for e in schema.check(n)]
+        for i, d in enumerate(part.get("drivers", [])):
+            where = ((d.get("place") or {}).get("params") or {}).get("name") or i
+            out += [(f"{key}/drivers/{where}", e) for e in schema.check(d["driver"]) + schema.check(d["place"])]
         for cname, node in self.circuits.items():
             if not _variable(cname):
-                out.append(f"circuit {cname!r}: a name of letters, digits and _ (not first), not one of the script's "
-                           f"own names ({', '.join(sorted(RESERVED))})")
+                out.append((f"circuits/{cname}", f"circuit {cname!r}: a name of letters, digits and _ (not first), not "
+                            f"one of the script's own names ({', '.join(sorted(RESERVED))})"))
             if not isinstance(node, dict) or node.get("type") != "Circuit":
-                out.append(f"circuit {cname!r}: a Circuit node, got {node!r}")
+                out.append((f"circuits/{cname}", f"circuit {cname!r}: a Circuit node, got {node!r}"))
                 continue
-            out += [f"circuit {cname!r}: {e}" for e in schema.check(node)]
+            out += [(f"circuits/{cname}", f"circuit {cname!r}: {e}") for e in schema.check(node)]
         names = [s.get("name") for s in self.studies]
         if len(set(names)) != len(names):
-            out.append(f"studies: names must differ, got {names}")
+            out.append(("studies", f"studies: names must differ, got {names}"))
         for s in self.studies:
-            out += [f"study {s.get('name')!r}: {e}" for e in schema.check(_node(s))]
+            where = f"studies/{s.get('name')}"
+            out += [(where, f"study {s.get('name')!r}: {e}") for e in schema.check(_node(s))]
             if "study" in s:
-                out += [f"study {s.get('name')!r}: {e}" for e in schema.check(_node(s["study"]))]
+                out += [(where, f"study {s.get('name')!r}: {e}") for e in schema.check(_node(s["study"]))]
             for node in (s.get("params", {}).get("drive"), s.get("study", {}).get("params", {}).get("drive")):
                 if isinstance(node, dict) and node.get("type") == "CircuitRef":
                     ref = (node.get("params") or {}).get("name")
                     if ref not in self.circuits:
-                        out.append(f"study {s.get('name')!r}: no circuit {ref!r} (circuits: {sorted(self.circuits)})")
+                        out.append((f"{where}/params/drive", f"study {s.get('name')!r}: no circuit {ref!r} "
+                                    f"(circuits: {sorted(self.circuits)})"))
         return out
+
+    # ── paths: what an edit, a check or a dependency points at (loudpy.docpath) ─────────────────────────────────────
+    PARTS = ("name", "model", "scene", "studies", "circuits")
+
+    def _root(self) -> dict:
+        return {k: getattr(self, k) for k in self.PARTS}
+
+    def get(self, path, default=docpath.REQUIRED):
+        """The value at a path ("studies/fr/params/freqs/to", "model/items/cone/params/mesh_size" …)."""
+        return docpath.get(self._root(), path, default)
+
+    def set(self, path, value):
+        """Set the value at a path (a part of the document itself: "studies", "circuits" …); the value before."""
+        segs = docpath.split(path)
+        if len(segs) == 1:
+            if segs[0] not in self.PARTS:
+                raise ModelError(f"a document's parts are {self.PARTS}, not {segs[0]!r}")
+            before = getattr(self, segs[0])
+            setattr(self, segs[0], value)
+            return before
+        return docpath.put(self._root(), segs, value)
+
+    def remove(self, path):
+        """Remove what is at a path; what it was."""
+        return docpath.remove(self._root(), path)
+
+    def insert(self, path, value, at: int | None = None) -> int:
+        """Insert into the list at a path ("studies", "model/items" …); its index."""
+        return docpath.insert(self._root(), path, value, at)
+
+    # ── what a simulation still needs; what its results depend on ──────────────────────────────────────────────────
+    def readiness(self, target=None) -> list:
+        """What the simulation still needs, step by step (loudpy.readiness.Step: done / todo / warning / optional,
+        the path to change); target: its model or scene if already built."""
+        from loudpy.readiness import Step, readiness
+        try:
+            target = target if target is not None else self.build()
+        except Exception as e:                                       # noqa: BLE001  (said as the first step)
+            return [Step("build", "The model", "todo", str(e), "model" if self.model is not None else "scene")]
+        return readiness(target, self.studies, self.circuits)
+
+    def fingerprint(self, what: str = "target") -> str:
+        """A digest of what a result depends on, changed by any change of it (files by their content, large ones by
+        size and date): "target" (the model or scene), "study:<name>" (the study, the circuit it names, the target),
+        "circuit:<name>"."""
+        import hashlib
+        kind, _, name = what.partition(":")
+        if kind == "target":
+            data: Any = self._content(self.model if self.model is not None else self.scene)
+        elif kind == "circuit":
+            data = self.circuits.get(name)
+        elif kind == "study":
+            s = self.find(name)
+            refs = [n.get("params", {}).get("name") for n in (s.get("params", {}).get("drive"),
+                    s.get("study", {}).get("params", {}).get("drive")) if isinstance(n, dict) and
+                    n.get("type") == "CircuitRef"]
+            inner = self.find(s["of"]) if s.get("of") else None
+            data = {"study": s, "inner": inner, "circuits": {r: self.circuits.get(r) for r in refs},
+                    "target": self.fingerprint("target")}
+        else:
+            raise ModelError(f"fingerprint of 'target', 'study:<name>' or 'circuit:<name>', not {what!r}")
+        text = json.dumps(data, sort_keys=True, default=str)
+        return hashlib.sha256(text.encode()).hexdigest()[:16]
+
+    def _content(self, node):
+        """A node with its files (absolute paths) replaced by their content's digest."""
+        import hashlib
+
+        def digest(p: str) -> str:
+            q = _absolute(p, self.folder)
+            try:
+                st = q.stat()
+            except OSError:
+                return f"missing:{Path(p).name}"
+            if st.st_size > 5_000_000:                               # (a modes file: its size and date)
+                return f"{q.name}:{st.st_size}:{st.st_mtime_ns}"
+            return hashlib.sha256(q.read_bytes()).hexdigest()[:16]
+        return _map_files(node, digest)
 
     def circuit(self, name: str):
         """The lp.Circuit called `name` (one of the simulation's circuits)."""
@@ -174,8 +263,9 @@ class Document:
     def _absolute(self, node):
         return _map_files(node, lambda p: str(_absolute(p, self.folder)))
 
-    def build(self):
-        """The lp.Model or lp.Scene of the document."""
+    def build(self, cache: dict | None = None):
+        """The lp.Model or lp.Scene of the document; cache: a dict kept between builds — the drivers built before
+        from the same node and files are used again (reading a modes file takes time)."""
         if self.model is not None:
             m = self._absolute(self.model)
             model = schema.build({"type": "Model", "params": m.get("params", {})})
@@ -193,11 +283,11 @@ class Document:
         cabinet = params.pop("cabinet")
         cabinet = _import(cabinet["import"], self.folder) if isinstance(cabinet, dict) and "import" in cabinet \
             else schema.from_value(cabinet)
-        made: dict[str, Any] = {}
+        made: dict[str, Any] = cache if cache is not None else {}
         placed = []
         for d in s.get("drivers", []):
-            key = json.dumps(d["driver"], sort_keys=True)
-            if key not in made:
+            key = json.dumps([d["driver"], self._content(d["driver"])], sort_keys=True, default=str)
+            if key not in made or not _same_driver(made[key], d["driver"]):
                 made[key] = schema.build(d["driver"])
             placed.append(schema.build(d["place"], driver=made[key]))
         values = {k: schema.from_value(v, schema.block("Scene").param(k)) for k, v in params.items()}
@@ -217,15 +307,20 @@ class Document:
 
     def study(self, name: str, target=None):
         """(study, solve kwargs) of the study `name` on `target` (default: build()); a Sweep / Adaptive wraps its
-        "study" node."""
+        "study" node. Its results say what made them (Results.provenance: the study, the simulation, the fingerprint
+        of what they depend on)."""
         s = self._absolute(self.find(name))
         target = target if target is not None else self.build()
         circuits = self._circuits()
+        made = {"study": name, "simulation": self.name, "fingerprint": self.fingerprint(f"study:{name}")}
         if "study" in s:
             inner, kwargs = schema.build(_node(s["study"]), model=target, circuits=circuits)
             outer = schema.build(_node(s), study=inner)
+            inner.provenance = outer.provenance = made                # (kept in its results: Results.provenance)
             return outer, kwargs
-        return schema.build(_node(s), model=target, circuits=circuits)
+        study, kwargs = schema.build(_node(s), model=target, circuits=circuits)
+        study.provenance = made
+        return study, kwargs
 
     # ── a script ───────────────────────────────────────────────────────────────────────────────────────────────────
     def to_script(self, folder=None, results: str = "results", meshes: str = "meshes") -> str:
@@ -418,6 +513,40 @@ def _describe_model(m) -> dict:
     return {"type": "Model", "params": params, "items": items}
 
 
+def _driver_params(driver, placed: str = "") -> dict:
+    """The Driver.from_modes parameters of a driver (as it is now: its source)."""
+    src = driver.source or {}
+    if not src.get("path") or src.get("rear") is None or not isinstance(src.get("geometry"), (str, Path)):
+        raise ModelError(f"driver {placed or driver.name!r} was not made by lp.Driver.from_modes with a geometry "
+                         "file: a document cannot hold it")
+    dp: dict[str, Any] = {"path": str(Path(src["path"]).resolve()), "orders": [int(o) for o in src["orders"]],
+                          "geometry": str(Path(src["geometry"]).resolve()),
+                          "rear": schema.describe(src["rear"])}
+    if src.get("f_max") is not None:
+        dp["f_max"] = float(src["f_max"])
+    if src.get("front") is not None:
+        dp["front"] = schema.describe(src["front"])
+    if src.get("coil"):
+        dp["coil"] = src["coil"]
+    if src.get("motor") is not None:                              # given here (else the modes file's)
+        dp["motor"] = schema.describe(src["motor"])
+    dp["name"] = driver.name
+    return dp
+
+
+def _same_driver(driver, node: dict) -> bool:
+    """A driver built before is still what the node says (nothing changed it since)."""
+    try:
+        now = _driver_params(driver)
+    except ModelError:
+        return False
+    want = dict(node.get("params") or {})
+    for k in ("path", "geometry"):
+        if k in want:
+            want[k] = str(Path(want[k]).resolve())
+    return json.dumps(now, sort_keys=True, default=str) == json.dumps(want, sort_keys=True, default=str)
+
+
 def _describe_scene(s) -> dict:
     import dataclasses
     from loudpy.model.script import builder_module
@@ -439,22 +568,7 @@ def _describe_scene(s) -> dict:
         params["parameters"] = {k: schema.to_value(v) for k, v in s.parameters.items()}
     drivers = []
     for d in s.drivers:
-        src = d.driver.source or {}
-        if not src.get("path") or src.get("rear") is None or not isinstance(src.get("geometry"), (str, Path)):
-            raise ModelError(f"driver {d.name!r} was not made by lp.Driver.from_modes with a geometry file: a "
-                             "document cannot hold it")
-        dp: dict[str, Any] = {"path": str(Path(src["path"]).resolve()), "orders": [int(o) for o in src["orders"]],
-                              "geometry": str(Path(src["geometry"]).resolve()),
-                              "rear": schema.describe(src["rear"])}
-        if src.get("f_max") is not None:
-            dp["f_max"] = float(src["f_max"])
-        if src.get("front") is not None:
-            dp["front"] = schema.describe(src["front"])
-        if src.get("coil"):
-            dp["coil"] = src["coil"]
-        if src.get("motor") is not None:                          # given here (else the modes file's)
-            dp["motor"] = schema.describe(src["motor"])
-        dp["name"] = d.driver.name
+        dp = _driver_params(d.driver, d.name)
         at = [float(v) for v in np.asarray(d.frame.origin, float)]
         drivers.append({"driver": {"type": "Driver.from_modes", "params": dp},
                         "place": {"type": "Driver.place", "params": {"name": d.name, "at": at}}})

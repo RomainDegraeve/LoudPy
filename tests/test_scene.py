@@ -271,6 +271,11 @@ def test_scene_document_round_trip(driver, tmp_path):
     assert built.scene["params"]["cabinet"]["import"].endswith("test_scene.py:box_cabinet")
     with pytest.raises(lp.errors.ModelError, match="builder"):
         lp.Document.of(lp.Scene(lambda occ: box_cabinet(occ), [driver.place("main", at=(W / 2, H / 2))]))
+    cache: dict = {}                                       # builds kept (lp.Workspace): a driver is read once
+    a, b = back.build(cache=cache), back.build(cache=cache)
+    assert a.drivers[0].driver is b.drivers[0].driver
+    a.drivers[0].driver.source["f_max"] = 1234.0            # changed since it was built: built again
+    assert back.build(cache=cache).drivers[0].driver is not a.drivers[0].driver
 
 
 def deep_box(occ, p):

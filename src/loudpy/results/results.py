@@ -125,6 +125,12 @@ class Results:
         self.model = None                            # the model description (results.description), format 3
         self.study: dict = {}                        # the study settings, format 3
 
+    @property
+    def provenance(self) -> dict:
+        """What made the results, when a document's study did (lp.Document.study): {"study", "simulation",
+        "fingerprint"} — the fingerprint changes with anything they depend on (Document.fingerprint)."""
+        return dict((self.study or {}).get("provenance") or {})
+
     def _like(self, blocks) -> Self:
         """Results of the same class with other blocks, the same metadata and description."""
         out = type(self)(blocks, self.meta, self.boundaries, self.source)
