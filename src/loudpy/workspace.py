@@ -83,7 +83,7 @@ class Workspace:
         self._target: Any = None
         self._target_key: str | None = None
         self._version = 0                                              # changes so far (what caches follow)
-        self._fingerprint: tuple = (-1, "")
+        self._fingerprints: tuple = (-1, {})                          # (version, {what: fingerprint})
         self._catalog: dict = {}
         self._built: dict = {}                                         # parts built before (drivers): reused
 
@@ -228,6 +228,7 @@ class Workspace:
         become this document's — no undo step: record() it."""
         for k in ("model", "scene", "studies", "circuits"):
             setattr(self.document, k, getattr(document, k))
+        self._version += 1
 
     def undo(self) -> bool:
         """Undo the last step; False when there is none."""
@@ -320,13 +321,20 @@ class Workspace:
     def target(self):
         """The model or the scene of the document, built again only when what it depends on changed (refresh(): its
         files changed outside)."""
-        if self._fingerprint[0] != self._version:
-            self._fingerprint = (self._version, self.document.fingerprint("target"))
-        key = self._fingerprint[1]
+        key = self.fingerprint("target")
         if self._target is None or key != self._target_key:
             self._target = self.build()
             self._target_key = key
         return self._target
+
+    def fingerprint(self, what: str = "target") -> str:
+        """Document.fingerprint, kept until the next change (refresh(): files changed outside)."""
+        if self._fingerprints[0] != self._version:
+            self._fingerprints = (self._version, {})
+        found = self._fingerprints[1]
+        if what not in found:
+            found[what] = self.document.fingerprint(what)
+        return found[what]
 
     def build(self):
         """A new build of the document (objects of its own: the target's are not shared); the drivers built
@@ -335,7 +343,7 @@ class Workspace:
 
     def refresh(self) -> None:
         """Read the files again (a geometry or a modes file changed outside): the target is built again if they did."""
-        self._fingerprint = (-1, "")
+        self._fingerprints = (-1, {})
         self._catalog.clear()
         self._built.clear()
 
@@ -356,35 +364,42 @@ class Workspace:
         """The result files of the simulation (results/, recursively): {"name", "path", "study", "fingerprint",
         "state"} — state "current" (made by a study as it is now), "out of date" (its study or what it depends on
         changed since), "unknown" (no provenance: made otherwise)."""
-        import h5py
-        out = []
         base = self.folder / folder
-        for path in sorted(base.rglob("*.h5")) if base.exists() else []:
+        return [self.result(p) for p in (sorted(base.rglob("*.h5")) if base.exists() else [])]
+
+    def result(self, path) -> dict:
+        """One result file: {"name", "path", "study", "fingerprint", "state"} (results())."""
+        import h5py
+        path = Path(path)
+        try:
             stamp = path.stat().st_mtime_ns
-            cached = self._catalog.get(path)
-            if cached is None or cached[0] != stamp:
-                prov: dict = {}
-                try:
-                    with h5py.File(path, "r") as f:
-                        g = f.get("study")
-                        if g is not None and "settings" in g.attrs:
-                            prov = dict(json.loads(g.attrs["settings"]).get("provenance") or {})
-                except OSError:
-                    prov = {}
-                self._catalog[path] = cached = (stamp, prov)
-            prov = cached[1]
-            study = prov.get("study")
-            if not prov:
-                state = "unknown"
-            else:
-                try:
-                    state = "current" if self.document.fingerprint(f"study:{study}") == prov.get("fingerprint") \
-                        else "out of date"
-                except ModelError:
-                    state = "out of date"                             # (its study no longer exists)
-            out.append({"name": path.stem, "path": path, "study": study, "fingerprint": prov.get("fingerprint"),
-                        "state": state})
-        return out
+        except OSError:
+            stamp = -1
+        cached = self._catalog.get(path)
+        if cached is None or cached[0] != stamp:
+            prov: dict = {}
+            try:
+                with h5py.File(path, "r") as f:
+                    g = f.get("study")
+                    if g is None and "runs" in f and len(f["runs"]):   # a sweep: its first run's
+                        g = f["runs"][sorted(f["runs"])[0]].get("study")
+                    if g is not None and "settings" in g.attrs:
+                        prov = dict(json.loads(g.attrs["settings"]).get("provenance") or {})
+            except (OSError, ValueError, KeyError):
+                prov = {}
+            self._catalog[path] = cached = (stamp, prov)
+        prov = cached[1]
+        study = prov.get("study")
+        if not prov:
+            state = "unknown"
+        else:
+            try:
+                state = "current" if self.fingerprint(f"study:{study}") == prov.get("fingerprint") \
+                    else "out of date"
+            except ModelError:
+                state = "out of date"                                 # (its study no longer exists)
+        return {"name": path.stem, "path": path, "study": study, "fingerprint": prov.get("fingerprint"),
+                "state": state}
 
     # ── files ──────────────────────────────────────────────────────────────────────────────────────────────────────
     def save(self, script: bool = True) -> Path:

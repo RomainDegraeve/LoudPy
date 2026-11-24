@@ -76,6 +76,8 @@ def test_target_readiness_study_results_and_save(tmp_path, mesh_dir):
     (ws.folder / "results" / "plain.h5").write_bytes((ws.folder / "results" / "fr_1.h5").read_bytes())
     entries = {e["name"]: e for e in ws.results()}
     assert entries["fr_1"]["study"] == "fr" and entries["fr_1"]["state"] == "current"
+    assert ws.result(ws.folder / "results" / "fr_1.h5") == entries["fr_1"]
+    assert ws.fingerprint("study:fr") == ws.document.fingerprint("study:fr")
     ws.set("circuits/amp/params/parts/amp/params/U", 2.83)                      # what fr depends on changed
     assert {e["name"]: e["state"] for e in ws.results()}["fr_1"] == "out of date"
     ws.undo()
