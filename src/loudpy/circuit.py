@@ -25,6 +25,8 @@ to its second through the part (a source's: the current it delivers out of its f
 """
 from __future__ import annotations
 
+import functools
+import inspect
 import math
 from dataclasses import dataclass, field
 from typing import Any
@@ -49,7 +51,25 @@ class Transfer:
     delay: float = 0.0
     parts: list = field(default_factory=list)              # the stages it was made of: [{"type", "params"}]
 
+    @property
+    def deferred(self) -> bool:
+        """Whether a stage's values are parameters (lp.P) not given yet: with_parameters makes it."""
+        return any(_uses_parameters(p.get("params")) for p in self.parts)
+
+    def with_parameters(self, params) -> "Transfer":
+        """This transfer function with its stages' parameters (lp.P) given their values (params: a mapping)."""
+        if not self.deferred:
+            return self
+        from loudpy.model.parameters import resolve
+        out = None
+        for part in self.parts:
+            t = STAGES[str(part["type"]).split(".")[-1]](**{k: resolve(v, params) for k, v in part["params"].items()})
+            out = t if out is None else out * t
+        return out if out is not None else Transfer()
+
     def __call__(self, s):
+        if self.deferred:
+            raise ModelError("a filter stage's values are parameters: give them (circuit.with_parameters(params))")
         h = complex(self.gain) * np.exp(-s * self.delay)
         for n, d in zip(self.num, self.den):
             h = h * np.polyval(n, s) / np.polyval(d, s)
@@ -68,28 +88,73 @@ def _w(f):
     return 2 * math.pi * float(f)
 
 
+def _uses_parameters(v) -> bool:
+    from loudpy.model.parameters import P
+    if isinstance(v, P):
+        return True
+    if isinstance(v, (list, tuple)):
+        return any(_uses_parameters(x) for x in v)
+    if isinstance(v, dict):
+        return any(_uses_parameters(x) for x in v.values())
+    return False
+
+
+def _parameter_names(v) -> set:
+    from loudpy.model.parameters import P
+    if isinstance(v, P):
+        return {v.name}
+    if isinstance(v, (list, tuple)):
+        return set().union(*(_parameter_names(x) for x in v)) if v else set()
+    if isinstance(v, dict):
+        return set().union(*(_parameter_names(x) for x in v.values())) if v else set()
+    if isinstance(v, Transfer):
+        return _parameter_names([p.get("params") for p in v.parts])
+    if hasattr(v, "__dataclass_fields__") and not isinstance(v, type):
+        return set().union(*(_parameter_names(getattr(v, k)) for k in v.__dataclass_fields__))
+    return set()
+
+
+def _deferrable(fn):
+    """A filter stage whose values may be parameters (lp.P): it is then made when their values are known
+    (Transfer.with_parameters)."""
+    sig = inspect.signature(fn)
+
+    @functools.wraps(fn)
+    def stage(*args, **kwargs):
+        bound = sig.bind(*args, **kwargs)
+        bound.apply_defaults()
+        if _uses_parameters(bound.arguments):
+            return Transfer([], [], parts=[{"type": f"circuit.{fn.__name__}", "params": dict(bound.arguments)}])
+        return fn(*args, **kwargs)
+    return stage
+
+
 def _stage(tf: Transfer, name: str, **params) -> Transfer:
     """A transfer function that remembers the stage it is (its block: loudpy.schema)."""
     tf.parts = [{"type": f"circuit.{name}", "params": params}]
     return tf
 
 
+@_deferrable
 def gain(db: float) -> Transfer:
     """A gain [dB]."""
     return _stage(Transfer(gain=10 ** (db / 20)), "gain", db=db)
 
 
+@_deferrable
 def delay(t: float) -> Transfer:
     """A pure delay [s]."""
     return _stage(Transfer(delay=float(t)), "delay", t=t)
 
 
+@_deferrable
 def biquad(num, den) -> Transfer:
     """A section num(s)/den(s), coefficients from the highest power of s down."""
     num, den = list(map(float, num)), list(map(float, den))
     return _stage(Transfer([num], [den]), "biquad", num=num, den=den)
 
 
+@_deferrable
 def butterworth(order: int, fc: float, kind: str = "low") -> Transfer:
     """A Butterworth low or high pass ("low" / "high") of `order` at fc [Hz] (−3 dB there)."""
     if kind not in ("low", "high"):
@@ -109,6 +174,7 @@ def butterworth(order: int, fc: float, kind: str = "low") -> Transfer:
     return _stage(Transfer(num, den), "butterworth", order=n, fc=fc, kind=kind)
 
 
+@_deferrable
 def linkwitz_riley(order: int, fc: float, kind: str = "low") -> Transfer:
     """A Linkwitz–Riley low or high pass of even `order` (2, 4, 8) at fc [Hz]: two Butterworths of half the order
     (−6 dB at fc; the low and high pass sum flat, in phase for order 4)."""
@@ -118,6 +184,7 @@ def linkwitz_riley(order: int, fc: float, kind: str = "low") -> Transfer:
     return _stage(b * b, "linkwitz_riley", order=int(order), fc=fc, kind=kind)
 
 
+@_deferrable
 def peq(f0: float, gain_db: float, q: float) -> Transfer:
     """A parametric EQ (peaking) at f0 [Hz], gain [dB], quality factor q (the analog RBJ form)."""
     a, w = 10 ** (gain_db / 40), _w(f0)
@@ -125,6 +192,7 @@ def peq(f0: float, gain_db: float, q: float) -> Transfer:
                   q=q)
 
 
+@_deferrable
 def low_shelf(f0: float, gain_db: float, q: float = 1 / math.sqrt(2)) -> Transfer:
     """A low shelf at f0 [Hz], gain [dB] below it (the analog RBJ form)."""
     a, w = 10 ** (gain_db / 40), _w(f0)
@@ -132,12 +200,16 @@ def low_shelf(f0: float, gain_db: float, q: float = 1 / math.sqrt(2)) -> Transfe
     return _stage(Transfer([[a, a * r, a * a * w * w]], [[a, r, w * w]]), "low_shelf", f0=f0, gain_db=gain_db, q=q)
 
 
+@_deferrable
 def high_shelf(f0: float, gain_db: float, q: float = 1 / math.sqrt(2)) -> Transfer:
     """A high shelf at f0 [Hz], gain [dB] above it (the analog RBJ form)."""
     a, w = 10 ** (gain_db / 40), _w(f0)
     r = math.sqrt(a) / q * w
     return _stage(Transfer([[a * a, a * r, a * w * w]], [[1.0, r, a * w * w]]), "high_shelf", f0=f0,
                   gain_db=gain_db, q=q)
+
+
+STAGES = {f.__name__: f for f in (gain, delay, biquad, butterworth, linkwitz_riley, peq, low_shelf, high_shelf)}
 
 
 # ── coil models (the magnetic side): Z(s) of the blocked coil, and its force factor ─────────────────────────────────
@@ -201,11 +273,22 @@ class Wright:
 COIL_MODELS = (Semi, Leach, LR2, Wright)
 
 
+def _unplain(v):
+    """A plain value back: {"P": …} a parameter reference (lists too)."""
+    from loudpy.model.parameters import P
+    if isinstance(v, dict) and "P" in v:
+        return P(v["P"], float(v.get("scale", 1.0)), float(v.get("offset", 0.0)))
+    if isinstance(v, list):
+        return [_unplain(x) for x in v]
+    return v
+
+
 def motor_to_dict(m) -> dict | None:
     """A coil model (a driver's motor) as plain data: {"type": "Semi", "Re": …, …}; None stays None."""
     if m is None:
         return None
-    return {"type": type(m).__name__, **{k: getattr(m, k) for k in m.__dataclass_fields__}}
+    from loudpy import schema
+    return {"type": type(m).__name__, **{k: schema.to_value(getattr(m, k)) for k in m.__dataclass_fields__}}
 
 
 def motor_from_dict(d):
@@ -217,7 +300,7 @@ def motor_from_dict(d):
     kind = str(d.pop("type")).split(".")[-1]
     if kind not in models:
         raise ModelError(f"a motor is one of {list(models)}, got {kind!r}")
-    return models[kind](**{k: v for k, v in d.items() if k in models[kind].__dataclass_fields__})
+    return models[kind](**{k: _unplain(v) for k, v in d.items() if k in models[kind].__dataclass_fields__})
 
 
 # ── the parts ────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -259,7 +342,9 @@ class Source:
     R_out: float = 0.0
 
     def __post_init__(self):
-        self.U = complex(self.U)
+        from loudpy.model.parameters import P
+        if not isinstance(self.U, P):                               # (a parameter: its value later)
+            self.U = complex(self.U)
 
 
 @dataclass
@@ -379,6 +464,10 @@ class Circuit:
         """
         if not any(isinstance(p, Source) for p in self.parts):
             raise ModelError("a circuit needs a Source (the amplifier)")
+        names = self.parameters
+        if names:
+            raise ModelError(f"parameter(s) {names} in the circuit: give their values "
+                             "(circuit.with_parameters(model.parameters); a study does)")
         bare = [c.name for c in self.coils if c.model is None]
         if bare:
             raise ModelError(f"coil(s) {bare}: no motor — give the driver one (its lp.Coil item: motor=…, or "
@@ -452,6 +541,25 @@ class Circuit:
         if floating:
             raise ModelError(f"node(s) {floating} have no path to the ground '0' through parts carrying a current (a "
                              "filter's input draws none): connect that part of the circuit to the ground")
+
+    @property
+    def parameters(self) -> list[str]:
+        """The parameters (lp.P) its values refer to."""
+        return sorted(set().union(*(_parameter_names(p) for p in self.parts))) if self.parts else []
+
+    def with_parameters(self, params) -> "Circuit":
+        """This circuit with its parameters (lp.P: in part values, filter stages, coil models) given their values
+        (params: the model's or the scene's lp.Parameters, or a mapping)."""
+        import dataclasses
+        from loudpy.model.parameters import resolve
+        if not self.parameters:
+            return self
+        parts = []
+        for p in self.parts:
+            if isinstance(p, Filter):
+                p = dataclasses.replace(p, H=p.H.with_parameters(params))
+            parts.append(resolve(p, params))
+        return Circuit(*parts)
 
     def with_motors(self, motors: dict | None) -> "Circuit":
         """This circuit with each coil without a model given its driver's motor (motors: {driver name, or None for a
@@ -543,8 +651,12 @@ class Circuit:
     def to_dict(self) -> dict:
         """The circuit as plain data (JSON): its parts with their values."""
         def value(v):
+            from loudpy import schema
             if isinstance(v, Transfer):
-                return {"num": v.num, "den": v.den, "gain": v.gain, "delay": v.delay, "parts": v.parts}
+                return {"num": v.num, "den": v.den, "gain": v.gain, "delay": v.delay,
+                        "parts": schema.to_value(v.parts)}
+            if _uses_parameters(v):
+                return schema.to_value(v)
             if isinstance(v, COIL_MODELS):
                 return motor_to_dict(v)
             if isinstance(v, complex):
@@ -562,7 +674,11 @@ class Circuit:
             d = dict(d)
             t = types[d.pop("type")]
             if "H" in d and isinstance(d["H"], dict):
-                d["H"] = Transfer(**d["H"])
+                h = dict(d["H"])
+                h["parts"] = [{"type": x["type"], "params": {k: _unplain(v) for k, v in x["params"].items()}}
+                              for x in h.get("parts", [])]
+                d["H"] = Transfer(**h)
+            d = {k: (_unplain(v) if k not in ("H", "model") else v) for k, v in d.items()}
             if "model" in d and isinstance(d["model"], dict):
                 d["model"] = motor_from_dict(d["model"])
             if "U" in d and isinstance(d["U"], (list, tuple)):

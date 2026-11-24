@@ -27,14 +27,16 @@ import numpy as np
 from loudpy.errors import ModelError
 
 
-def as_circuit(drive, coils: list, motors: dict | None = None):
+def as_circuit(drive, coils: list, motors: dict | None = None, params=None):
     """The circuit of an electrical drive: an lp.Circuit itself; an lp.Voltage (every coil) or {driver: lp.Voltage}
     as one amplifier and one coil per driver; None for a Force (or {driver: Force}). Its coils without a model get
-    their driver's motor (motors: {driver name, or None for a 2D model's coil: a coil model})."""
+    their driver's motor (motors: {driver name, or None for a 2D model's coil: a coil model}), its parameters (lp.P)
+    their values (params: the model's or the scene's)."""
     from loudpy.circuit import Circuit, Coil, Source
     from loudpy.model.drives import Force, Voltage
     if isinstance(drive, Circuit):
-        return drive.with_motors(motors)
+        out = drive.with_motors(motors)
+        return out.with_parameters(params) if params is not None else out
     per = drive if isinstance(drive, dict) else {c: drive for c in coils}
     values = list(per.values())
     if all(isinstance(v, Force) for v in values):
@@ -52,7 +54,8 @@ def as_circuit(drive, coils: list, motors: dict | None = None):
         v = per[c]
         node, tag = (f"in_{c}", f"_{c}") if c is not None else ("in", "")
         parts += [Source(f"amp{tag}", node, U=complex(v.amplitude)), Coil(f"coil{tag}", node, "0", v.motor, driver=c)]
-    return Circuit(*parts).with_motors(motors)
+    out = Circuit(*parts).with_motors(motors)
+    return out.with_parameters(params) if params is not None else out
 
 
 def motors_of(target) -> dict:

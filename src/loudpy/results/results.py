@@ -450,6 +450,13 @@ class FrequencyResults(Results):
             raise ResultsError("these results were not driven by a circuit (lp.Circuit)")
         return CircuitResponse(Circuit.from_dict(data), self.frequencies, self.extra("e"))
 
+    def _parameters(self) -> dict:
+        """The parameter values of the model the results were computed on (its description), {} if none."""
+        try:
+            return dict(self.model.parameters) if self.model is not None else {}
+        except Exception:                                            # noqa: BLE001  (an older description)
+            return {}
+
     @property
     def motors(self) -> dict:
         """The drivers' motors the study had ({driver name, or None for a 2D model's coil: a coil model or None}):
@@ -480,7 +487,7 @@ class FrequencyResults(Results):
         blocks, circuit = [], None
         for b in self.blocks:
             coils = list(b.coils or [])
-            circuit = electric.as_circuit(drive, coils, self.motors)
+            circuit = electric.as_circuit(drive, coils, self.motors, self._parameters())
             freqs = np.asarray(b.values, float)
             extra_keep = {k: v for k, v in b.extra.items() if k not in ELECTRIC_EXTRA}
             if circuit is None:

@@ -19,8 +19,12 @@ The JSON:
      "scene": {"type": "Scene", "params": {cabinet, air, parameters},
                "drivers": [{"driver": Driver.from_modes node, "place": Driver.place node}, …],
                "settings": [Scene.cavity / Scene.exterior / Scene.merged / Scene.walls nodes]},
+     "circuits": {name: Circuit node, …}       (optional) the simulation's circuits: amplifier, filters, coils
      "studies": [{"name": …, "type": "Modes", "params": {…}}, {"name": …, "type": "Sweep", "params": {…},
                   "study": the swept study's node}, …]}
+
+A study driven by one of the circuits names it: "drive": {"type": "CircuitRef", "params": {"name": …}}; the script
+writes each circuit once as a variable (its name) and the studies use it (drive=xo).
 
 A cabinet written as a Python builder at the top level of a module file is {"import": "module.py:function"}.
 """
@@ -51,20 +55,24 @@ class Document:
     scene: dict | None = None
     studies: list = field(default_factory=list)
     folder: Path | None = None
+    circuits: dict = field(default_factory=dict)                       # name → Circuit node
 
     # ── from objects ───────────────────────────────────────────────────────────────────────────────────────────────
     @classmethod
-    def of(cls, target, studies=None, name: str | None = None, folder=None) -> "Document":
-        """The document of an lp.Model or lp.Scene (and study nodes); paths kept absolute until save()."""
+    def of(cls, target, studies=None, name: str | None = None, folder=None, circuits=None) -> "Document":
+        """The document of an lp.Model or lp.Scene (and study nodes, and named circuits: {name: lp.Circuit or its
+        node}); paths kept absolute until save()."""
         import loudpy as lp
         studies = [copy.deepcopy(s) for s in (studies or [])]
         for s in studies:
             _check_study(s)
+        circ = {str(k): (copy.deepcopy(c) if isinstance(c, dict) else schema.describe(c))
+                for k, c in (circuits or {}).items()}
         if isinstance(target, lp.Scene):
             return cls(name or "scene", scene=_describe_scene(target), studies=studies,
-                       folder=Path(folder) if folder else None)
+                       folder=Path(folder) if folder else None, circuits=circ)
         return cls(name or Path(str(target.source.name)).stem, model=_describe_model(target), studies=studies,
-                   folder=Path(folder) if folder else None)
+                   folder=Path(folder) if folder else None, circuits=circ)
 
     # ── files ──────────────────────────────────────────────────────────────────────────────────────────────────────
     def to_dict(self, folder=None) -> dict:
@@ -76,6 +84,8 @@ class Document:
             out["model"] = _map_files(self.model, rel)
         if self.scene is not None:
             out["scene"] = _map_files(self.scene, rel)
+        if self.circuits:
+            out["circuits"] = copy.deepcopy(self.circuits)
         out["studies"] = [_map_files(s, rel) for s in self.studies]
         return out
 
@@ -105,12 +115,12 @@ class Document:
         if ("model" in data) == ("scene" in data):
             raise ModelError("a document holds a model or a scene (one of them)")
         return cls(data.get("name", "simulation"), data.get("model"), data.get("scene"), list(data.get("studies", [])),
-                   Path(folder) if folder is not None else None)
+                   Path(folder) if folder is not None else None, dict(data.get("circuits") or {}))
 
     def copy(self) -> "Document":
         """A deep copy (the nodes are not shared)."""
         return Document(self.name, copy.deepcopy(self.model), copy.deepcopy(self.scene), copy.deepcopy(self.studies),
-                        self.folder)
+                        self.folder, copy.deepcopy(self.circuits))
 
     # ── checks and objects ─────────────────────────────────────────────────────────────────────────────────────────
     def check(self) -> list[str]:
@@ -130,6 +140,14 @@ class Document:
             out += schema.check(n)
         for d in part.get("drivers", []):
             out += schema.check(d["driver"]) + schema.check(d["place"])
+        for cname, node in self.circuits.items():
+            if not _variable(cname):
+                out.append(f"circuit {cname!r}: a name of letters, digits and _ (not first), not one of the script's "
+                           f"own names ({', '.join(sorted(RESERVED))})")
+            if not isinstance(node, dict) or node.get("type") != "Circuit":
+                out.append(f"circuit {cname!r}: a Circuit node, got {node!r}")
+                continue
+            out += [f"circuit {cname!r}: {e}" for e in schema.check(node)]
         names = [s.get("name") for s in self.studies]
         if len(set(names)) != len(names):
             out.append(f"studies: names must differ, got {names}")
@@ -137,7 +155,21 @@ class Document:
             out += [f"study {s.get('name')!r}: {e}" for e in schema.check(_node(s))]
             if "study" in s:
                 out += [f"study {s.get('name')!r}: {e}" for e in schema.check(_node(s["study"]))]
+            for node in (s.get("params", {}).get("drive"), s.get("study", {}).get("params", {}).get("drive")):
+                if isinstance(node, dict) and node.get("type") == "CircuitRef":
+                    ref = (node.get("params") or {}).get("name")
+                    if ref not in self.circuits:
+                        out.append(f"study {s.get('name')!r}: no circuit {ref!r} (circuits: {sorted(self.circuits)})")
         return out
+
+    def circuit(self, name: str):
+        """The lp.Circuit called `name` (one of the simulation's circuits)."""
+        if name not in self.circuits:
+            raise ModelError(f"no circuit {name!r}; circuits: {sorted(self.circuits)}")
+        return schema.build(self.circuits[name])
+
+    def _circuits(self) -> dict:
+        return {n: schema.build(c) for n, c in self.circuits.items()}
 
     def _absolute(self, node):
         return _map_files(node, lambda p: str(_absolute(p, self.folder)))
@@ -188,11 +220,12 @@ class Document:
         "study" node."""
         s = self._absolute(self.find(name))
         target = target if target is not None else self.build()
+        circuits = self._circuits()
         if "study" in s:
-            inner, kwargs = schema.build(_node(s["study"]), model=target)
+            inner, kwargs = schema.build(_node(s["study"]), model=target, circuits=circuits)
             outer = schema.build(_node(s), study=inner)
             return outer, kwargs
-        return schema.build(_node(s), model=target)
+        return schema.build(_node(s), model=target, circuits=circuits)
 
     # ── a script ───────────────────────────────────────────────────────────────────────────────────────────────────
     def to_script(self, folder=None, results: str = "results", meshes: str = "meshes") -> str:
@@ -258,6 +291,10 @@ class Document:
                 lines.append(f"scene.{n['type'].split('.')[1]}({', '.join(sargs)})")
             target = "scene"
             mesh = f"scene.mesh(HERE / {meshes!r})"
+        if self.circuits:                                             # the simulation's circuits, once each
+            lines.append("")
+            for cname, node in self.circuits.items():
+                lines.append(f"{cname} = {schema.code(node, None, path)}")
         lines += ["", "", 'if __name__ == "__main__":', f"    (HERE / {results!r}).mkdir(exist_ok=True)", f"    {mesh}"]
         for s in self.studies:
             lines += [f"    # {s['name']}"] + [f"    {ln}" for ln in _study_code(s, target, path, results)]
@@ -268,6 +305,16 @@ class Document:
 
 
 # ── helpers ────────────────────────────────────────────────────────────────────────────────────────────────────────
+RESERVED = {"model", "scene", "cabinet", "study", "res", "lp", "np", "Path", "HERE", "sys"}   # the script's names
+
+
+def _variable(name: str) -> bool:
+    """A circuit name the script can use as its variable."""
+    import keyword
+    return (name.isidentifier() and not keyword.iskeyword(name) and name not in RESERVED
+            and not (name.startswith("driver") and name[6:].isdigit()))
+
+
 def _node(s: dict) -> dict:
     return {"type": s["type"], "params": s.get("params", {})}
 

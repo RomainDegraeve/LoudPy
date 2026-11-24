@@ -164,6 +164,13 @@ def _make(type_, section, target, params, *, context=(), code_only=None, solve=N
 
 
 # ── the catalog ────────────────────────────────────────────────────────────────────────────────────────────────────
+def _circuit_ref(circuits, name):
+    """A study's drive naming one of the simulation's circuits (built from the document's "circuits")."""
+    if name not in (circuits or {}):
+        raise SchemaError(f"no circuit {name!r} in the simulation (circuits: {sorted(circuits or {})})")
+    return circuits[name]
+
+
 def _catalog() -> dict[str, Block]:
     import loudpy as lp
     from loudpy.geometry import selectors as sel
@@ -290,6 +297,9 @@ def _catalog() -> dict[str, Block]:
             _p("Le", "number", "H", "coil (semi-)inductance", "Coil", min=0, min_inclusive=True),
             _p("n", "number", help="semi-inductance exponent: Z_L = Le (jω)^n (1: a plain inductance)",
                group="Coil", min=0, max=1, max_inclusive=True)]),
+        _make("CircuitRef", "drives", _circuit_ref, [
+            _p("name", "text", help="one of the simulation's circuits (lp.Document: circuits)", group="Circuit")],
+            context=("circuits",)),
         _make("Circuit", "drives", lp.Circuit, [
             _p("parts", "blocks", help="the amplifier, filter blocks, passive parts and the drivers' coils, on named "
                "nodes ('0': the ground)", group="Circuit", of="circuit.parts")], varargs="parts"),
@@ -702,7 +712,7 @@ def to_value(x) -> Any:
         return {str(k): to_value(v) for k, v in x.items()}
     from loudpy.circuit import Transfer
     if isinstance(x, Transfer):                                       # a filter's H: the stages it was made of
-        return [dict(p) for p in x.parts]
+        return [{"type": p["type"], "params": to_value(p["params"])} for p in x.parts]
     return describe(x)
 
 
@@ -871,6 +881,8 @@ def code(v, p: Param | None = None, path: Callable[[str], str] | None = None) ->
         given = v.get("params") or {}
         if b.type == "Item":
             return f"model[{given['name']!r}]"
+        if b.type == "CircuitRef":                                    # the script's variable of that circuit
+            return str(given["name"])
         if b.type in ("Union", "Intersection", "Difference"):
             op = {"Union": "|", "Intersection": "&", "Difference": "-"}[b.type]
             return f"({code(given['a'], b.param('a'), path)} {op} {code(given['b'], b.param('b'), path)})"

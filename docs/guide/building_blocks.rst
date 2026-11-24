@@ -570,6 +570,28 @@ Voltage drive of an electro-mechanical coil: amplitude [V] on the driver's motor
      - ``1.0``
      - semi-inductance exponent: Z_L = Le (jω)^n (1: a plain inductance) Range: > 0, ≤ 1.
 
+``lp.CircuitRef``
+^^^^^^^^^^^^^^^^^
+
+A study's drive naming one of the simulation's circuits (built from the document's "circuits").
+
+Given by the context: circuits.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 18 14 8 16 44
+
+   * - parameter
+     - value
+     - unit
+     - default
+     - meaning
+   * - ``name``
+     - text
+     - 
+     - required
+     - one of the simulation's circuits (lp.Document: circuits)
+
 ``lp.Circuit``
 ^^^^^^^^^^^^^^
 

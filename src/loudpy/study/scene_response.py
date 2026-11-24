@@ -227,7 +227,7 @@ def solve(study, freqs, store=None, chunk_hz=50.0, rtol=1e-7, log=None):
     n_s = sum(len(d.driver.modes.freq) for d in scene.drivers)
     Fc = np.asarray(drivers.coil_forces([d.driver.coil_nodes for d in scene.drivers]), float).reshape(n_s, -1)
     motors = electric.motors_of(scene)                                # each driver's motor
-    circuit = electric.as_circuit(study.drive, names, motors)         # a Voltage / Circuit: one circuit
+    circuit = electric.as_circuit(study.drive, names, motors, scene.parameters)   # a Voltage / Circuit: one
     if circuit is not None:                                           # one unit response per driven coil
         circuit.check(freqs)
         cols = electric.columns(circuit, names)

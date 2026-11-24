@@ -153,3 +153,51 @@ def test_motor_on_the_coil(mesh_dir, tmp_path):
         lp.Voltage(2.83, Re=8.0)
     with pytest.raises(lp.errors.ModelError, match="motor"):
         lp.Coil("x", motor=6.0)
+
+
+def test_named_circuits_and_parameters(mesh_dir, tmp_path):
+    """A simulation's circuits are named once in its document, a study's drive names one (CircuitRef), the script
+    writes each once as a variable that the studies use; parameters (lp.P) in a circuit's values — a filter stage's
+    too — take the model's values when it is solved, and are swept like any parameter."""
+    from loudpy.circuit import Coil, Filter, Resistor, Semi, Source, linkwitz_riley
+    v = VOLTAGE
+    model = api.speaker_problem(mesh_dir, acoustic=True)
+    model.parameters = lp.Parameters(fc=400.0, r=1.0)
+    next(b for b in model.boundaries if isinstance(b, lp.Coil)).motor = Semi(Re=v["Re"], Bl=v["Bl"], Le=v["Le"],
+                                                                                n=v["n"])
+
+    def xo(fc, r):
+        return lp.Circuit(Source("amp", "a", U=v["u"]), Filter("lo", "a", "f", [linkwitz_riley(4, fc, "low")]),
+                          Resistor("R", "f", "c", r), Coil("vc", "c", "0"))
+    freqs = [150.0, 700.0]
+    direct = lp.FrequencyResponse(model, drive=xo(400.0, 1.0)).solve(freqs)
+    res = lp.FrequencyResponse(model, drive=xo(lp.P("fc"), 2 * lp.P("r") - 1.0)).solve(freqs)
+    np.testing.assert_allclose(res.voltage("c").values, direct.voltage("c").values, rtol=1e-12)
+    assert res.circuit.circuit.parameters == []                                  # (the result: its values)
+    with pytest.raises(lp.errors.ModelError, match=r"parameter\(s\) \['fc', 'r'\]"):
+        xo(lp.P("fc"), lp.P("r")).check()
+
+    ref = {"type": "CircuitRef", "params": {"name": "xo"}}
+    doc = lp.Document.of(model, studies=[{"name": "fr", "type": "FrequencyResponse",
+                                          "params": {"drive": ref, "freqs": freqs}}],
+                         circuits={"xo": xo(lp.P("fc"), lp.P("r"))})
+    assert doc.check() == []
+    doc.save(tmp_path / "spk.loudpy.json")
+    back = lp.Document.load(tmp_path / "spk.loudpy.json")
+    assert back.to_dict() == doc.to_dict() and list(back.circuits) == ["xo"]
+    study, kw = back.study("fr", model)
+    np.testing.assert_allclose(study.solve(**kw).voltage("c").values, direct.voltage("c").values, rtol=1e-12)
+    text = back.to_script(tmp_path)
+    assert "\nxo = lp.Circuit(" in text and "fc=lp.P('fc')" in text and "drive=xo" in text
+    compile(text, "spk_ui.py", "exec")
+    bad = back.copy()
+    bad.studies[0]["params"]["drive"] = {"type": "CircuitRef", "params": {"name": "nope"}}
+    bad.circuits["model"] = bad.circuits["xo"]
+    problems = bad.check()
+    assert any("no circuit 'nope'" in p for p in problems) and any("circuit 'model'" in p for p in problems)
+
+    sweep = lp.Sweep(lp.FrequencyResponse(model, drive=xo(lp.P("fc"), lp.P("r"))), "fc", [400.0, 800.0])
+    runs = sweep.solve(freqs).results
+    np.testing.assert_allclose(runs[1].voltage("c").values,
+                               lp.FrequencyResponse(model, drive=xo(800.0, 1.0)).solve(freqs).voltage("c").values,
+                               rtol=1e-9)

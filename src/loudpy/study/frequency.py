@@ -218,7 +218,7 @@ class FrequencyResponse(Study):
         bounds = model.boundary_nodes()
         extra = records.scalars(attrs)
         extra["mobility"] = np.array(Y, complex).reshape(-1, 1, 1)
-        circuit = electric.as_circuit(self.drive, [None], electric.motors_of(model))
+        circuit = electric.as_circuit(self.drive, [None], electric.motors_of(model), model.parameters)
         if circuit is None:
             W, more = electric.force_weights(self.drive, [None], len(freqs)), {}
         else:
@@ -248,7 +248,7 @@ class FrequencyResponse(Study):
                 "geometry": str(self.model.geometry)}
         from loudpy.physics.electric import as_circuit, motors_of, motors_to_meta
         motors = motors_of(self.model)                            # the coil's motor (its lp.Coil item)
-        circuit = as_circuit(self.drive, [None], motors)         # a Voltage: as its amplifier and coil
+        circuit = as_circuit(self.drive, [None], motors, self.model.parameters)   # a Voltage: its amplifier, coil
         meta["motors"] = motors_to_meta(motors)
         if circuit is not None:
             circuit.check(freqs)

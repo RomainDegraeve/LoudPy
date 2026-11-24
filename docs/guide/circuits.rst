@@ -77,6 +77,22 @@ a ``* loudpy {…}`` line; ``lp.Circuit.from_spice(text)`` reads such a netlist 
 R, L, C, V (its AC amplitude and phase), E (a gain or ``Laplace=``), scale suffixes (``4.7k``, ``10uF``, ``2Meg``)
 and ``GND``. Coils are added in loudpy (a netlist has no ``Bl``).
 
-**In documents and scripts.** A circuit is a node of the simulation document (``lp.schema``: ``Circuit`` and the
-``circuit.*`` blocks; a filter's stages kept as they were made), so a saved study keeps its circuit and its script
-writes it as ``lp.Circuit(lp.circuit.Source(…), …)``.
+**In documents and scripts.** A circuit belongs to the simulation, not to a study: a document names its circuits
+once (``"circuits": {"xo": …}``, ``lp.Document.of(model, studies, circuits={"xo": circuit})``) and a study's drive
+names one (``{"type": "CircuitRef", "params": {"name": "xo"}}``). The script writes each circuit once as a variable
+and the studies use it:
+
+.. code-block:: python
+
+   xo = lp.Circuit(lp.circuit.Source(name='amp', a='in', U=2.83),
+                   lp.circuit.Coil(name='main', a='in', b='0', driver='main'))
+   study = lp.FrequencyResponse(scene, drive=xo)
+
+A circuit given inside a study (an ``lp.Circuit`` node as its drive) is read as before. Every part is an
+``lp.schema`` node (``Circuit`` and the ``circuit.*`` blocks; a filter's stages kept as they were made).
+
+**Parameters.** Any value of a circuit — a resistance, the amplifier's voltage, a filter stage's frequency, gain or
+Q, a coil model's value — can be a parameter of the model or scene (``lp.P("fc_xo")``, ``2 * lp.P("r")``): a filter
+stage made with one waits for its value, and the study gives the values of the model it solves (``circuit.parameters``
+lists them; ``circuit.with_parameters(values)`` gives them by hand). A parametric sweep over them is an ordinary
+``lp.Sweep(study, "fc_xo", [300.0, 400.0, 500.0])``.

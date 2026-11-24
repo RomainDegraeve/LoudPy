@@ -119,7 +119,8 @@ def test_every_value_block_is_covered_by_a_sample():
         walk(schema.describe(o))
     value_sections = {"materials", "regions", "boundaries", "mesh_controls", "damping", "drives", "selectors",
                       "profiles", "study_options", "scene.cabinet", "scene.cabinet_parts", "scene.panels"}
-    expected = {b.type for b in schema.catalog().values() if b.section in value_sections} - {"Item"}
+    expected = {b.type for b in schema.catalog().values() if b.section in value_sections} - {"Item", "CircuitRef"}
+    # (Item and CircuitRef are references, built from what the model or the document holds)
     assert expected <= described | nested, sorted(expected - described - nested)
 
 
