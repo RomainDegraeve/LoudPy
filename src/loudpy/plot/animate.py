@@ -13,7 +13,8 @@ import numpy as np
 from loudpy.plot import style
 
 
-def _writer(path, fps):
+def writer(path, fps):
+    """The matplotlib animation writer of a path: Pillow for .gif, ffmpeg (imageio-ffmpeg's when installed) else."""
     from matplotlib import animation
     if Path(path).suffix.lower() == ".gif":
         return animation.PillowWriter(fps=fps)
@@ -63,10 +64,10 @@ def animate(source, path, *, name: str = "u", deformed: bool = True, scale: floa
     if factor is None:
         factor = scale * float(np.ptp(frames[0].mesh.coords, axis=0).max()) / peak
     fig, ax = style.figure("field")
-    writer = _writer(path, fps)
+    movie = writer(path, fps)
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     cbar = None
-    with writer.saving(fig, str(path), dpi=150):
+    with movie.saving(fig, str(path), dpi=150):
         for fr in frames:
             ax.clear()
             if vec:
@@ -76,6 +77,6 @@ def animate(source, path, *, name: str = "u", deformed: bool = True, scale: floa
             else:
                 draw(fr, show="real", ax=ax, vmin=-peak, vmax=peak, colorbar=cbar is None, **kwargs)
             cbar = True
-            writer.grab_frame()
+            movie.grab_frame()
     plt.close(fig)
     return Path(path)

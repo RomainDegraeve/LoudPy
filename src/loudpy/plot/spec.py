@@ -315,7 +315,7 @@ class PlotSpec:
         spec resolved at that value and drawn by Resolved.plot (kwargs: passed to it). Returns the path."""
         import matplotlib.pyplot as plt
         from matplotlib import animation
-        from loudpy.plot.animate import _writer
+        from loudpy.plot.animate import writer as _movie_writer
         from loudpy.plot import style
         first = self.resolve(res)
         c = first.control(dim)
@@ -337,7 +337,7 @@ class PlotSpec:
                 return []
             del ax
             anim = animation.FuncAnimation(fig, draw, frames=len(c.values), blit=False)
-            anim.save(str(path), writer=_writer(path, fps))
+            anim.save(str(path), writer=_movie_writer(path, fps))
             plt.close(fig)
         return path
 
