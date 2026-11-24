@@ -5,6 +5,8 @@ versions follow [Semantic Versioning](https://semver.org/) (0.x: the API may sti
 
 ## [Unreleased]
 
+- Wall views name their panels: `View3D.label(points, texts)`; `wall_view(…, labels=True | {panel: name} | False)`
+  (a STEP solid "solid 4", a Box side "left"; `res.wall_view(f, labels={"4": "back"})`).
 - `lp.plot.PlotSpec`: a plot as plain data (quantity, where, axes, the values of the other dimensions, view,
   style), resolved on results by slicing named dimensions; every dimension not plotted is a control (slider / choice:
   frequency, time, mode, sweep run, the phase of a harmonic field), `.step()` moves one, `.animate(res, dim, path)`

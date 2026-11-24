@@ -295,12 +295,14 @@ def scene_view_one(res, f, camera=None, cut="driver", keep=None, range_db: float
 
 
 def wall_view(mesh, u, u_n, groups=None, show: str = "real", deformation: float = 0.05, label: str | None = None,
-              camera=None, size=(900, 760)) -> view3d.View3D:
+              camera=None, size=(900, 760), labels: bool | dict = True) -> view3d.View3D:
     """
     Shell walls (a TRI3 Mesh) deformed by the translations u (n, 3) and coloured by the normal displacement u_n (n,)
     re its largest |u_n|; complex values (a response) are drawn at the instant where that largest u_n is real: "real"
     (signed, −1 … 1) or "abs" (|u_n|, 0 … 1). The largest displacement is `deformation` × the walls' size; groups:
-    the mesh groups drawn (None: "walls"); the outline of the walls at rest in thin grey.
+    the mesh groups drawn (None: "walls"); the outline of the walls at rest in thin grey. labels: each panel drawn
+    named at its centre (a STEP solid "solid 4", a Box side "left" …; a dict {panel: name} names them yourself;
+    False: none).
     """
     import pyvista as pv
     groups = ["walls"] if groups is None else list(groups)
@@ -335,6 +337,17 @@ def wall_view(mesh, u, u_n, groups=None, show: str = "real", deformation: float 
         surf.point_data["u_n"] = vals
         v.add(surf, scalars="u_n", cmap=cmap, clim=clim, colorbar="shared", label=label, smooth_shading=True,
               ambient=0.45, diffuse=0.6, specular=0.0)
+    if labels is not False:
+        names = labels if isinstance(labels, dict) else {}
+        pts, texts = [], []
+        for g in mesh.groups:
+            if not g.startswith("panel ") or not (g in groups or "walls" in groups):
+                continue
+            rows = np.unique(view3d._rows(mesh, mesh.groups[g].cells))
+            key = g[6:]
+            pts.append(moved[rows].mean(axis=0))
+            texts.append(str(names.get(key, names.get(g, f"solid {key}" if key.isdigit() else key))))
+        v.label(np.array(pts).reshape(-1, 3), texts)
     b = np.array([X.min(axis=0), X.max(axis=0)])
     if camera is None:
         cam = default_cameras(b)["front right (outer walls)"]

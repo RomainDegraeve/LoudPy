@@ -117,6 +117,7 @@ class View3D:
         self.items: list = []
         self.bars: list = []
         self.cam: tuple | None = None
+        self.labels: list = []                                       # [(points (n, 3), texts)]: names drawn
 
     def add(self, dataset, scalars: str | None = None, quantity=None, cmap=None, clim=None, colorbar: bool | str = True,
             label: str | None = None, **kwargs) -> "View3D":
@@ -141,6 +142,16 @@ class View3D:
         else:
             bar = None
         self.items.append((dataset, dict(scalars=scalars, cmap=cmap, clim=clim, **kwargs), bar))
+        return self
+
+    def label(self, points, texts) -> "View3D":
+        """Names drawn at points (n, 3) (always visible, on a light box): the panels of walls, parts …"""
+        pts = np.atleast_2d(np.asarray(points, float))
+        texts = [str(x) for x in texts]
+        if len(pts) != len(texts):
+            raise ValueError(f"label: {len(pts)} points for {len(texts)} texts")
+        if len(texts):
+            self.labels.append((pts, texts))
         return self
 
     def camera(self, position, focus=(0.0, 0.0, 0.0), up=(0.0, 0.0, 1.0), view_angle: float | None = None,
@@ -177,6 +188,9 @@ class View3D:
                                              label_font_size=11, vertical=True, position_x=0.84,
                                              position_y=0.08 + 0.46 * (len(shown) - 1), height=0.36, width=0.05)
             pl.add_mesh(ds, show_scalar_bar=sb, smooth_shading=kw.pop("smooth_shading", False), **kw)
+        for pts, texts in self.labels:
+            pl.add_point_labels(pts, texts, font_size=12, point_size=1, shape_opacity=0.65, always_visible=True,
+                                show_points=False, text_color="#16202a", shape_color="white")
         if self.cam is not None and self.cam[0] == "preset":
             _, plane, az, el, zoom = self.cam
             if plane == "iso":

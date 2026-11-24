@@ -583,6 +583,11 @@ def test_walls_in_a_merged_air_domain(driver, tmp_path):
     assert wall_mode_panels(lp.Modes(scene, physics="walls").solve(f_max=3000.0)) == back.wall_panels   # the modes' panels
     v = back.wall_view(freqs[1], panels=["back", "top"])
     assert sum(kw.get("scalars") == "u_n" for _, kw, _ in v.items) == 2
+    assert sorted(v.labels[0][1]) == ["back", "top"]                    # each panel drawn named at its centre
+    v = back.wall_view(freqs[1], labels={"back": "rear board"})
+    assert "rear board" in v.labels[0][1] and len(v.labels[0][1]) == len(back.wall_panels)
+    assert back.wall_view(freqs[1], labels=False).labels == []
+    v.image()                                                           # (the labels drawn by pyvista)
     Qd = back.driver_volume_velocity()                           # merged air: the drivers' rear patches
     assert np.all(np.abs(Qd.values) > 0) and np.all(np.abs(Q.values / Qd.values) < 0.5)
 
