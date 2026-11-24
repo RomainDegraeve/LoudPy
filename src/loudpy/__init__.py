@@ -34,7 +34,7 @@ from .scene import Driver, Profile, Scene, Cabinet, cabinets
 from . import circuit, docpath, errors, progress, schema, signals
 from .circuit import Circuit
 from .document import Document
-from .readiness import readiness
+from .readiness import readiness, suggest
 from .workspace import Workspace
 from ._log import set_verbosity
 
@@ -69,5 +69,5 @@ __all__ = [
     # messages and errors, lazily imported plotting
     "set_verbosity", "errors", "progress", "schema", "signals", "plot",
     # a whole simulation as plain data, what it still needs
-    "Document", "docpath", "readiness", "Workspace",
+    "Document", "docpath", "readiness", "suggest", "Workspace",
 ]

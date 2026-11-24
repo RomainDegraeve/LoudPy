@@ -64,7 +64,8 @@ class Param:
     optional: None is allowed (an override: "the material's"); min / max: values must be > min (≥ with
     min_inclusive) and < max (≤ with max_inclusive) — the block refuses the others too (a test checks it);
     of: for kind "block" / "blocks", the section of the nested nodes; stage: "solve" for an argument of a study's
-    .solve(); default: from the code (REQUIRED: none)."""
+    .solve(); key: the block's key parameter (an item type's, shown next to its type in a table: a solid's
+    material); default: from the code (REQUIRED: none)."""
     name: str
     kind: str
     unit: str = ""
@@ -78,6 +79,7 @@ class Param:
     optional: bool = False
     of: str = ""
     stage: str = ""
+    key: bool = False
     default: Any = REQUIRED
 
     @property
@@ -103,7 +105,8 @@ class Param:
 class Block:
     """A building block: its type (as written after `lp.`), section, summary, parameters and how it is made.
     context: arguments the surroundings give (the model a study runs on, the scene a setting applies to);
-    code_only: arguments a script can give that the description leaves out, with why."""
+    code_only: arguments a script can give that the description leaves out, with why; facts: what an item type is
+    (loudpy.model.facts: what it selects, its medium, role, where it fits), None for other blocks."""
     type: str
     section: str
     summary: str
@@ -113,6 +116,12 @@ class Block:
     code_only: dict = field(default_factory=dict)
     solve: Callable | None = field(default=None, repr=False, compare=False)
     varargs: str = ""                                  # a parameter passed as *args (Group(*labels))
+    facts: Any = field(default=None, repr=False, compare=False)
+
+    @property
+    def key(self) -> Param | None:
+        """Its key parameter (an item type's: the one a table shows next to its type), or None."""
+        return next((p for p in self.params if p.key), None)
 
     def param(self, name: str) -> Param:
         """The parameter called `name` (SchemaError if there is none)."""
@@ -159,8 +168,15 @@ def _make(type_, section, target, params, *, context=(), code_only=None, solve=N
         filled.append(replace(p, default=REQUIRED if d is inspect.Parameter.empty or par.kind is
                               inspect.Parameter.VAR_POSITIONAL else d))
     summary = (inspect.getdoc(target) or "").strip().split("\n\n")[0].replace("\n", " ")
+    from loudpy.model.facts import Facts
+    facts = getattr(target, "facts", None) if inspect.isclass(target) else None
+    facts = facts if isinstance(facts, Facts) else None
+    if facts is not None and facts.key is not None:
+        if facts.key not in {p.name for p in filled}:
+            raise SchemaError(f"{type_}: its key parameter {facts.key!r} is not described")
+        filled = [replace(p, key=p.name == facts.key) for p in filled]
     return Block(type_, section, summary, tuple(filled), target, tuple(context), dict(code_only or {}), solve,
-                 varargs)
+                 varargs, facts)
 
 
 # ── the catalog ────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -658,6 +674,7 @@ NOT_BLOCKS = {
     "errors": "module", "progress": "module", "plot": "module", "schema": "module: this description",
     "Document": "a whole simulation (model or scene, and studies) as nodes of these blocks",
     "docpath": "module: paths into a document's data", "readiness": "what a simulation still needs (a checklist)",
+    "suggest": "what each geometry group could be (the item types that fit it)",
     "Workspace": "a simulation's folder and document, edited by commands",
     "circuit": "module: circuit.Source / Filter / Coil …, its filter stages and coil models are blocks",
 }
@@ -669,6 +686,48 @@ def catalog() -> dict[str, Block]:
     if _CATALOG is None:
         _CATALOG = _catalog()
     return _CATALOG
+
+
+def item_params(cls) -> list[Param]:
+    """The parameters every item has: its name (a label) and `on` (the domain groups or curves it selects, by its
+    facts)."""
+    from loudpy.model.facts import facts_of
+    on = _p("on", "selection", help="the groups (or a selector) it applies to; default: the groups named like it",
+            group="Selection", optional=True)
+    if facts_of(cls).selects == "curves":
+        on = replace(on, help="the curves (groups or a selector) it applies to; default: the groups named like it")
+    return [_p("name", "text", help="a label: nothing physical is read from it", group="Identity"), on]
+
+
+def register(cls, params=(), *, type_: str | None = None, section: str | None = None) -> Block:
+    """Describe a new item type (a Region or a Boundary subclass declaring its facts: loudpy.model.facts) and make it
+    known: it then shows in the interface's Physics tables, in lp.suggest and in lp.readiness. params: its own
+    parameters (lp.schema.Param; its name and `on` are added). A script writes it as `lp.<type>(…)`: a type outside
+    loudpy is for programs (the interface, a document), or give loudpy the class (setattr(lp, name, cls)).
+
+        lp.schema.register(Absorber, [lp.schema.Param("strength", "number", help="…", group="Layer", min=0)])
+    """
+    from loudpy.model import facts as _facts
+    from loudpy.model.boundaries import Boundary
+    from loudpy.model.regions import Region
+    if not (inspect.isclass(cls) and issubclass(cls, (Region, Boundary))):
+        raise SchemaError(f"register takes a Region or a Boundary subclass, got {cls!r}")
+    _facts.register(cls)
+    params = list(params)
+    have = {p.name for p in params}
+    params = [p for p in item_params(cls) if p.name not in have] + params
+    sec = section or ("regions" if issubclass(cls, Region) else "boundaries")
+    b = _make(type_ or cls.__name__, sec, cls, params)
+    catalog()[b.type] = b
+    return b
+
+
+def unregister(type_: str) -> None:
+    """Forget a type made known by register."""
+    from loudpy.model import facts as _facts
+    b = catalog().pop(type_, None)
+    if b is not None:
+        _facts.unregister(getattr(b.target, "__name__", type_))
 
 
 def block(type_: str) -> Block:
@@ -759,7 +818,8 @@ def defaults(type_: str) -> dict:
     """A node of this type with its defaults (required parameters: a placeholder of their kind)."""
     b = block(type_)
     placeholder = {"text": type_.split(".")[-1].lower(), "number": 0.0, "file": "", "selection": "",
-                   "material": "Air" if b.type in ("Air", "PML") else "", "texts": [], "numbers": [], "integers": [],
+                   "material": "Air" if b.facts is not None and b.facts.physics == "air" else "", "texts": [],
+                   "numbers": [], "integers": [],
                    "point": [0.0, 0.0], "complex": 1.0, "mapping": {}, "block": None}
     params = {}
     for p in b.params:
@@ -1008,6 +1068,26 @@ SECTION_TITLES = {
     "circuit.parts": "Circuit parts", "circuit.filters": "Filter stages", "circuit.coils": "Coil models"}
 
 
+def _facts_rst(b: Block) -> str:
+    """An item type's facts in a sentence (loudpy.model.facts)."""
+    from loudpy.model.facts import PLACES, ROLES
+    f = b.facts
+    out = ["Selects " + ("domain groups" if f.selects == "domains" else "curves")]
+    if f.medium:
+        out.append(f"fills them with {f.medium}")
+    if f.physics:
+        out.append(f"physics: {f.physics}")
+    if f.role:
+        out.append(f"role: {ROLES[f.role]}")
+    if f.key:
+        out.append(f"key parameter: ``{f.key}``")
+    text = "; ".join(out) + "."
+    if f.fits:
+        text += " Fits " + "; ".join(f"{PLACES[x.place]}" + (f" ({x.shape})" if x.shape else "") +
+                                     ("" if x.usual else ", possible") for x in f.fits) + "."
+    return text
+
+
 def reference_rst() -> str:
     """The building blocks as a reStructuredText page (docs/guide/building_blocks.rst is this text; a test checks it
     is up to date)."""
@@ -1029,6 +1109,8 @@ def reference_rst() -> str:
             out += [f"``{'lp.' + b.type}``", "^" * (len(b.type) + 7), "", cell(b.summary) or "(no summary)", ""]
             if b.context:
                 out += [f"Given by the context: {', '.join(b.context)}.", ""]
+            if b.facts is not None and b.facts.table:
+                out += [_facts_rst(b), ""]
             if b.params:
                 out += [".. list-table::", "   :header-rows: 1", "   :widths: 18 14 8 16 44", "",
                         "   * - parameter", "     - value", "     - unit", "     - default", "     - meaning"]
@@ -1053,4 +1135,4 @@ def reference_rst() -> str:
 
 __all__ = ["Block", "Param", "SchemaError", "KINDS", "SECTIONS", "NOT_BLOCKS", "catalog", "block", "blocks",
            "defaults", "describe", "build", "check", "code", "frequencies", "to_value", "from_value",
-           "reference_rst"]
+           "reference_rst", "register", "unregister", "item_params"]

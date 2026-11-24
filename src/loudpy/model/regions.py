@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from loudpy.checks import check
 from loudpy.geometry.selectors import Combinable, Selector, as_selector
 from loudpy.model.damping import Damping, Rayleigh
+from loudpy.model.facts import Facts, Fit, register
 from loudpy.model.materials import Material
 
 
@@ -30,6 +31,7 @@ class Region(Combinable):
     default: the name as a label)."""
     name: str
     on: Selector | str | None = field(default=None, kw_only=True)      # default: Group(name)
+    facts = Facts(selects="domains", table=False)                        # (loudpy.model.facts)
 
     @property
     def selector(self) -> Selector:
@@ -49,6 +51,7 @@ class Solid(Region):
     rho: float | None = None
     E: float | None = None
     nu: float | None = None
+    facts = Facts(selects="domains", medium="solid", physics="structure", key="material")
 
     def __post_init__(self):
         check(self.mesh_size, "mesh_size", f"Solid({self.name!r}).mesh_size")
@@ -64,6 +67,7 @@ class Air(Region):
     mesh_size: float = 0.01
     rho: float | None = None
     c: float | None = None
+    facts = Facts(selects="domains", medium="air", physics="air", key="material")
 
     def __post_init__(self):
         check(self.mesh_size, "mesh_size", f"Air({self.name!r}).mesh_size")
@@ -87,6 +91,9 @@ class PML(Region):
     strength: float = 3.0               # absorption strength (dimensionless)
     rho: float | None = None
     c: float | None = None
+    facts = Facts(selects="curves", physics="air", role="absorbing", key="thickness",
+                  fits=(Fit("air|-", "an outer edge of the air: a layer grown outward from it", shape="straight"),),
+                  starting={"thickness": 0.1, "tuned_to": 1000.0})
 
     def __post_init__(self):
         check(self.thickness, "thickness", f"PML({self.name!r}).thickness")
@@ -96,3 +103,7 @@ class PML(Region):
         check(self.strength, "positive", f"PML({self.name!r}).strength")
         check(self.rho, "density", f"PML({self.name!r}).rho")
         check(self.c, "speed_of_sound", f"PML({self.name!r}).c")
+
+
+for _cls in (Solid, Air, PML):
+    register(_cls)

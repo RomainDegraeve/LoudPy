@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 
 from loudpy.checks import check
 from loudpy.geometry.selectors import Selector, as_selector
+from loudpy.model.facts import Facts, register
 
 
 @dataclass
@@ -22,6 +23,7 @@ class MeshSize:
     on: Selector | str
     size: float
     name: str | None = field(default=None, kw_only=True)
+    facts = Facts(selects="domains", table=False, starting={"size": 1e-3})
 
     def __post_init__(self):
         check(self.size, "mesh_size", f"MeshSize({self.label!r}).size")
@@ -35,3 +37,6 @@ class MeshSize:
     def label(self) -> str:
         """Its name, or the text of its selector."""
         return self.name if self.name is not None else repr(self.on)
+
+
+register(MeshSize)

@@ -135,6 +135,8 @@ Every building block with its parameters, for programs (the interface's forms): 
    Document
    Workspace
    readiness
+   suggest
+   schema.register
    docpath.get
    docpath.put
    schema.Param

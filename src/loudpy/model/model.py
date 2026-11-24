@@ -329,21 +329,32 @@ class Model:
         with placeholder solids — the model itself is not changed. path: default <geometry>_preview.msh.
             mesh = lp.Model("part.step").preview_mesh();  mesh.names(2)      # the domain groups
         """
+        if path is None:
+            if self.source.path is None:
+                raise ModelError("the geometry is a builder function: give the mesh file, model.preview_mesh(path)")
+            path = self.source.path.with_name(self.source.path.stem + "_preview.msh")
+        return self.placeholder(elements).mesh(path)
+
+    def placeholder(self, elements: int = 60, *, prefix: str = "", curves: bool = False) -> "Model":
+        """
+        An unmeshed copy of the model made for showing its geometry alone: a placeholder solid on every domain group
+        (named prefix + the group, elements of about 1/`elements` of the geometry's diagonal); with curves=True every
+        named curve group is kept in its mesh (a boundary "curve:<group>", never solved). The model is not changed.
+        """
         domains = self.groups("domain")
         if not domains:
             raise ModelError("the geometry has no surface (domain) group to mesh")
         material = next((n for n, m in self.materials.items() if m.kind == "solid" and m.E), None)
         if material is None:
             raise ModelError("the material library has no solid material for the placeholder regions")
-        if path is None:
-            if self.source.path is None:
-                raise ModelError("the geometry is a builder function: give the mesh file, model.preview_mesh(path)")
-            path = self.source.path.with_name(self.source.path.stem + "_preview.msh")
         h = self.geometry_size() / int(elements)
         twin = self.copy()
         twin.regions, twin.boundaries, twin.mesh_controls = [], [], []
-        twin.add(*[Solid(g, material, mesh_size=h) for g in domains])
-        return twin.mesh(path)
+        twin.add(*[Solid(prefix + g, material, on=g if prefix else None, mesh_size=h) for g in domains])
+        if curves:
+            from loudpy.model.boundaries import Clamped
+            twin.add(*[Clamped(f"curve:{g}", on=g) for g in self.groups("boundary") if g not in domains])
+        return twin
 
     def to_script(self, folder=None, title: str | None = None) -> str:
         """The model as Python code that builds it again (loudpy.model.script); folder: where the script will be

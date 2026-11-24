@@ -20,6 +20,7 @@ from typing import Any
 
 from loudpy.errors import ModelError
 from loudpy.geometry.selectors import Combinable, Selector, as_selector
+from loudpy.model.facts import Facts, Fit, register
 
 COMPONENTS = {"r": (0,), "z": (1,), "rz": (0, 1)}       # displacement components (0 = r, 1 = z)
 
@@ -35,6 +36,7 @@ class Boundary(Combinable):
     selector of its edges (on=…, default: the name as a label)."""
     name: str
     on: Selector | str | None = field(default=None, kw_only=True)      # default: Group(name)
+    facts = Facts(selects="curves", table=False)                         # (loudpy.model.facts)
 
     @property
     def selector(self) -> Selector:
@@ -46,6 +48,9 @@ class Boundary(Combinable):
 class Clamped(Boundary):
     """Fixed displacement on the selected curves: dofs "rz" (default, fully clamped), "r" or "z"."""
     dofs: str = "rz"
+    facts = Facts(selects="curves", physics="structure", role="held", key="dofs", fits=(
+        Fit("solid|-", "a free edge of the structure: clamped where it is held"),
+        Fit("solid|axis", "the symmetry axis: no radial displacement there", params={"dofs": "r"})))
 
     def __post_init__(self):
         _check_components(f"Clamped({self.name!r}).dofs", self.dofs)
@@ -59,6 +64,9 @@ class Coil(Boundary):
     modes file)."""
     direction: str = "z"
     motor: Any = None
+    facts = Facts(selects="curves", physics="structure", role="drive", key="direction", fits=(
+        Fit("solid|solid", "where the drive acts (the coil's edge)", usual=False),
+        Fit("solid|-", "where the drive acts (the coil's edge)", usual=False)))
 
     def __post_init__(self):
         _check_components(f"Coil({self.name!r}).direction", self.direction)
@@ -72,8 +80,16 @@ class Coil(Boundary):
 class FluidStructure(Boundary):
     """Fluid–structure interface between a Solid and an Air; the normal is the outward normal of the air
     (computed from the mesh, on each edge)."""
+    facts = Facts(selects="curves", physics="coupling", role="coupling",
+                  fits=(Fit("solid|air", "between the structure and the air: a fluid–structure interface"),))
 
 
 @dataclass
 class Radiation(Boundary):
     """Exact radiation (Dirichlet-to-Neumann) condition on a spherical boundary of the air."""
+    facts = Facts(selects="curves", physics="air", role="absorbing",
+                  fits=(Fit("air|-", "an outer arc of the air: exact radiation on it", shape="arc"),))
+
+
+for _cls in (Clamped, Coil, FluidStructure, Radiation):
+    register(_cls)

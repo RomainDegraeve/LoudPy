@@ -138,6 +138,8 @@ Regions
 
 Elastic structure (axisymmetric solid) on the physical groups selected by `name`.
 
+Selects domain groups; fills them with solid; physics: structure; key parameter: ``material``.
+
 .. list-table::
    :header-rows: 1
    :widths: 18 14 8 16 44
@@ -193,6 +195,8 @@ Elastic structure (axisymmetric solid) on the physical groups selected by `name`
 
 Acoustic fluid (linear acoustics) on the groups selected by `name`; rho, c override the material.
 
+Selects domain groups; fills them with air; physics: air; key parameter: ``material``.
+
 .. list-table::
    :header-rows: 1
    :widths: 18 14 8 16 44
@@ -237,6 +241,8 @@ Acoustic fluid (linear acoustics) on the groups selected by `name`; rho, c overr
 ^^^^^^^^^^
 
 Perfectly matched layer grown by the mesher from its base curves, outward from the air they bound.
+
+Selects curves; physics: air; role: lets the sound leave the air (no reflection); key parameter: ``thickness``. Fits an outer edge of the air (straight).
 
 .. list-table::
    :header-rows: 1
@@ -306,6 +312,8 @@ Boundaries
 
 Fixed displacement on the selected curves: dofs "rz" (default, fully clamped), "r" or "z".
 
+Selects curves; physics: structure; role: holds the structure (where it is clamped); key parameter: ``dofs``. Fits a free edge of the structure; the structure on the symmetry axis.
+
 .. list-table::
    :header-rows: 1
    :widths: 18 14 8 16 44
@@ -335,6 +343,8 @@ Fixed displacement on the selected curves: dofs "rz" (default, fully clamped), "
 ^^^^^^^^^^^
 
 Where the drive acts (lp.Force, lp.Voltage or an lp.Circuit), along `direction`: "z" (axial, default) or "r"; `motor` the driver's electrical motor — its blocked coil and force factor (loudpy.circuit: Semi, Leach, LR2, Wright) — that a voltage or a circuit drives (kept in the result files: a scene's driver takes it from its modes file).
+
+Selects curves; physics: structure; role: where the drive acts; key parameter: ``direction``. Fits between two solid parts, possible; a free edge of the structure, possible.
 
 .. list-table::
    :header-rows: 1
@@ -371,6 +381,8 @@ Where the drive acts (lp.Force, lp.Voltage or an lp.Circuit), along `direction`:
 
 Fluid–structure interface between a Solid and an Air; the normal is the outward normal of the air (computed from the mesh, on each edge).
 
+Selects curves; physics: coupling; role: couples the structure and the air. Fits between the structure and the air.
+
 .. list-table::
    :header-rows: 1
    :widths: 18 14 8 16 44
@@ -395,6 +407,8 @@ Fluid–structure interface between a Solid and an Air; the normal is the outwar
 ^^^^^^^^^^^^^^^^
 
 Exact radiation (Dirichlet-to-Neumann) condition on a spherical boundary of the air.
+
+Selects curves; physics: air; role: lets the sound leave the air (no reflection). Fits an outer edge of the air (arc).
 
 .. list-table::
    :header-rows: 1
@@ -2613,5 +2627,6 @@ Public names of loudpy that a simulation is not made of:
 - ``Document``: a whole simulation (model or scene, and studies) as nodes of these blocks
 - ``docpath``: module: paths into a document's data
 - ``readiness``: what a simulation still needs (a checklist)
+- ``suggest``: what each geometry group could be (the item types that fit it)
 - ``Workspace``: a simulation's folder and document, edited by commands
 - ``circuit``: module: circuit.Source / Filter / Coil …, its filter stages and coil models are blocks

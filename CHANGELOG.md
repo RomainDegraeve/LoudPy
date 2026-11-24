@@ -5,6 +5,12 @@ versions follow [Semantic Versioning](https://semver.org/) (0.x: the API may sti
 
 ## [Unreleased]
 
+- Item types declare their facts next to their classes (`lp.Solid.facts`: what they select, the medium they fill,
+  their physics and role, their key parameter, where they fit — `loudpy.model.facts`); `lp.schema` shows them
+  (`Block.facts`, `Block.key`, `Param.key`) and `lp.schema.register(cls, params)` makes a new item type known.
+  `lp.suggest(model)`: per geometry group the item types that fit it, from the geometry only (the media on each side
+  of its curves, the axis, straight lines and arcs). `lp.readiness` reads the declared roles, and its coupling step
+  now names the groups between the structure and the air that are neither coupled nor held (a warning).
 - Result files rebuild their model: the description stores the model or scene as a script using the files stored
   with it (now also a scene's cabinet — STEP file or the module of a cabinet builder — and its drivers' geometry,
   and a non-default material library); `res.model.rebuild(folder)` → the `lp.Model` / `lp.Scene` again,

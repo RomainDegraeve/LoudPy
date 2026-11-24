@@ -290,6 +290,25 @@ Its parts are reached by **paths** (``lp.docpath``: a list element by its index 
    doc.fingerprint("study:fr")   # a digest of what that study's results depend on (the study, the circuit it
                                  # names, the model and its files): it changes with any of them
 
+What each group of the geometry could be — read from the geometry only (what lies on each side of its curves, whether
+it is on the symmetry axis, a straight line or an arc), never from its name:
+
+.. code-block:: python
+
+   for s in lp.suggest(model):        # per group: Suggestion(group, kind, place, shape, types, usual, why, params, items)
+       print(s.group, s.place, s.best, s.why)
+   # wet_front   solid|air   FluidStructure  between the structure and the air: a fluid–structure interface
+   # axis        solid|axis  Clamped         the symmetry axis: no radial displacement there   (params: dofs = "r")
+   # PML_front_z air|-       PML             an outer edge of the air: a layer grown outward from it
+   # dtn_front   air|-       Radiation       an outer arc of the air: exact radiation on it
+
+Each item type declares what it is next to its class (``lp.Solid.facts``: what it selects — domain groups or curves
+—, the medium it fills, its physics, its role for the checklist — holding the structure, the drive, the coupling, the
+absorbing end of the air —, its key parameter and where it fits); ``lp.schema.block("Solid").facts`` and
+``.key`` show them to programs, and ``lp.readiness`` / ``lp.suggest`` / the interface's Physics tables read only
+these. A new item type is one class with its facts plus ``lp.schema.register(cls, params)``: it then appears in the
+tables, the suggestions and the checklist.
+
 A study built by ``doc.study(name)`` stamps its results with what made them: ``res.provenance`` →
 ``{"study", "simulation", "fingerprint"}`` (kept in the result file), so a result knows its study and whether the
 simulation changed since (its fingerprint now differs).
