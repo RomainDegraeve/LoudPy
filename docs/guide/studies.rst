@@ -149,6 +149,12 @@ it (``disc_t_0.0015.msh``, ``plate_E_2.1e+11_a_0.08.msh`` …, reused while unch
 the mesh signature). A sweep gives exactly the results of the separate
 runs. Runs are computed one after the other.
 
+**Circuit parameters**: when every swept parameter is a value of the circuit driving a frequency response (a
+crossover's ``fc``, an EQ's gain, a resistor: :doc:`circuits`) or of a driver's motor, the sweep solves the structure
+and the air once and re-drives that result for the other runs (``Results.redrive``: the same numbers, in moments).
+``Sweep(…, redrive=True)`` insists (it says which parameter also reaches the geometry, an item or the cabinet);
+``redrive=False`` solves every run; ``sweep.electrical_only()`` tells whether it applies.
+
 Adaptive meshing
 ----------------
 

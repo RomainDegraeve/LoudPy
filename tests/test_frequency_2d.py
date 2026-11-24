@@ -197,7 +197,36 @@ def test_named_circuits_and_parameters(mesh_dir, tmp_path):
     assert any("no circuit 'nope'" in p for p in problems) and any("circuit 'model'" in p for p in problems)
 
     sweep = lp.Sweep(lp.FrequencyResponse(model, drive=xo(lp.P("fc"), lp.P("r"))), "fc", [400.0, 800.0])
+    assert sweep.electrical_only() == (True, "")                                 # one solve, the runs re-driven
     runs = sweep.solve(freqs).results
     np.testing.assert_allclose(runs[1].voltage("c").values,
                                lp.FrequencyResponse(model, drive=xo(800.0, 1.0)).solve(freqs).voltage("c").values,
                                rtol=1e-9)
+    assert runs[1].model.parameters == {"fc": 800.0, "r": 1.0}
+    every = lp.Sweep(lp.FrequencyResponse(model, drive=xo(lp.P("fc"), lp.P("r"))), "fc", [400.0, 800.0],
+                     redrive=False).solve(freqs).results                          # solved again: the same
+    np.testing.assert_allclose(runs[1].voltage("c").values, every[1].voltage("c").values, rtol=1e-9)
+
+
+def test_sweep_by_redrive_and_its_limits(mesh_dir):
+    """A sweep of a motor's value runs by redrive (the coil item's motor= with a parameter); a parameter reaching the
+    structure, or a study other than a frequency response, is solved again — redrive=True says why."""
+    from loudpy.circuit import Semi
+    v = VOLTAGE
+    model = api.speaker_problem(mesh_dir, acoustic=True)
+    model.parameters = lp.Parameters(bl=v["Bl"], eta=0.01)
+    coil = next(b for b in model.boundaries if isinstance(b, lp.Coil))
+    coil.motor = Semi(Re=v["Re"], Bl=lp.P("bl"), Le=v["Le"], n=v["n"])
+    freqs = [150.0, 700.0]
+    sweep = lp.Sweep(lp.FrequencyResponse(model, drive=lp.Voltage(v["u"])), "bl", [5.0, 9.0])
+    assert sweep.electrical_only()[0]
+    runs = sweep.solve(freqs).results
+    direct = lp.FrequencyResponse(model, drive=lp.Voltage(v["u"], Re=v["Re"], Bl=9.0, Le=v["Le"], n=v["n"]))
+    np.testing.assert_allclose(runs[1].impedance().values, direct.solve(freqs).impedance().values, rtol=1e-9)
+    ok, why = lp.Sweep(lp.FrequencyResponse(model, drive=lp.Voltage(v["u"])), "eta", [0.01, 0.02]).electrical_only()
+    assert not ok and "not values of the circuit" in why
+    model.regions[0].mesh_size = lp.P("bl") * 1e-4                                  # (the structure now uses it too)
+    with pytest.raises(lp.errors.ModelError, match="also reach the structure"):
+        lp.Sweep(lp.FrequencyResponse(model, drive=lp.Voltage(v["u"])), "bl", [5.0, 9.0], redrive=True).solve(freqs)
+    with pytest.raises(lp.errors.ModelError, match="Modes is solved again"):
+        lp.Sweep(lp.Modes(model), "bl", [5.0, 9.0], redrive=True).solve(f_max=500.0)

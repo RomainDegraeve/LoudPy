@@ -25,7 +25,7 @@ import numpy as np
 
 from loudpy.errors import ModelError
 
-__all__ = ["Parameters", "P", "resolve"]
+__all__ = ["Parameters", "P", "resolve", "names_in"]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -104,6 +104,19 @@ class Parameters(Mapping):
         return isinstance(other, Parameters) and other._values == self._values
 
     __hash__ = None  # type: ignore[assignment]   # mutable-looking equality: not hashable
+
+
+def names_in(obj) -> set[str]:
+    """The parameters (lp.P) an object refers to: in its fields (nested dataclasses), lists and dicts."""
+    if isinstance(obj, P):
+        return {obj.name}
+    if isinstance(obj, (list, tuple)):
+        return set().union(*(names_in(x) for x in obj)) if obj else set()
+    if isinstance(obj, dict):
+        return set().union(*(names_in(x) for x in obj.values())) if obj else set()
+    if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
+        return set().union(*(names_in(getattr(obj, f.name)) for f in dataclasses.fields(obj)))
+    return set()
 
 
 def has_references(obj) -> bool:

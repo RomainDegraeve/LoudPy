@@ -95,4 +95,7 @@ A circuit given inside a study (an ``lp.Circuit`` node as its drive) is read as 
 Q, a coil model's value — can be a parameter of the model or scene (``lp.P("fc_xo")``, ``2 * lp.P("r")``): a filter
 stage made with one waits for its value, and the study gives the values of the model it solves (``circuit.parameters``
 lists them; ``circuit.with_parameters(values)`` gives them by hand). A parametric sweep over them is an ordinary
-``lp.Sweep(study, "fc_xo", [300.0, 400.0, 500.0])``.
+``lp.Sweep(study, "fc_xo", [300.0, 400.0, 500.0])`` — and since they reach only the circuit (or a motor), it runs by
+redrive: the structure and the air are solved once, every other run is that result driven by the circuit with its
+values (``Sweep(…, redrive=True)`` asks for it and says why when a swept parameter also reaches the geometry, an item
+or the cabinet; ``redrive=False`` solves every run).

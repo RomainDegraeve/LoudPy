@@ -20,6 +20,12 @@ Each run uses model.with_parameters(**run): the user's model is not changed. A r
 material value, a damping coefficient …) uses the model's own mesh; the others are meshed next to it
 (<mesh stem>_<name>_<value>….msh, reused while unchanged). A scene (3D) is meshed in <scene folder>/<name>_<value>…/.
 Geometry parameters: arguments of a builder builder(occ, p), and DefineConstant[…] entries of a .geo.
+
+A frequency response driven by a circuit (or a voltage) whose swept parameters reach only the electrical side — the
+circuit's values (a crossover's fc, an EQ's gain, a resistor) or the drivers' motors — runs by redrive: the structure
+and the air are solved once (the first run), every other run is that result driven by the circuit with its values
+(Results.redrive: exact, in moments). redrive=True asks for it (refused, saying why, when a swept parameter reaches the
+geometry, an item, a material or a scene's cabinet and air), False never; None (default): when it applies.
 """
 from __future__ import annotations
 
@@ -35,12 +41,41 @@ from loudpy.results.sweep import SweepResults
 __all__ = ["Sweep", "SweepResults"]
 
 
+def mechanical_parameters(target) -> set[str]:
+    """The parameters a model or scene feeds to its structure and air: those of its items (a coil's motor left out:
+    electrical), of its geometry (a .geo's DefineConstant, all of them for a builder taking the parameters), of a
+    scene's cabinet (all of them for a cabinet written as a builder) and air settings."""
+    import dataclasses
+    from loudpy.model.parameters import names_in
+    out: set = set()
+    if hasattr(target, "regions"):                                    # a 2D model
+        for it in [*target.regions, *target.boundaries, *target.mesh_controls]:
+            fields = [f.name for f in dataclasses.fields(it)] if dataclasses.is_dataclass(it) else []
+            out |= names_in([getattr(it, f) for f in fields if f != "motor"])
+        src = target.source
+        out |= set(src.geo_constants)
+        if src.takes_parameters:
+            out |= set(target.parameters)
+        return out
+    cab = getattr(target, "cabinet", None)                            # a scene
+    if dataclasses.is_dataclass(cab):
+        out |= names_in(cab)
+    elif cab is not None:
+        out |= set(target.parameters)
+    for spec in (getattr(target, "_cavity_spec", None), getattr(target, "_open_spec", None),
+                 getattr(target, "_walls_spec", None)):
+        out |= names_in(spec)
+    return out
+
+
 class Sweep:
     """Runs `study` (an lp.Modes, lp.FrequencyResponse, … on a meshed model) for every run of the parameters:
     Sweep(study, name, values) or Sweep(study, {name: values, …}, combine="grid" | "zip")."""
 
-    def __init__(self, study, parameters, values=None, mesh_folder=None, combine: str = "grid"):
+    def __init__(self, study, parameters, values=None, mesh_folder=None, combine: str = "grid",
+                 redrive: bool | None = None):
         model = study.model
+        self.redrive = redrive
         if isinstance(parameters, str):
             if values is None:
                 raise ModelError("lp.Sweep(study, name, values): give the values")
@@ -97,8 +132,36 @@ class Sweep:
         stem = base.stem if base is not None else "mesh"
         return folder / f"{stem}_{self._tag(run)}.msh"
 
+    def electrical_only(self) -> tuple[bool, str]:
+        """Whether the swept parameters reach only the electrical side of a frequency response (its circuit's values,
+        the drivers' motors) — then the runs are redrives of one solve — and why not."""
+        from loudpy.circuit import Circuit
+        from loudpy.model.parameters import names_in
+        from loudpy.physics.electric import motors_of
+        study, swept = self.study, set(self.names)
+        if type(study).__name__ != "FrequencyResponse":
+            return False, f"a {type(study).__name__} is solved again for every run"
+        target = study.model
+        electric = set(study.drive.parameters) if isinstance(study.drive, Circuit) else set()
+        for m in motors_of(target).values():
+            electric |= names_in(m)
+        outside = sorted(swept - electric)
+        if outside:
+            return False, f"{outside}: not values of the circuit or of a motor"
+        used = sorted(swept & mechanical_parameters(target))
+        if used:
+            return False, f"{used} also reach the structure or the air (geometry, items, cabinet …)"
+        return True, ""
+
     def solve(self, *args, **kwargs) -> SweepResults:
-        """Calls ``study.solve(*args, **kwargs)`` on each variant of the model (one run after the other)."""
+        """Calls ``study.solve(*args, **kwargs)`` on each variant of the model (one run after the other); by redrive
+        when the swept parameters reach only the circuit (module docstring)."""
+        if self.redrive is not False:
+            ok, why = self.electrical_only()
+            if self.redrive and not ok:
+                raise ModelError(f"lp.Sweep(redrive=True): {why}")
+            if ok:
+                return self._solve_by_redrive(*args, **kwargs)
         import logging
         log = logging.getLogger("loudpy")
         results = []
@@ -106,15 +169,45 @@ class Sweep:
         for k, run in enumerate(self.runs):
             progress.step("sweep run", k + 1, len(self.runs))
             log.info(f"sweep run {k + 1}/{len(self.runs)}: {run}")
-            variant = self.study.model.with_parameters(**run)
-            base = getattr(self.study.model, "_mesh_path", None)
-            if (not getattr(self.study, "is_scene", False) and self.mesh_folder is None and base is not None
-                    and variant.mesh_reusable(base)):
-                variant.mesh(base)                     # the run changes no mesh input: the model's own mesh
-            else:
-                variant.mesh(self._mesh_path(run))
-            study = copy.copy(self.study)
-            study.model, study.results = variant, None
-            results.append(study.solve(*args, **kwargs))
+            results.append(self._run(run, *args, **kwargs))
+        self.results = SweepResults(self.names, None, results, combine=self.combine, runs=self.runs)
+        return self.results
+
+    def _run(self, run, *args, **kwargs):
+        """The study solved on the model with the run's values."""
+        variant = self.study.model.with_parameters(**run)
+        base = getattr(self.study.model, "_mesh_path", None)
+        if (not getattr(self.study, "is_scene", False) and self.mesh_folder is None and base is not None
+                and variant.mesh_reusable(base)):
+            variant.mesh(base)                         # the run changes no mesh input: the model's own mesh
+        else:
+            variant.mesh(self._mesh_path(run))
+        study = copy.copy(self.study)
+        study.model, study.results = variant, None
+        return study.solve(*args, **kwargs)
+
+    def _solve_by_redrive(self, *args, **kwargs) -> SweepResults:
+        """The first run solved, the others that result driven by the circuit with their values (no new solve)."""
+        import logging
+        from loudpy import progress
+        from loudpy.physics.electric import as_circuit, motors_of
+        from loudpy.results.description import ModelDescription
+        log = logging.getLogger("loudpy")
+        target = self.study.model
+        log.info(f"sweep of {self.names} by redrive: the structure and the air solved once, the circuit "
+                 f"{len(self.runs)} times")
+        progress.step("sweep run", 1, len(self.runs))
+        first = self._run(self.runs[0], *args, **kwargs)
+        if not first.redrivable:
+            raise ModelError("the first run keeps no unit response per coil: lp.Sweep(…, redrive=False)")
+        coils = [d.name for d in target.drivers] if getattr(self.study, "is_scene", False) else [None]
+        results = [first]
+        for k, run in enumerate(self.runs[1:], 2):
+            progress.step("sweep run", k, len(self.runs))
+            params = target.parameters.with_(**run)
+            res = first.redrive(as_circuit(self.study.drive, coils, motors_of(target), params))
+            if first.model is not None:                                # (its description: this run's values)
+                res.model = ModelDescription({**first.model.data, "parameters": dict(params)}, first.model.files)
+            results.append(res)
         self.results = SweepResults(self.names, None, results, combine=self.combine, runs=self.runs)
         return self.results

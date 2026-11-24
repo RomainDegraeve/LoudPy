@@ -461,7 +461,9 @@ def _catalog() -> dict[str, Block]:
             _p("values", "numbers", help="the values of a single swept parameter", group="Sweep", optional=True),
             _p("mesh_folder", "file", help="where each run's mesh goes", group="Files", optional=True),
             _p("combine", "choice", help="grid: every combination · zip: the i-th values together", group="Sweep",
-               choices=("grid", "zip"))],
+               choices=("grid", "zip")),
+            _p("redrive", "bool", help="parameters of the circuit only: one solve, the runs re-driven (empty: "
+               "when it applies)", group="Sweep", optional=True)],
             context=("study",), code_only={"solve arguments": "those of the wrapped study"}),
         _make("Adaptive", "studies", lp.Adaptive, [
             _p("target", "number", help="relative error estimate to reach", group="Adaptive", min=0, max=1),

@@ -1077,6 +1077,11 @@ Given by the context: study.
      - 
      - ``'grid'``
      - grid: every combination · zip: the i-th values together Choices: grid, zip.
+   * - ``redrive``
+     - bool
+     - 
+     - ``None``
+     - parameters of the circuit only: one solve, the runs re-driven (empty: when it applies)
 
 Only in a script: solve arguments: those of the wrapped study.
 
