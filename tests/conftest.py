@@ -6,6 +6,8 @@ the model, results and plotting layers.
     pytest                        the fast tests (~10 s)
     pytest --slow                 all of them, with the 3D coupling (~30 s)
     pytest -m slow                only the slow ones
+    pytest --browser tests/test_ui_browser.py      the interface in a real (headless) browser (needs Playwright
+                                  and its Chromium: pip install playwright; playwright install chromium)
     pytest --update-reference     (re)write the reference files from the current code
     pytest --slow --verification-report docs/guide/verification_report.rst
                                   write the verification report from the numbers the tests measured
@@ -36,15 +38,23 @@ def pytest_addoption(parser):
                      help="write the reference files from the current code instead of comparing")
     parser.addoption("--slow", action="store_true", default=False,
                      help="also run the slow tests (3D coupling)")
+    parser.addoption("--browser", action="store_true", default=False,
+                     help="also run the browser tests (the interface in headless Chromium, Playwright)")
     parser.addoption("--verification-report", default=None, metavar="PATH",
                      help="write the verification report (reStructuredText) from the measured numbers")
 
 
 def pytest_configure(config):
     config.addinivalue_line("markers", "slow: longer cases (3D coupling); run with --slow or -m slow")
+    config.addinivalue_line("markers", "browser: the interface driven in a headless browser; run with --browser")
 
 
 def pytest_collection_modifyitems(config, items):
+    if not config.getoption("--browser"):
+        skip_browser = pytest.mark.skip(reason="browser test: run with --browser")
+        for item in items:
+            if "browser" in item.keywords:
+                item.add_marker(skip_browser)
     if config.getoption("--slow") or "slow" in (config.option.markexpr or ""):
         return
     skip = pytest.mark.skip(reason="slow test: run with --slow")
