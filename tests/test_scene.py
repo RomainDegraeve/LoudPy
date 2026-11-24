@@ -99,8 +99,11 @@ def test_cavity_elastic_walls(driver, mesh_dir, tmp_path):
     response close to the rigid box away from the wall resonances, results saved and read back."""
     scene = lp.Scene(box_cabinet, [driver.place("main", at=(W / 2, H / 2))])
     scene.cavity(f_max=3000.0, eta=0.02, file="box_one_driver.msh", cache_modes=False)
+    assert {s.key: s for s in lp.readiness(scene)}["walls"].state == "optional"         # rigid
     scene.walls("MDF", thickness=0.018)
     assert "Walls: MDF" in scene.tree()
+    walls = {s.key: s for s in lp.readiness(scene)}["walls"]
+    assert walls.state == "done" and "MDF" in walls.message
     scene.mesh(mesh_dir, reuse="always")
     walls = lp.Modes(scene, physics="walls").solve(f_max=3000.0)
     f_w = walls.frequencies

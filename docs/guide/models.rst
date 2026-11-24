@@ -285,7 +285,8 @@ Its parts are reached by **paths** (``lp.docpath``: a list element by its index 
    doc.problems()       # [(path, message)]: each problem with the node it is about
    doc.readiness()      # what the simulation still needs: [Step(key, title, state, message, path)] — done / todo /
                         # warning / optional: geometry, domains, materials, held, coil, motor, coupling, radiation,
-                        # studies (a scene: drivers, cabinet, air, motors, studies); lp.readiness(model, studies) too
+                        # studies, the circuits they name (a scene: drivers, cabinet, air, motors, walls, studies,
+                        # circuits); lp.readiness(model, studies, circuits) too
    doc.fingerprint("study:fr")   # a digest of what that study's results depend on (the study, the circuit it
                                  # names, the model and its files): it changes with any of them
 

@@ -127,6 +127,10 @@ def test_paths_problems_readiness_fingerprints_provenance(tmp_path, mesh_dir):
     assert steps["motor"].path.endswith("/params/motor")
     next(b for b in speaker.boundaries if isinstance(b, lp.Coil)).motor = Semi(Re=6.0, Bl=5.0)
     assert {s.key: s for s in sdoc.readiness(speaker)}["motor"].state == "done"
+    assert {s.key: s for s in sdoc.readiness(speaker)}["circuits"].state == "done"   # the circuit it names: there
+    wrong = {s.key: s for s in lp.readiness(speaker, sdoc.studies, {})}["circuits"]
+    assert wrong.state == "todo" and "'amp'" in wrong.message and wrong.path == "circuits"
+    assert "circuits" not in {s.key for s in lp.readiness(speaker, [])}             # none named: no step
     study, kw = sdoc.study("fr", speaker)
     res = study.solve(**kw)
     assert res.provenance == {"study": "fr", "simulation": sdoc.name, "fingerprint": sdoc.fingerprint("study:fr")}

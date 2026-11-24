@@ -120,11 +120,12 @@ def of_model(model, studies=None, circuits=None) -> list[Step]:
                         "absorbed (PML or radiation boundary)" if ends else "the air ends on a rigid wall: add a "
                         "PML or an lp.Radiation boundary", "model/items"))
     out.append(_studies_step(studies))
+    out += _circuits_step(studies, circuits)
     return out
 
 
 def of_scene(scene, studies=None, circuits=None) -> list[Step]:
-    """The steps of a 3D scene: drivers, cabinet, air, motors, studies."""
+    """The steps of a 3D scene: drivers, cabinet, air, motors, walls, studies, the circuits they name."""
     out: list[Step] = []
     out.append(Step("drivers", "Drivers", "done" if scene.drivers else "todo",
                     ", ".join(d.name for d in scene.drivers) or "no driver yet", "scene/drivers"))
@@ -140,8 +141,31 @@ def of_scene(scene, studies=None, circuits=None) -> list[Step]:
     bare = [d.name for d in scene.drivers if getattr(d, "motor", None) is None]
     out.append(Step("motor", "Motors", "todo" if bare and electrical else ("optional" if bare else "done"),
                     f"no motor: {', '.join(bare)}" if bare else "every driver has its motor", "scene/drivers", bare))
+    walls = getattr(scene, "_walls", None)
+    out.append(Step("walls", "Walls", "done" if walls is not None else "optional",
+                    f"elastic: {walls.material}" + (f", {len(walls.panels)} panel(s) of their own" if walls.panels
+                                                    else "") if walls is not None else
+                    "rigid (Scene.walls: elastic walls, their modes computed)", "scene/settings/walls"))
     out.append(_studies_step(studies))
+    out += _circuits_step(studies, circuits)
     return out
+
+
+def _circuits_step(studies, circuits) -> list[Step]:
+    """The circuits the studies name (CircuitRef): each one of the simulation's; no step when none is named."""
+    named = []
+    for s in studies or []:
+        for holder in (s, s.get("study") or {}):
+            node = (holder.get("params") or {}).get("drive") if isinstance(holder, dict) else None
+            if isinstance(node, dict) and node.get("type") == "CircuitRef":
+                named.append(((node.get("params") or {}).get("name"), s.get("name")))
+    if not named:
+        return []
+    missing = [f"{c!r} (study {st})" for c, st in named if c not in (circuits or {})]
+    return [Step("circuits", "Circuits", "todo" if missing else "done",
+                 f"no such circuit: {', '.join(missing)}" if missing else
+                 ", ".join(sorted({str(c) for c, _ in named})) + " (named by the studies)", "circuits",
+                 [c for c, _ in named])]
 
 
 def _studies_step(studies) -> Step:
