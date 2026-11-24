@@ -16,6 +16,7 @@ curve groups (rules of loudpy.geometry.naming). The name is the label of the bou
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 from loudpy.errors import ModelError
 from loudpy.geometry.selectors import Combinable, Selector, as_selector
@@ -52,11 +53,19 @@ class Clamped(Boundary):
 
 @dataclass
 class Coil(Boundary):
-    """Where the drive acts (lp.Force or lp.Voltage), along `direction`: "z" (axial, default) or "r"."""
+    """Where the drive acts (lp.Force, lp.Voltage or an lp.Circuit), along `direction`: "z" (axial, default) or
+    "r"; `motor` the driver's electrical motor — its blocked coil and force factor (loudpy.circuit: Semi, Leach, LR2,
+    Wright) — that a voltage or a circuit drives (kept in the result files: a scene's driver takes it from its
+    modes file)."""
     direction: str = "z"
+    motor: Any = None
 
     def __post_init__(self):
         _check_components(f"Coil({self.name!r}).direction", self.direction)
+        from loudpy.circuit import COIL_MODELS
+        if self.motor is not None and not isinstance(self.motor, COIL_MODELS):
+            raise ModelError(f"Coil({self.name!r}).motor: one of {[t.__name__ for t in COIL_MODELS]} "
+                             f"(loudpy.circuit), got {self.motor!r}")
 
 
 @dataclass

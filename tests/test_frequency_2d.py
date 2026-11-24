@@ -117,3 +117,39 @@ def test_redrive_2d(mesh_dir, tmp_path):
     with pytest.raises(lp.errors.ModelError, match="both set the voltage"):
         res_a.redrive(lp.Circuit(Source("amp", "a"), Filter("F1", "a", "c", butterworth(2, 400.0)),
                                  Filter("F2", "a", "c", butterworth(2, 900.0, "high")), coil))
+
+
+def test_motor_on_the_coil(mesh_dir, tmp_path):
+    """The motor sits on the model's lp.Coil item (motor=): a Voltage with its amplitude only and a circuit's coil
+    without a model drive it, as the same values given in the drive do; values given in the drive override it; the
+    result keeps it (redrive, saved and read back) and so does the model's description; no motor: refused."""
+    from loudpy.circuit import Coil, Inductor, Semi, Source
+    v = VOLTAGE
+    motor = Semi(Re=v["Re"], Bl=v["Bl"], Le=v["Le"], n=v["n"])
+    model = api.speaker_problem(mesh_dir, acoustic=True)
+    coil_item = next(b for b in model.boundaries if isinstance(b, lp.Coil))
+    freqs = [150.0, 700.0]
+    with pytest.raises(lp.errors.ModelError, match="no motor"):
+        lp.FrequencyResponse(model, drive=lp.Voltage(v["u"])).solve(freqs)
+    given = lp.FrequencyResponse(model, drive=lp.Voltage(v["u"], Re=v["Re"], Bl=v["Bl"], Le=v["Le"], n=v["n"])
+                                 ).solve(freqs)
+    coil_item.motor = motor
+    own = lp.FrequencyResponse(model, drive=lp.Voltage(v["u"])).solve(freqs)
+    np.testing.assert_allclose(own.impedance().values, given.impedance().values, rtol=1e-12)
+    net = lp.Circuit(Source("amp", "a", U=v["u"]), Inductor("L", "a", "c", 5e-4), Coil("vc", "c", "0"))
+    res = lp.FrequencyResponse(model, drive=net).solve(freqs)
+    explicit = lp.FrequencyResponse(model, drive=lp.Circuit(Source("amp", "a", U=v["u"]), Inductor("L", "a", "c", 5e-4),
+                                                            Coil("vc", "c", "0", motor))).solve(freqs)
+    np.testing.assert_allclose(res.impedance().values, explicit.impedance().values, rtol=1e-12)
+    other = lp.FrequencyResponse(model, drive=lp.Voltage(v["u"], Re=2 * v["Re"], Bl=v["Bl"])).solve(freqs)
+    assert np.all(np.abs(other.impedance().values - own.impedance().values) > 1.0)            # the drive's own coil
+    described = next(b for b in res.model["boundaries"] if b["type"] == "Coil")             # (a scene's driver
+    assert res.motors == {None: motor} and described["motor"] == {"type": "Semi", "Re": v["Re"], "Bl": v["Bl"],
+                                                                  "Le": v["Le"], "n": v["n"]}  # reads it there)
+    back = lp.load(res.save(tmp_path / "motor.h5"))
+    assert back.motors == {None: motor}
+    np.testing.assert_allclose(back.redrive(lp.Voltage(v["u"])).impedance().values, own.impedance().values, rtol=1e-9)
+    with pytest.raises(lp.errors.ModelError, match="Re and Bl together"):
+        lp.Voltage(2.83, Re=8.0)
+    with pytest.raises(lp.errors.ModelError, match="motor"):
+        lp.Coil("x", motor=6.0)

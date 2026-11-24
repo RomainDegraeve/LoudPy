@@ -38,23 +38,37 @@ class Force:
 
 @dataclass(frozen=True)
 class Voltage:
-    """Voltage drive of an electro-mechanical coil: amplitude [V], resistance Re [Ω], force factor
-    Bl [T·m], inductance Le [H] (semi-inductance exponent n)."""
+    """Voltage drive of an electro-mechanical coil: amplitude [V] on the driver's motor (its lp.Coil item's motor=,
+    or Driver.from_modes(motor=)); or on the coil given here: resistance Re [Ω] and force factor Bl [T·m] (both, or
+    neither), inductance Le [H] (semi-inductance exponent n) — they override the motor."""
     amplitude: complex                          # [V]
-    Re: float                                   # coil resistance [Ω]
-    Bl: float                                   # force factor [T·m]
+    Re: float | None = None                     # coil resistance [Ω]
+    Bl: float | None = None                     # force factor [T·m]
     Le: float = 0.0                             # coil inductance [H]
     n: float = 1.0                              # inductance exponent: Ze = Re + (jω)^n Le
 
     def __post_init__(self):
         from loudpy.checks import check
+        if (self.Re is None) != (self.Bl is None):
+            raise ModelError("Voltage: give Re and Bl together (the coil here), or neither (the driver's motor)")
         check(self.Re, "resistance", "Voltage.Re")
         check(self.Bl, "force_factor", "Voltage.Bl")
         check(self.Le, "inductance", "Voltage.Le")
         check(self.n, "inductance_exponent", "Voltage.n")
 
+    @property
+    def motor(self):
+        """The coil given here (loudpy.circuit.Semi), or None: the driver's motor."""
+        if self.Re is None:
+            return None
+        from loudpy.circuit import Semi
+        return Semi(Re=float(self.Re), Bl=float(self.Bl), Le=float(self.Le or 0.0),  # type: ignore[arg-type]
+                    n=1.0 if self.n is None else float(self.n))
+
     def impedance(self, omega: float) -> complex:
-        """Blocked electrical impedance Ze(ω)."""
+        """Blocked electrical impedance Ze(ω) of the coil given here."""
+        if self.Re is None:
+            raise ModelError("Voltage: no coil given here (Re, Bl): its impedance is the driver's motor's")
         return self.Re + (1j * omega) ** self.n * self.Le
 
 

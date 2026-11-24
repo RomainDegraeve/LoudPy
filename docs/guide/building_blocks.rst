@@ -334,7 +334,7 @@ Fixed displacement on the selected curves: dofs "rz" (default, fully clamped), "
 ``lp.Coil``
 ^^^^^^^^^^^
 
-Where the drive acts (lp.Force or lp.Voltage), along `direction`: "z" (axial, default) or "r".
+Where the drive acts (lp.Force, lp.Voltage or an lp.Circuit), along `direction`: "z" (axial, default) or "r"; `motor` the driver's electrical motor — its blocked coil and force factor (loudpy.circuit: Semi, Leach, LR2, Wright) — that a voltage or a circuit drives (kept in the result files: a scene's driver takes it from its modes file).
 
 .. list-table::
    :header-rows: 1
@@ -360,6 +360,11 @@ Where the drive acts (lp.Force or lp.Voltage), along `direction`: "z" (axial, de
      - 
      - ``'z'``
      - the coil's force direction Choices: z, r.
+   * - ``motor``
+     - block (circuit.coils)
+     - 
+     - ``None``
+     - the driver's motor: its blocked coil and force factor Bl (a voltage or a circuit drives it; a scene's driver takes it from the modes file)
 
 ``lp.FluidStructure``
 ^^^^^^^^^^^^^^^^^^^^^
@@ -528,7 +533,7 @@ Force on the coil: a complex amplitude [N] (harmonic), or a time signal sampled 
 ``lp.Voltage``
 ^^^^^^^^^^^^^^
 
-Voltage drive of an electro-mechanical coil: amplitude [V], resistance Re [Ω], force factor Bl [T·m], inductance Le [H] (semi-inductance exponent n).
+Voltage drive of an electro-mechanical coil: amplitude [V] on the driver's motor (its lp.Coil item's motor=, or Driver.from_modes(motor=)); or on the coil given here: resistance Re [Ω] and force factor Bl [T·m] (both, or neither), inductance Le [H] (semi-inductance exponent n) — they override the motor.
 
 .. list-table::
    :header-rows: 1
@@ -547,13 +552,13 @@ Voltage drive of an electro-mechanical coil: amplitude [V], resistance Re [Ω], 
    * - ``Re``
      - number
      - Ω
-     - required
-     - coil resistance Range: > 0.
+     - ``None``
+     - coil resistance (empty: the driver's motor) Range: > 0.
    * - ``Bl``
      - number
      - T·m
-     - required
-     - force factor
+     - ``None``
+     - force factor (empty: the driver's motor)
    * - ``Le``
      - number
      - H
@@ -1537,7 +1542,7 @@ Drivers
 ``lp.Driver.from_modes``
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
-A driver from an eigen result file of its axisymmetric model: the modes of the azimuthal orders `orders` (up to f_max), the coil nodes (the boundary of the model's lp.Coil item, or the boundary named `coil`) and the wet profiles `rear` / `front` selected on its 2D geometry (a path, a builder or its lp.Model).
+A driver from an eigen result file of its axisymmetric model: the modes of the azimuthal orders `orders` (up to f_max), the coil nodes (the boundary of the model's lp.Coil item, or the boundary named `coil`), its motor (the lp.Coil item's motor=, as the file describes it; `motor` overrides it) and the wet profiles `rear` / `front` selected on its 2D geometry (a path, a builder or its lp.Model).
 
 .. list-table::
    :header-rows: 1
@@ -1583,6 +1588,11 @@ A driver from an eigen result file of its axisymmetric model: the modes of the a
      - 
      - ``None``
      - the coil boundary's name (empty: the model's lp.Coil item)
+   * - ``motor``
+     - block (circuit.coils)
+     - 
+     - ``None``
+     - its motor (empty: the one its modes file describes, its lp.Coil item's)
    * - ``name``
      - text
      - 
@@ -2118,7 +2128,7 @@ An inductance L [H] between nodes a and b (its current a → b an unknown).
 ``lp.circuit.Coil``
 ^^^^^^^^^^^^^^^^^^^
 
-A driver's coil between nodes a and b: its blocked impedance and force factor (model: Semi, Leach, LR2, Wright) and its driver (a scene's driver by name; None: the coil of a 2D model).
+A driver's coil between nodes a and b, and its driver (a scene's driver by name; None: the coil of a 2D model). Its motor — the blocked impedance and force factor (Semi, Leach, LR2, Wright) — is the driver's (its lp.Coil item's motor=, or Driver.from_modes(motor=)) unless `model` gives one here.
 
 .. list-table::
    :header-rows: 1
@@ -2144,16 +2154,16 @@ A driver's coil between nodes a and b: its blocked impedance and force factor (m
      - 
      - required
      - its − node
-   * - ``model``
-     - block (circuit.coils)
-     - 
-     - required
-     - the blocked coil and its force factor Bl
    * - ``driver``
      - text
      - 
      - ``None``
      - the scene's driver it moves (empty: a 2D model's coil)
+   * - ``model``
+     - block (circuit.coils)
+     - 
+     - ``None``
+     - its motor here (empty: the driver's motor)
 
 Filter stages
 -------------

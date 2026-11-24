@@ -724,3 +724,47 @@ def test_redrive_scene(driver, mesh_dir, kind, tmp_path):
     assert not force.redrivable
     with pytest.raises(lp.errors.ResultsError, match="no unit response per coil"):
         force.redrive(v)
+
+
+def test_driver_motor(driver, mesh_dir, cache_dir, tmp_path):
+    """A scene's driver takes its motor from its modes file (its 2D model's lp.Coil item, motor=) or from
+    Driver.from_modes(motor=): a Voltage (its amplitude only) and a circuit's coil without a model drive it as the
+    values given in the drive do; the result keeps the motors (redrive); a driver without one is refused."""
+    import json
+    import shutil
+    import h5py
+    from loudpy.circuit import Coil, Semi, Source
+    motor = Semi(Re=6.0, Bl=5.0, Le=3e-4, n=0.8)
+    path = tmp_path / "modes_with_motor.h5"
+    shutil.copy(cache_dir / "driver_modes.h5", path)
+    with h5py.File(path, "r+") as f:                                 # as if its lp.Coil item had motor=
+        desc = json.loads(f["model"].attrs["description"])
+        for b in desc["boundaries"]:
+            if b["type"] == "Coil":
+                b["motor"] = {"type": "Semi", "Re": 6.0, "Bl": 5.0, "Le": 3e-4, "n": 0.8}
+        f["model"].attrs["description"] = json.dumps(desc)
+    own = lp.Driver.from_modes(path, [0, 1, 2], f_max=5000.0, geometry=api.SPEAKER_GEO, rear=REAR, front=FRONT)
+    assert own.motor == motor and driver.motor is None
+
+    def scene_of(drv):
+        scene = lp.Scene(box_cabinet, [drv.place("main", at=(W / 2, H / 2))])
+        scene.cavity(f_max=3000.0, eta=0.02, file="box_one_driver.msh", cache_modes=False)
+        scene.mesh(mesh_dir, reuse="always")
+        return scene
+    freqs = np.array([60.0, 250.0])
+    with_motor, bare = scene_of(own), scene_of(driver)
+    res = lp.FrequencyResponse(with_motor, drive=lp.Voltage(2.83)).solve(freqs)
+    given = lp.FrequencyResponse(bare, drive=lp.Voltage(2.83, Re=6.0, Bl=5.0, Le=3e-4, n=0.8)).solve(freqs)
+    np.testing.assert_allclose(res.impedance().values, given.impedance().values, rtol=1e-10)
+    circ = lp.FrequencyResponse(with_motor, drive=lp.Circuit(Source("amp", "c", U=2.83), Coil("vc", "c", "0",
+                                                                                                driver="main"))
+                                ).solve(freqs)
+    np.testing.assert_allclose(circ.impedance().values, given.impedance().values, rtol=1e-10)
+    assert res.motors == {"main": motor}
+    np.testing.assert_allclose(res.redrive(lp.Voltage(1.0)).coil_current().values, res.coil_current().values / 2.83,
+                               rtol=1e-10)
+    with pytest.raises(lp.errors.ModelError, match="no motor"):
+        lp.FrequencyResponse(bare, drive=lp.Voltage(2.83)).solve(freqs)
+    given_here = lp.Driver.from_modes(cache_dir / "driver_modes.h5", [0, 1, 2], f_max=5000.0, geometry=api.SPEAKER_GEO,
+                                      rear=REAR, front=FRONT, motor=motor)
+    assert given_here.motor == motor and lp.Scene(box_cabinet, [given_here.place("main")]).drivers[0].motor == motor

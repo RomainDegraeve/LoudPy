@@ -188,30 +188,35 @@ def _chain(index, tags, start, end, scale, what) -> tuple[list[int], tuple]:
 
 class Driver:
     """An axisymmetric driver described by its modes (lp.Driver.from_modes), placed in 3D scenes with .place()."""
-    def __init__(self, modes, rear, front, coil_nodes, name: str = "driver", source=None):
+    def __init__(self, modes, rear, front, coil_nodes, name: str = "driver", source=None, motor=None):
         """
         modes      : DriverModes (meridian mesh, real mass-normalised modes, both families)
         rear, front: wet profiles (lists of (n, 2) polylines, baffle → axis), front may be None
         coil_nodes : rows of the meridian mesh where the coil force acts
+        motor      : its electrical motor (loudpy.circuit: Semi, Leach, LR2, Wright), or None
         """
+        from loudpy.circuit import motor_from_dict
         self.modes, self.rear, self.front = modes, rear, front
         self.coil_nodes = np.asarray(coil_nodes, dtype=np.int64)
         self.name, self.source = name, source
+        self.motor = motor_from_dict(motor)
 
     @classmethod
     def from_modes(cls, path, orders, f_max=None, *, geometry, rear: Profile, front: Profile | None = None,
-                   coil: str | None = None, name: str | None = None) -> "Driver":
+                   coil: str | None = None, name: str | None = None, motor=None) -> "Driver":
         """A driver from an eigen result file of its axisymmetric model: the modes of the azimuthal orders
         `orders` (up to f_max), the coil nodes (the boundary of the model's lp.Coil item, or the boundary named
-        `coil`) and the wet profiles `rear` / `front` selected on its 2D geometry (a path, a builder or its
-        lp.Model)."""
+        `coil`), its motor (the lp.Coil item's motor=, as the file describes it; `motor` overrides it) and the wet
+        profiles `rear` / `front` selected on its 2D geometry (a path, a builder or its lp.Model)."""
+        from loudpy.circuit import motor_from_dict
         from loudpy.physics.modal import DriverModes
         from loudpy.results import load
         modes = DriverModes.from_eigen_h5(path, list(orders), f_max=f_max)
         res = load(path)
+        items = (res.model.get("boundaries") or []) if res.model is not None else []
+        coil_items = [b for b in items if b.get("type") == "Coil"]
         if coil is None:
-            items = (res.model.get("boundaries") or []) if res.model is not None else []
-            coils = [b["name"] for b in items if b.get("type") == "Coil"]
+            coils = [b["name"] for b in coil_items]
             if len(coils) != 1:
                 raise ModelError(f"{path}: {len(coils)} lp.Coil item(s) in its model description; name the coil "
                                  f"boundary with coil= (boundaries: {list(res.boundaries)})")
@@ -221,9 +226,12 @@ class Driver:
         coil_nodes = np.array([i for i, t in enumerate(modes.node_tags) if int(t) in tagset], dtype=np.int64)
         if not len(coil_nodes):
             raise ModelError(f"no node of the boundary {coil!r} on the modal mesh of {path}")
+        own = next((b.get("motor") for b in coil_items if b.get("name") == coil), None)
         return cls(modes, rear.sample(geometry), front.sample(geometry) if front else None, coil_nodes,
                    name or "driver", source=dict(path=str(path), orders=list(orders), f_max=f_max,
-                                                 geometry=str(geometry), rear=rear, front=front, coil=coil))
+                                                 geometry=str(geometry), rear=rear, front=front, coil=coil,
+                                                 motor=motor_from_dict(motor)),
+                   motor=motor if motor is not None else motor_from_dict(own))
 
     @property
     def rear_cutout(self) -> list[np.ndarray]:
@@ -258,7 +266,8 @@ class Driver:
         return PlacedDriver(name, self, frame)
 
     def __repr__(self):
-        return f"Driver({self.name!r}, {len(self.modes)} modes, coil {len(self.coil_nodes)} nodes)"
+        return (f"Driver({self.name!r}, {len(self.modes)} modes, coil {len(self.coil_nodes)} nodes"
+                f"{', motor ' + type(self.motor).__name__ if self.motor is not None else ''})")
 
 
 @dataclass
@@ -267,6 +276,11 @@ class PlacedDriver:
     name: str
     driver: Driver
     frame: Frame
+
+    @property
+    def motor(self):
+        """Its electrical motor (the driver's), or None."""
+        return self.driver.motor
 
     def outline_points(self, n_theta: int = 16) -> np.ndarray:
         """Points of the revolved front (or rear) profile in global coordinates (hemisphere sizing)."""

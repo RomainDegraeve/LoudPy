@@ -413,6 +413,9 @@ def _coil(b, s, parts, drive, form, extra):
         b.add_load(Load("e", drive.rhs()))
         return
     if isinstance(drive, Voltage):
+        if drive.Re is None:
+            raise ModelError("this coupled form needs the coil in the Voltage (Re, Bl): the studies take the "
+                             "driver's motor (loudpy.physics.electric)")
         n = 1.0 if drive.n is None else float(drive.n)
         f = s.F.reshape(-1, 1)                                   # coil force pattern, sums to 1
         b.add_field(Field("I", 1, info=dict(Re=float(drive.Re), Le=float(drive.Le), n=n, Bl=float(drive.Bl))))

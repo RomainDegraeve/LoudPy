@@ -240,7 +240,10 @@ def _catalog() -> dict[str, Block]:
                                 group="Condition", choices=("rz", "r", "z"))]),
         _make("Coil", "boundaries", lp.Coil, [
             NAME, ON_CURVES, _p("direction", "choice", help="the coil's force direction", group="Condition",
-                                choices=("z", "r"))]),
+                                choices=("z", "r")),
+            _p("motor", "block", help="the driver's motor: its blocked coil and force factor Bl (a voltage or a "
+               "circuit drives it; a scene's driver takes it from the modes file)", group="Motor",
+               of="circuit.coils", optional=True)]),
         _make("FluidStructure", "boundaries", lp.FluidStructure, [NAME, ON_CURVES]),
         _make("Radiation", "boundaries", lp.Radiation, [NAME, ON_CURVES]),
         # mesh controls
@@ -282,8 +285,8 @@ def _catalog() -> dict[str, Block]:
             _p("fs", "number", "Hz", "sampling rate of a force signal (transient)", "Drive", optional=True, min=0)]),
         _make("Voltage", "drives", lp.Voltage, [
             _p("amplitude", "complex", "V", "voltage amplitude on the coil", "Drive"),
-            _p("Re", "number", "Ω", "coil resistance", "Coil", min=0),
-            _p("Bl", "number", "T·m", "force factor", "Coil"),
+            _p("Re", "number", "Ω", "coil resistance (empty: the driver's motor)", "Coil", min=0, optional=True),
+            _p("Bl", "number", "T·m", "force factor (empty: the driver's motor)", "Coil", optional=True),
             _p("Le", "number", "H", "coil (semi-)inductance", "Coil", min=0, min_inclusive=True),
             _p("n", "number", help="semi-inductance exponent: Z_L = Le (jω)^n (1: a plain inductance)",
                group="Coil", min=0, max=1, max_inclusive=True)]),
@@ -318,9 +321,10 @@ def _catalog() -> dict[str, Block]:
         _make("circuit.Coil", "circuit.parts", circ.Coil, [
             _p("name", "text", help="its name", group="Part"), _p("a", "text", help="its + node", group="Nodes"),
             _p("b", "text", help="its − node", group="Nodes"),
-            _p("model", "block", help="the blocked coil and its force factor Bl", group="Coil", of="circuit.coils"),
             _p("driver", "text", help="the scene's driver it moves (empty: a 2D model's coil)", group="Coil",
-               optional=True)]),
+               optional=True),
+            _p("model", "block", help="its motor here (empty: the driver's motor)", group="Coil",
+               of="circuit.coils", optional=True)]),
         # a filter's stages
         _make("circuit.butterworth", "circuit.filters", circ.butterworth, [
             _p("order", "integer", help="1, 2, 3 …", min=0), _p("fc", "number", "Hz", "−3 dB frequency", min=0),
@@ -558,6 +562,8 @@ def _catalog() -> dict[str, Block]:
                group="Wet surfaces", of="profiles", optional=True),
             _p("coil", "text", help="the coil boundary's name (empty: the model's lp.Coil item)", group="Coil",
                optional=True),
+            _p("motor", "block", help="its motor (empty: the one its modes file describes, its lp.Coil item's)",
+               group="Coil", of="circuit.coils", optional=True),
             _p("name", "text", help="the driver's name (empty: the file's)", group="Identity", optional=True)],
             code_only={"geometry (builder or model)": "a builder function or its lp.Model"}),
         _make("Driver.place", "scene.placement", lp.Driver.place, [

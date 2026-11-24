@@ -30,6 +30,13 @@ bound to the scene's driver by name).
 **Coil models** (the blocked coil and its force factor ``Bl``): ``Semi`` (Re + sⁿLe), ``Leach`` (Re + K sⁿ),
 ``LR2`` (Re + sLe + R2 ∥ sL2), ``Wright`` (Re + Krm ωᴱʳᵐ + j Kxm ωᴱˣᵐ).
 
+**The motor belongs to the driver.** A driver's coil model is its *motor*, given once on its 2D model's coil item —
+``lp.Coil("coil_drive", motor=Semi(Re=5.6, Bl=6.1, Le=3e-4))`` — and kept in its result files: a scene's driver
+made by ``lp.Driver.from_modes`` reads it from its modes file (``motor=`` there overrides it). A circuit's ``Coil``
+then only names its driver — ``Coil("main", "c", "0", driver="main")`` — and ``lp.Voltage(2.83)`` needs only its
+amplitude; a coil model given in the circuit (``model=``) or values in the voltage (``Re``, ``Bl``, ``Le``, ``n``)
+override the motor. Results keep the motors (``res.motors``), so ``res.redrive`` drives them too.
+
 **How it is solved.** The structure and the air are linear: each driven coil is solved once for a unit force on it
 (its *unit response*: the modal amplitudes, the pressures, the field), with the drivers' modes, the air and the
 walls. The coils meet them only through the mobility matrix ``Y`` — the velocity of coil ``j`` for a unit force on

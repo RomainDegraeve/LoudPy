@@ -405,6 +405,8 @@ def _describe_scene(s) -> dict:
             dp["front"] = schema.describe(src["front"])
         if src.get("coil"):
             dp["coil"] = src["coil"]
+        if src.get("motor") is not None:                          # given here (else the modes file's)
+            dp["motor"] = schema.describe(src["motor"])
         dp["name"] = d.driver.name
         at = [float(v) for v in np.asarray(d.frame.origin, float)]
         drivers.append({"driver": {"type": "Driver.from_modes", "params": dp},

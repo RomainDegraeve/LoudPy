@@ -12,7 +12,8 @@ and the coil forces w_k = Bl_k i_k weight the unit responses: the driven respons
 coupled solution exactly, and the circuit (filters, crossover, coil values) can change after the study:
 Results.redrive.
 
-    circuit = as_circuit(drive, coils)        an lp.Voltage (or {driver: Voltage}) as a circuit; a Force: None
+    circuit = as_circuit(drive, coils, motors)   an lp.Voltage (or {driver: Voltage}) as a circuit, its coils
+                                                 given their drivers' motors (motors_of(model or scene)); a Force: None
     W, E = solve(circuit, freqs, Y, coils)    coil forces (n_f, K) and the circuit's unknowns (n_f, size)
     W = force_weights(drive, coils, n_f)      a Force: its amplitudes on the coils
     coil_scalars(circuit, E, freqs)           a 2D model's coil: I_coil, U, Ze, Bl (Re, Le, n of a Semi coil)
@@ -26,13 +27,14 @@ import numpy as np
 from loudpy.errors import ModelError
 
 
-def as_circuit(drive, coils: list):
+def as_circuit(drive, coils: list, motors: dict | None = None):
     """The circuit of an electrical drive: an lp.Circuit itself; an lp.Voltage (every coil) or {driver: lp.Voltage}
-    as one amplifier and one coil (Semi: Re, Bl, Le, n) per driver; None for a Force (or {driver: Force})."""
-    from loudpy.circuit import Circuit, Coil, Semi, Source
+    as one amplifier and one coil per driver; None for a Force (or {driver: Force}). Its coils without a model get
+    their driver's motor (motors: {driver name, or None for a 2D model's coil: a coil model})."""
+    from loudpy.circuit import Circuit, Coil, Source
     from loudpy.model.drives import Force, Voltage
     if isinstance(drive, Circuit):
-        return drive
+        return drive.with_motors(motors)
     per = drive if isinstance(drive, dict) else {c: drive for c in coils}
     values = list(per.values())
     if all(isinstance(v, Force) for v in values):
@@ -49,10 +51,30 @@ def as_circuit(drive, coils: list):
     for c in coils:
         v = per[c]
         node, tag = (f"in_{c}", f"_{c}") if c is not None else ("in", "")
-        parts += [Source(f"amp{tag}", node, U=complex(v.amplitude)),
-                  Coil(f"coil{tag}", node, "0", Semi(Re=float(v.Re), Bl=float(v.Bl), Le=float(v.Le or 0.0),
-                                                     n=1.0 if v.n is None else float(v.n)), driver=c)]
-    return Circuit(*parts)
+        parts += [Source(f"amp{tag}", node, U=complex(v.amplitude)), Coil(f"coil{tag}", node, "0", v.motor, driver=c)]
+    return Circuit(*parts).with_motors(motors)
+
+
+def motors_of(target) -> dict:
+    """The motors of a 2D model ({None: its lp.Coil item's motor}) or of a scene ({driver name: its motor})."""
+    from loudpy.model.boundaries import Coil
+    drivers = getattr(target, "drivers", None)
+    if drivers is not None and not hasattr(target, "boundaries"):
+        return {d.name: d.motor for d in drivers}
+    coil = next((b for b in getattr(target, "boundaries", []) if isinstance(b, Coil)), None)
+    return {None: coil.motor if coil is not None else None}
+
+
+def motors_to_meta(motors: dict) -> dict:
+    """Motors as plain data for a result (a 2D model's coil under "")."""
+    from loudpy.circuit import motor_to_dict
+    return {("" if k is None else str(k)): motor_to_dict(m) for k, m in motors.items()}
+
+
+def motors_from_meta(data: dict | None) -> dict:
+    """The motors of motors_to_meta."""
+    from loudpy.circuit import motor_from_dict
+    return {(None if k == "" else k): motor_from_dict(m) for k, m in (data or {}).items()}
 
 
 def columns(circuit, coils: list) -> list[int]:

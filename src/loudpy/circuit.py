@@ -201,6 +201,25 @@ class Wright:
 COIL_MODELS = (Semi, Leach, LR2, Wright)
 
 
+def motor_to_dict(m) -> dict | None:
+    """A coil model (a driver's motor) as plain data: {"type": "Semi", "Re": …, …}; None stays None."""
+    if m is None:
+        return None
+    return {"type": type(m).__name__, **{k: getattr(m, k) for k in m.__dataclass_fields__}}
+
+
+def motor_from_dict(d):
+    """The coil model of motor_to_dict (also a result file's description of it); None stays None."""
+    if d is None or isinstance(d, COIL_MODELS):
+        return d
+    models = {t.__name__: t for t in COIL_MODELS}
+    d = dict(d)
+    kind = str(d.pop("type")).split(".")[-1]
+    if kind not in models:
+        raise ModelError(f"a motor is one of {list(models)}, got {kind!r}")
+    return models[kind](**{k: v for k, v in d.items() if k in models[kind].__dataclass_fields__})
+
+
 # ── the parts ────────────────────────────────────────────────────────────────────────────────────────────────────
 @dataclass
 class Resistor:
@@ -265,12 +284,13 @@ class Filter:
 
 @dataclass
 class Coil:
-    """A driver's coil between nodes a and b: its blocked impedance and force factor (model: Semi, Leach, LR2,
-    Wright) and its driver (a scene's driver by name; None: the coil of a 2D model)."""
+    """A driver's coil between nodes a and b, and its driver (a scene's driver by name; None: the coil of a 2D model).
+    Its motor — the blocked impedance and force factor (Semi, Leach, LR2, Wright) — is the driver's (its lp.Coil
+    item's motor=, or Driver.from_modes(motor=)) unless `model` gives one here."""
     name: str
     a: str
     b: str
-    model: Any
+    model: Any = None
     driver: str | None = None
 
 
@@ -299,8 +319,9 @@ class Circuit:
                 raise ModelError(f"a circuit part is one of {[t.__name__ for t in PARTS]}, got {p!r}")
             if any(q.name == p.name for q in self.parts):
                 raise ModelError(f"a part is already named {p.name!r}")
-            if isinstance(p, Coil) and not isinstance(p.model, COIL_MODELS):
-                raise ModelError(f"coil {p.name}: its model is one of {[t.__name__ for t in COIL_MODELS]}")
+            if isinstance(p, Coil) and p.model is not None and not isinstance(p.model, COIL_MODELS):
+                raise ModelError(f"coil {p.name}: its model is one of {[t.__name__ for t in COIL_MODELS]} (or none: "
+                                 "its driver's motor)")
             self.parts.append(p)
         return self
 
@@ -358,6 +379,10 @@ class Circuit:
         """
         if not any(isinstance(p, Source) for p in self.parts):
             raise ModelError("a circuit needs a Source (the amplifier)")
+        bare = [c.name for c in self.coils if c.model is None]
+        if bare:
+            raise ModelError(f"coil(s) {bare}: no motor — give the driver one (its lp.Coil item: motor=…, or "
+                             "Driver.from_modes(motor=…)) or the coil a model=")
         uses: dict = {}
         for p in self.parts:
             for n in _nodes(p):
@@ -427,6 +452,16 @@ class Circuit:
         if floating:
             raise ModelError(f"node(s) {floating} have no path to the ground '0' through parts carrying a current (a "
                              "filter's input draws none): connect that part of the circuit to the ground")
+
+    def with_motors(self, motors: dict | None) -> "Circuit":
+        """This circuit with each coil without a model given its driver's motor (motors: {driver name, or None for a
+        2D model's coil: a coil model}); the coils given a model keep it."""
+        import dataclasses
+        if not motors:
+            return self
+        parts = [dataclasses.replace(p, model=motors.get(p.driver)) if isinstance(p, Coil) and p.model is None
+                 else p for p in self.parts]
+        return Circuit(*parts)
 
     # ── modified nodal analysis ─────────────────────────────────────────────────────────────────────────────────
     def matrix(self, s) -> np.ndarray:
@@ -511,7 +546,7 @@ class Circuit:
             if isinstance(v, Transfer):
                 return {"num": v.num, "den": v.den, "gain": v.gain, "delay": v.delay, "parts": v.parts}
             if isinstance(v, COIL_MODELS):
-                return {"type": type(v).__name__, **{k: getattr(v, k) for k in v.__dataclass_fields__}}
+                return motor_to_dict(v)
             if isinstance(v, complex):
                 return [v.real, v.imag]
             return v
@@ -522,7 +557,6 @@ class Circuit:
     def from_dict(cls, data: dict) -> "Circuit":
         """The circuit of to_dict."""
         types = {t.__name__: t for t in PARTS}
-        models = {t.__name__: t for t in COIL_MODELS}
         parts = []
         for d in data.get("parts", []):
             d = dict(d)
@@ -530,8 +564,7 @@ class Circuit:
             if "H" in d and isinstance(d["H"], dict):
                 d["H"] = Transfer(**d["H"])
             if "model" in d and isinstance(d["model"], dict):
-                m = dict(d["model"])
-                d["model"] = models[m.pop("type")](**m)
+                d["model"] = motor_from_dict(d["model"])
             if "U" in d and isinstance(d["U"], (list, tuple)):
                 d["U"] = complex(*d["U"])
             parts.append(t(**d))
@@ -697,6 +730,9 @@ def to_spice(circuit: "Circuit", title: str = "loudpy circuit") -> str:
                 lines.append(f"{nm('E', p.name)} {p.out} 0 {p.inp} 0 Laplace={_laplace_text(p.H)}")
             elif isinstance(p, Coil):
                 m = p.model
+                if m is None:
+                    raise ModelError(f"coil {p.name}: its motor is its driver's — give it first "
+                                     "(circuit.with_motors({driver: motor}))")
                 Le = getattr(m, "Le", 0.0) if getattr(m, "n", 1.0) == 1.0 else 0.0
                 if Le:
                     lines += [f"R{p.name}_Re {p.a} {p.name}_n {m.Re:.12g}", f"L{p.name}_Le {p.name}_n {p.b} {Le:.12g}"]
