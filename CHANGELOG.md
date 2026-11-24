@@ -5,6 +5,11 @@ versions follow [Semantic Versioning](https://semver.org/) (0.x: the API may sti
 
 ## [Unreleased]
 
+- `lp.plot.PlotSpec`: a plot as plain data (quantity, where, axes, the values of the other dimensions, view,
+  style), resolved on results by slicing named dimensions; every dimension not plotted is a control (slider / choice:
+  frequency, time, mode, sweep run, the phase of a harmonic field), `.step()` moves one, `.animate(res, dim, path)`
+  plays one into a GIF / MP4. `lp.Document(...).plots` keeps plot specs with a simulation.
+- Tests: `pytest --browser` runs the interface's browser tests (marker `browser`, Playwright + Chromium).
 - Item types declare their facts next to their classes (`lp.Solid.facts`: what they select, the medium they fill,
   their physics and role, their key parameter, where they fit — `loudpy.model.facts`); `lp.schema` shows them
   (`Block.facts`, `Block.key`, `Param.key`) and `lp.schema.register(cls, params)` makes a new item type known.

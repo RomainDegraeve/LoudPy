@@ -31,6 +31,8 @@ an image, an interactive HTML page or a 3D model, or to turn in a window. The fu
     lp.plot.View3D(…)                                    your own 3D scene (pyvista) in matplotlib axes
     lp.plot.default_cameras(bounds, drivers)             the default cameras of a scene
     lp.plot.animate(trans, "u.mp4")                      animations
+    lp.plot.PlotSpec(quantity=…, where=…, axes=…, at=…)  a plot as plain data: .resolve(res) → the data and a control
+                                                         per dimension not plotted (slider / player), .to_dict()
     lp.plot.save(fig, "Results/Figures/x.pdf")           folders created, safe on synced folders
 
 Every lp.plot function draws in the loudpy style (loudpy.plot.style: serif fonts, Okabe–Ito colours,
@@ -55,6 +57,7 @@ from loudpy.plot.scene3d import Camera, default_cameras
 from loudpy.plot.selection import selection
 from loudpy.plot.html import html
 from loudpy.plot.view3d import View3D
+from loudpy.plot.spec import PlotSpec
 
 figure = style.figure
 save = style.save
@@ -83,4 +86,4 @@ def directivity(res, f, radius: float | None = None, angles=None, center=None, a
 
 __all__ = ["selection", "html", "style", "figure", "save", "pdf_pages", "label_panels", "data", "line", "map",
            "polar", "field", "boundary", "modes", "coupled_modes", "mode_chart", "directivity", "View3D",
-           "Camera", "default_cameras", "animate"]
+           "Camera", "default_cameras", "animate", "PlotSpec"]

@@ -60,6 +60,9 @@ docs = [
     "sphinx>=8.0",
     "furo>=2024.8.6",
 ]
+browser = [                         # pytest --browser: the interface in headless Chromium (playwright install chromium)
+    "playwright>=1.47",
+]
 
 [tool.pdm.build]
 package-dir = "src"

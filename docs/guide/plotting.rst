@@ -105,6 +105,30 @@ first colour bar; lines (iso-lines, edges) are left out. Examples: ``06_response
 structure, HTML), ``02_azimuthal_modes/plot_3d.py`` and ``11_box_radiation/plot_3d_views.py`` (HTML, glTF and
 ``--interactive``).
 
+A plot as plain data
+--------------------
+
+:class:`lp.plot.PlotSpec <loudpy.plot.PlotSpec>` describes a plot as plain data (JSON): a quantity, where it is
+evaluated, the dimensions plotted, the values of the others and how it is shown. Resolved on results it slices the
+named dimensions of the labelled data (as xarray does) and turns every dimension that is not plotted into a
+*control* — a slider over the frequencies, the times, the modes, the runs of a sweep or the phase of a harmonic field;
+a choice among names — that a program can step, play or show as a widget (the interface generates its sliders from
+them):
+
+.. code-block:: python
+
+   spec = lp.plot.PlotSpec(quantity="spl", where={"kind": "arc", "radius": 0.5, "to": 180, "center": [0, 0.03]},
+                           axes=["angle"], view="polar", at={"f": 1000.0})
+   out = spec.resolve(res)             # out.data: Data over angle; out.controls: [Control f (index at 1000 Hz)]
+   out.plot()                          # the same in matplotlib, loudpy's style
+   spec.step(res, "f", +1)             # the next frequency (a player wraps round)
+   spec.animate(res, "f", "polar.gif") # every frequency in turn (.gif, .mp4)
+   lp.plot.PlotSpec(quantity="field", field="u", style={"show": "real"}).animate(res, "phase", "u.mp4")
+   spec.to_dict()                      # kept with a simulation: lp.Document(...).plots
+
+``lp.plot.spec.quantities(res)`` lists what results offer (SPL, pressure, displacement, velocity, acceleration,
+impedance, a field at one entry); ``where`` is a point, a line (dimension ``s``) or an arc (dimension ``angle``).
+
 Selections
 ----------
 

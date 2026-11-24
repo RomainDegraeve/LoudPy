@@ -20,6 +20,8 @@ The JSON:
                "drivers": [{"driver": Driver.from_modes node, "place": Driver.place node}, …],
                "settings": [Scene.cavity / Scene.exterior / Scene.merged / Scene.walls nodes]},
      "circuits": {name: Circuit node, …}       (optional) the simulation's circuits: amplifier, filters, coils
+     "plots": [PlotSpec dicts]                 (optional) plots kept with the simulation (lp.plot.PlotSpec.to_dict;
+                                               each may name its result: "result")
      "studies": [{"name": …, "type": "Modes", "params": {…}}, {"name": …, "type": "Sweep", "params": {…},
                   "study": the swept study's node}, …]}
 
@@ -56,6 +58,7 @@ class Document:
     studies: list = field(default_factory=list)
     folder: Path | None = None
     circuits: dict = field(default_factory=dict)                       # name → Circuit node
+    plots: list = field(default_factory=list)                          # lp.plot.PlotSpec dicts
 
     # ── from objects ───────────────────────────────────────────────────────────────────────────────────────────────
     @classmethod
@@ -86,6 +89,8 @@ class Document:
             out["scene"] = _map_files(self.scene, rel)
         if self.circuits:
             out["circuits"] = copy.deepcopy(self.circuits)
+        if self.plots:
+            out["plots"] = copy.deepcopy(self.plots)
         out["studies"] = [_map_files(s, rel) for s in self.studies]
         return out
 
@@ -115,12 +120,13 @@ class Document:
         if ("model" in data) == ("scene" in data):
             raise ModelError("a document holds a model or a scene (one of them)")
         return cls(data.get("name", "simulation"), data.get("model"), data.get("scene"), list(data.get("studies", [])),
-                   Path(folder) if folder is not None else None, dict(data.get("circuits") or {}))
+                   Path(folder) if folder is not None else None, dict(data.get("circuits") or {}),
+                   list(data.get("plots") or []))
 
     def copy(self) -> "Document":
         """A deep copy (the nodes are not shared)."""
         return Document(self.name, copy.deepcopy(self.model), copy.deepcopy(self.scene), copy.deepcopy(self.studies),
-                        self.folder, copy.deepcopy(self.circuits))
+                        self.folder, copy.deepcopy(self.circuits), copy.deepcopy(self.plots))
 
     # ── checks and objects ─────────────────────────────────────────────────────────────────────────────────────────
     def check(self) -> list[str]:
@@ -157,6 +163,13 @@ class Document:
                 out.append((f"circuits/{cname}", f"circuit {cname!r}: a Circuit node, got {node!r}"))
                 continue
             out += [(f"circuits/{cname}", f"circuit {cname!r}: {e}") for e in schema.check(node)]
+        for i, spec in enumerate(self.plots):
+            from loudpy.plot.spec import PlotSpec
+            where = f"plots/{spec.get('name') or i}" if isinstance(spec, dict) else f"plots/{i}"
+            try:
+                PlotSpec.from_dict({k: v for k, v in spec.items() if k != "result"})
+            except Exception as e:                                   # noqa: BLE001  (said with its path)
+                out.append((where, f"plot {i}: {e}"))
         names = [s.get("name") for s in self.studies]
         if len(set(names)) != len(names):
             out.append(("studies", f"studies: names must differ, got {names}"))
@@ -174,7 +187,7 @@ class Document:
         return out
 
     # ── paths: what an edit, a check or a dependency points at (loudpy.docpath) ─────────────────────────────────────
-    PARTS = ("name", "model", "scene", "studies", "circuits")
+    PARTS = ("name", "model", "scene", "studies", "circuits", "plots")
 
     def _root(self) -> dict:
         return {k: getattr(self, k) for k in self.PARTS}

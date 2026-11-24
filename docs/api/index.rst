@@ -149,6 +149,8 @@ Plotting
    :nosignatures:
 
    plot.figure
+   plot.PlotSpec
+   plot.spec.quantities
    plot.save
    plot.pdf_pages
    plot.data
