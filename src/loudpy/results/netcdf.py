@@ -38,10 +38,6 @@ def _attr(v) -> bytes:
     return text.encode("utf-8")
 
 
-def _text(v) -> str:
-    return v.decode("utf-8") if isinstance(v, bytes) else str(v)
-
-
 def write_data(data, path) -> Path:
     """Write an lp.Data as a netCDF file (classic 64-bit offset format)."""
     from scipy.io import netcdf_file

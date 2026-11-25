@@ -69,18 +69,6 @@ def reverse_bessel_roots(n: int) -> np.ndarray:
     return roots
 
 
-def dtn_kernel(n: int, s, R: float, c: float):
-    """D_n(s) from the rational form (vectorised in s)."""
-    s = np.asarray(s, dtype=complex)
-    out = -s / c - 1.0 / R
-    for zi in reverse_bessel_roots(n):
-        out = out + (1.0 / R) * zi / (s * R / c - zi)
-    return out
-
-
-# ── Boundary vectors b_n ───────────────────────────────────────────────────────
-
-
 def _legendre_all(n_max: int, x: np.ndarray) -> np.ndarray:
     """P_0..P_nmax at x, shape (n_max+1, len(x))."""
     P = np.empty((n_max + 1, x.size))
