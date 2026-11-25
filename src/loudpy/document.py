@@ -85,14 +85,14 @@ class Document:
         out: dict[str, Any] = {"format": FORMAT, "name": self.name}
         rel = (lambda p: _relative(p, base)) if base is not None else (lambda p: p)
         if self.model is not None:
-            out["model"] = _map_files(self.model, rel)
+            out["model"] = map_files(self.model, rel)
         if self.scene is not None:
-            out["scene"] = _map_files(self.scene, rel)
+            out["scene"] = map_files(self.scene, rel)
         if self.circuits:
             out["circuits"] = copy.deepcopy(self.circuits)
         if self.plots:
             out["plots"] = copy.deepcopy(self.plots)
-        out["studies"] = [_map_files(s, rel) for s in self.studies]
+        out["studies"] = [map_files(s, rel) for s in self.studies]
         return out
 
     def save(self, path) -> Path:
@@ -157,7 +157,7 @@ class Document:
             where = ((d.get("place") or {}).get("params") or {}).get("name") or i
             out += [(f"{key}/drivers/{where}", e) for e in schema.check(d["driver"]) + schema.check(d["place"])]
         for cname, node in self.circuits.items():
-            if not _variable(cname):
+            if not is_variable_name(cname):
                 out.append((f"circuits/{cname}", f"circuit {cname!r}: a name of letters, digits and _ (not first), not "
                             f"one of the script's own names ({', '.join(sorted(RESERVED))})"))
             if not isinstance(node, dict) or node.get("type") != "Circuit":
@@ -263,7 +263,7 @@ class Document:
             if st.st_size > 5_000_000:                               # (a modes file: its size and date)
                 return f"{q.name}:{st.st_size}:{st.st_mtime_ns}"
             return hashlib.sha256(q.read_bytes()).hexdigest()[:16]
-        return _map_files(node, digest)
+        return map_files(node, digest)
 
     def circuit(self, name: str):
         """The lp.Circuit called `name` (one of the simulation's circuits)."""
@@ -275,7 +275,7 @@ class Document:
         return {n: schema.build(c) for n, c in self.circuits.items()}
 
     def _absolute(self, node):
-        return _map_files(node, lambda p: str(_absolute(p, self.folder)))
+        return map_files(node, lambda p: str(_absolute(p, self.folder)))
 
     def build(self, cache: dict | None = None):
         """The lp.Model or lp.Scene of the document; cache: a dict kept between builds — the drivers built before
@@ -417,7 +417,7 @@ class Document:
 RESERVED = {"model", "scene", "cabinet", "study", "res", "lp", "np", "Path", "HERE", "sys"}   # the script's names
 
 
-def _variable(name: str) -> bool:
+def is_variable_name(name: str) -> bool:
     """A circuit name the script can use as its variable."""
     import keyword
     return (name.isidentifier() and not keyword.iskeyword(name) and name not in RESERVED
@@ -471,10 +471,10 @@ def _absolute(p: str, folder) -> Path:
     return q if q.is_absolute() or folder is None else (Path(folder) / q).resolve()
 
 
-def _map_files(node, fn):
+def map_files(node, fn):
     """A copy of a node (or a part of a document) with fn applied to every file path in it."""
     if isinstance(node, list):
-        return [_map_files(x, fn) for x in node]
+        return [map_files(x, fn) for x in node]
     if not isinstance(node, dict):
         return node
     out = {}
@@ -489,13 +489,13 @@ def _map_files(node, fn):
             new = {}
             for name, x in v.items():
                 kind = next((p.kind for p in block.params if p.name == name), "")
-                new[name] = fn(x) if kind == "file" and isinstance(x, str) and x else _map_files(x, fn)
+                new[name] = fn(x) if kind == "file" and isinstance(x, str) and x else map_files(x, fn)
             out[k] = new
         elif k == "import" and isinstance(v, str):
             mod, _, fname = v.rpartition(":")
             out[k] = f"{fn(mod)}:{fname}"
         else:
-            out[k] = _map_files(v, fn)
+            out[k] = map_files(v, fn)
     return out
 
 
