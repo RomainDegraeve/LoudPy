@@ -393,7 +393,7 @@ class MeshManager:
                     gmsh.model.occ.synchronize()
                 except MeshError:
                     raise
-                except Exception as ex:
+                except Exception as ex:  # noqa: BLE001  (said as a MeshError)
                     raise MeshError(f"cannot build the surface of {d.name!r} from its curves: {ex}") from None
                 new = [s]
             else:

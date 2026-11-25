@@ -15,9 +15,6 @@ versions follow [Semantic Versioning](https://semver.org/) (0.x: the API may sti
   fields, results, 3D views, figures, animations); `Data.export`, `Field.export`, `Results.export` call it.
   `Field.table()` / `Field.header()` public.
 
-### Changed (breaking)
-- `SweepResults.save(folder)` no longer writes one file per run (one file, or `name=` into a simulation folder);
-  `Document.to_script(results=…)` removed (results go where the convention puts them).
 - Wall views name their panels: `View3D.label(points, texts)`; `wall_view(…, labels=True | {panel: name} | False)`
   (a STEP solid "solid 4", a Box side "left"; `res.wall_view(f, labels={"4": "back"})`).
 - `lp.plot.PlotSpec`: a plot as plain data (quantity, where, axes, the values of the other dimensions, view,
@@ -42,6 +39,9 @@ versions follow [Semantic Versioning](https://semver.org/) (0.x: the API may sti
 - `lp.cabinets.Box`: drivers checked against the front face when only the depth is a parameter.
 
 ### Changed (breaking)
+- `SweepResults.save(folder)` no longer writes one file per run (one file, or `name=` into a simulation folder);
+  `Document.to_script(results=…)` removed (results go where the convention puts them). Examples save their results
+  in `results/<example>/<study>_<stamp>.h5` (their plot scripts read the newest, else the file of an earlier run).
 - The examples folder is `examples/` (was `LoudPy_exemples/`).
 - Readable group names in the example geometries: `cone` (was `submeca_membranne`), `dustcap`, `surround`, `former`,
   `coil`, `glue_1/2`, `spider`, `air_front` / `air_rear` (`subacou_*`), `wet_front` / `wet_rear`

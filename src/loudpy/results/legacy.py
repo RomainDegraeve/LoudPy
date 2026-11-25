@@ -106,7 +106,7 @@ def _file_meta(f):
     if "meta/specs" in f:
         try:
             meta["specs"] = json.loads(f["meta/specs"][()])
-        except Exception:
+        except (KeyError, ValueError, TypeError):                      # no / unreadable specs: left out
             pass
     return meta
 

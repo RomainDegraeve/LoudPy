@@ -297,7 +297,7 @@ def multishift(K, M, C, f_targets, n_modes_per_shift,
             s_all.append(s_v)
             phi_all.append(phi_v)
             log.debug(f"    shift {ft:7.1f} Hz → {len(s_v)} raw eigenvalues")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001  (a shift that fails is said and skipped)
             log.info(f"    shift {ft:7.1f} Hz → FAILED ({type(e).__name__}: {e})")
 
     if not s_all:
@@ -392,7 +392,7 @@ def covering(K, M, C, f_min, f_max, n_modes_per_shift,
                           f"solved with {k_used // 2} modes instead of "
                           f"{n_modes_per_shift} (smaller disc, still complete)")
                 break
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001  (a shift that fails is said and moved)
                 log.info(f"    σ/2π = {sigma/(2*np.pi):.1f} Hz failed "
                       f"({type(e).__name__}), moving the shift")
                 sigma = sigma * (1.03 * np.exp(-0.03j))  # slightly higher |σ|, less damped

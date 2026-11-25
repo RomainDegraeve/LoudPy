@@ -143,7 +143,7 @@ class Workspace:
         self._open = Step(label)
         try:
             yield self
-        except Exception:
+        except Exception:  # noqa: BLE001  (any failure: the batch undone, then raised)
             step, self._open = self._open, None
             for c in reversed(step.changes):
                 self._apply(c.inverse())
@@ -161,7 +161,7 @@ class Workspace:
         before = self.state()
         try:
             yield self
-        except Exception:
+        except Exception:  # noqa: BLE001  (any failure: the files put back, then raised)
             self.put_back(before)
             raise
         self.record(label, before)

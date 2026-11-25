@@ -77,7 +77,7 @@ class Profile:
         ctx = Curves(index, list(index.domains), regions)
         try:
             tags = self.on.edges(ctx)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001  (said as a ModelError)
             raise ModelError(f"lp.Profile({self.on!r}): {e}") from None
         if not tags:
             raise ModelError(f"lp.Profile({self.on!r}) selects no curve of {index.name}")

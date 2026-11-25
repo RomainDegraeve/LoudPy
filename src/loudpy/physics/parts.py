@@ -216,6 +216,6 @@ def orient_couplings(parts) -> None:
         xy = np.asarray(p.node_coords)[:, :2]
         try:
             _, p.signs = sides.outward(p.edges, lambda t: xy[rows[int(t)]])
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001  (said as a ModelError)
             raise ModelError(f"fluid–structure boundary {p.name!r}: every edge must lie on exactly one air "
                              f"region ({e})") from None
