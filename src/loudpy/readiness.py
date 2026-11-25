@@ -305,7 +305,7 @@ def _pieces(model, index, selection: dict, classify, tol: float) -> list:
         return []
     shown = {g: r.name for r in model.regions if _facts(r).selects == "domains"
              for g in selection.get(r.name, [])}                     # (labels: the regions' names when given)
-    found = []
+    found: list[tuple[str, Any, list]] = []
     for (a, b), tags in pairs.items():
         inner = _inner_points(index, a, b, tags)
         sel = lp.Interface(lp.Near(inner[0]), lp.Near(inner[1])) if inner is not None else lp.Interface(a, b)
@@ -348,7 +348,7 @@ def _inner_points(index, a: str, b: str, tags) -> tuple | None:
     points are found."""
     from loudpy.geometry.selectors import inside_outline
     length = {int(t): float(np.linalg.norm(np.diff(index.curves[int(t)], axis=0), axis=1).sum()) for t in tags}
-    c = max(length, key=length.get)
+    c = max(length, key=lambda t: length[t])
     xy = index.curves[c]
     i = len(xy) // 2
     tangent = xy[min(i + 1, len(xy) - 1)] - xy[max(i - 1, 0)]
