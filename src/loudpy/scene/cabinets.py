@@ -336,11 +336,15 @@ class Step:
 
     def __call__(self, occ):
         """The lp.Cabinet in the current gmsh OCC model: the inside void of the file's solids (module docstring)."""
-        from loudpy.geometry.gmsh_session import gmsh_module
+        from loudpy.geometry.gmsh_session import gmsh_module, in_metres, max_extent, step_correction
         from loudpy.scene.scene import Cabinet
         g = gmsh_module()
-        g.option.setString("Geometry.OCCTargetUnit", "M")
-        solids = [t for d, t in occ.importShapes(str(self.path), highestDimOnly=True) if d == 3]
+        with in_metres(g):
+            solids = [t for d, t in occ.importShapes(str(self.path), highestDimOnly=True) if d == 3]
+        occ.synchronize()
+        k = step_correction(self.path, max_extent(g, [(3, t) for t in solids]))   # (OpenCASCADE's unit state)
+        if k != 1.0 and solids:
+            occ.dilate([(3, t) for t in solids], 0.0, 0.0, 0.0, k, k, k)
         if not solids:
             raise MeshError(f"{self.path.name}: no solid (the cabinet must be solids: walls, panels, tubes)")
         dims = [(3, t) for t in solids]
@@ -438,10 +442,14 @@ class Step:
     def solids(self, occ) -> tuple[list, set]:
         """The file's solids in the current gmsh OCC model, scaled and translated: (their tags in file order, the
         tags of the port bores named by points in openings=)."""
-        from loudpy.geometry.gmsh_session import gmsh_module
+        from loudpy.geometry.gmsh_session import gmsh_module, in_metres, max_extent, step_correction
         g = gmsh_module()
-        g.option.setString("Geometry.OCCTargetUnit", "M")
-        solids = [t for d, t in occ.importShapes(str(self.path), highestDimOnly=True) if d == 3]
+        with in_metres(g):
+            solids = [t for d, t in occ.importShapes(str(self.path), highestDimOnly=True) if d == 3]
+        occ.synchronize()
+        k = step_correction(self.path, max_extent(g, [(3, t) for t in solids]))   # (OpenCASCADE's unit state)
+        if k != 1.0 and solids:
+            occ.dilate([(3, t) for t in solids], 0.0, 0.0, 0.0, k, k, k)
         dims = [(3, t) for t in solids]
         if self.scale != 1.0:
             occ.dilate(dims, 0.0, 0.0, 0.0, self.scale, self.scale, self.scale)

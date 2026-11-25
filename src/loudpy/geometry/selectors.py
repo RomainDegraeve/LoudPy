@@ -647,6 +647,12 @@ def _distance_to_segments(segs, p, reduce=True):
     return d.min() if reduce else d
 
 
+def inside_outline(segs, p) -> bool:
+    """Is the point p inside the region bounded by the segments (k, 2, 2) — GeometryIndex.segments of a domain's
+    outline — (even–odd rule; the segments need no order)?"""
+    return _inside_outline(segs, p)
+
+
 def _inside_outline(segs, p) -> bool:
     """Point in the region bounded by the segments (even–odd rule; the segments need no order)."""
     if not len(segs):

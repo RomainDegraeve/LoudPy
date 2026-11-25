@@ -103,3 +103,40 @@ def test_a_new_item_type_takes_part_everywhere():
     finally:
         lp.schema.unregister("Absorber")
     assert "Absorber" not in item_types() and "Absorber" not in lp.schema.catalog()
+
+
+def test_a_sketch_without_names_gets_its_pieces(tmp_path):
+    """A STEP of lines only (no faces, no names): its regions are found, and lp.suggest gives boundary rows for its
+    unnamed pieces — the curves two regions share (lp.Interface of their groups), each outer curve off the axis
+    (lp.Near its middle) — with the types that fit there, the items holding each, and the coupling step reading them."""
+    import gmsh
+    path = api.sketch_step(tmp_path / "sketch.step")
+    unit = gmsh.option.getString("Geometry.OCCTargetUnit") if gmsh.isInitialized() else None
+    m = lp.Model(path)
+    m.add(lp.Solid("plate", "Aluminium", on=lp.Near(api.SKETCH_POINTS["plate"])),
+          lp.Solid("coil", "Copper", on=lp.Near(api.SKETCH_POINTS["coil"])),
+          lp.Air("air", on=lp.Near(api.SKETCH_POINTS["air"])))
+    assert len(m.groups("domain")) == 3 and m.groups("boundary") == []
+    rows = {s.group: s for s in lp.suggest(m) if s.kind == "boundary"}
+    assert all(s.selector is not None for s in rows.values())
+    wet = rows["plate ↔ air"]
+    assert wet.place == "solid|air" and wet.usual == ["FluidStructure"] and isinstance(wet.selector, lp.Interface)
+    assert "Near" in repr(wet.selector) and "surface" not in repr(wet.selector)       # (geometric: no names)
+    assert rows["plate ↔ coil"].place == "solid|solid" and rows["plate ↔ coil"].usual == []
+    edges = [s for g, s in rows.items() if "edge near" in g]
+    assert {s.place for s in edges} == {"solid|-", "solid|axis", "air|-"}             # the air's axis edge: left out
+    assert all(s.usual == ["PML"] for s in edges if s.place == "air|-")
+    assert all(s.usual == ["Clamped"] for s in edges if s.place == "solid|-")
+    (axis,) = [s for s in edges if s.place == "solid|axis"]                          # the plate on the axis: held
+    assert axis.usual == ["Clamped"] and axis.params["Clamped"]["dofs"] == "r" and axis.selector.point[0] == 0
+    assert {x.key: x for x in lp.readiness(m)}["coupling"].state == "warning"
+    m.add(lp.FluidStructure("fsi", on=wet.selector))
+    rows = {s.group: s for s in lp.suggest(m) if s.kind == "boundary"}
+    assert rows["plate ↔ air"].items == ["fsi"] and rows["plate ↔ coil"].items == []
+    assert {x.key: x for x in lp.readiness(m)}["coupling"].state == "done"
+    first = next(g for g in rows if g.startswith("plate · edge"))
+    m.add(lp.Clamped("rim", on=rows[first].selector))
+    m.mesh(tmp_path / "sketch.msh")
+    assert len(m.select(m.boundaries[0])) > 10 and len(m.select(m.boundaries[1])) >= 1
+    if gmsh.isInitialized() and unit is not None:                  # reading the STEP left gmsh's unit as it was (a
+        assert gmsh.option.getString("Geometry.OCCTargetUnit") == unit    # STEP written next is not rescaled)

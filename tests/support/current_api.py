@@ -521,3 +521,34 @@ def load_time_file(path):
     r = lp.load(path)
     b = r.blocks[0]
     return r.times, b.mesh_of("u").coords, np.real(b.fields["u"])
+
+
+SKETCH_POINTS = {"plate": (0.025, 0.001), "coil": (0.011, -0.004), "air": (0.03, 0.03)}   # [m] a point in each part
+
+
+def sketch_step(path) -> Path:
+    """A driver-like half section drawn with lines only (no faces, no names), written as a STEP in millimetres as CAD
+    tools do: a plate (0–50 × 0–2 mm), a coil block glued under it (10–12 × −8–0 mm) and air above (0–60 × 2–50 mm).
+    loudpy finds its regions (unnamed surfaces) and converts the lengths to metres; SKETCH_POINTS lies in each.
+    Written in a fresh Python process: OpenCASCADE keeps a unit state across the STEP files a process reads and
+    writes, so a STEP written after another was read could be scaled (loudpy corrects what it reads; see
+    loudpy.geometry.gmsh_session.step_correction)."""
+    import subprocess
+    import sys
+    path = Path(path)
+    code = """
+import sys, gmsh
+gmsh.initialize(); gmsh.option.setNumber("General.Terminal", 0)
+occ = gmsh.model.occ
+def outline(pts):
+    p = [occ.addPoint(x, y, 0.0) for x, y in pts]
+    for i in range(len(p)):
+        occ.addLine(p[i], p[(i + 1) % len(p)])
+outline([(0, 0), (10, 0), (12, 0), (50, 0), (50, 2), (0, 2)])          # plate
+outline([(10, -8), (12, -8), (12, 0), (10, 0)])                         # coil
+outline([(0, 2), (50, 2), (60, 2), (60, 50), (0, 50)])                  # air
+occ.removeAllDuplicates(); occ.synchronize()
+gmsh.write(sys.argv[1]); gmsh.finalize()
+"""
+    subprocess.run([sys.executable, "-c", code, str(path)], check=True, capture_output=True, timeout=120)
+    return path

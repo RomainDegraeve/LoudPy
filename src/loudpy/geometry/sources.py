@@ -138,12 +138,16 @@ class GeometrySource:
         if self.builder is not None:
             named = self._run_builder(gmsh)
             return _surfaces(gmsh, named, self.name)
-        if self.path.suffix.lower() in CAD_UNITS:
-            gmsh.option.setString("Geometry.OCCTargetUnit", "M")
+        from loudpy.geometry.gmsh_session import in_metres, max_extent, step_correction
         if self.path.suffix.lower() == ".geo":
             self._open_geo(gmsh)
         else:
-            gmsh.open(str(self.path))
+            with in_metres(gmsh, self.path.suffix.lower() in CAD_UNITS):
+                gmsh.open(str(self.path))
+            occ.synchronize()
+            k = step_correction(self.path, max_extent(gmsh))            # (OpenCASCADE's unit state: see there)
+            if k != 1.0:
+                occ.dilate(occ.getEntities(), 0.0, 0.0, 0.0, k, k, k)
         occ.synchronize()
         named = _physical_groups(gmsh)
         if not model.getEntities(2):

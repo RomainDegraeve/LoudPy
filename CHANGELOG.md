@@ -5,6 +5,15 @@ versions follow [Semantic Versioning](https://semver.org/) (0.x: the API may sti
 
 ## [Unreleased]
 
+- A geometry without named curves (a STEP sketch of lines only) gets its boundary suggestions all the same:
+  `lp.suggest` adds its unnamed pieces — the curves two regions share (one row, selected by
+  `lp.Interface(lp.Near(a point in each))`, valid before and after meshing and when regions are renamed) and each outer
+  curve (`lp.Near` its middle; a solid's edge on the axis too, not the air's) — with the types that fit, the items
+  holding each (`Suggestion.selector`, `Suggestion.items`); the coupling step reads them.
+- STEP files read in metres whatever was read before in the process: OpenCASCADE keeps a unit state across reads, so a
+  second STEP could come in millimetres (gmsh 4.x); loudpy compares with the file's own points and declared unit and
+  corrects a clean factor of 1000 (`loudpy.geometry.gmsh_session.step_correction`). Reading a CAD file no longer
+  leaves gmsh's `Geometry.OCCTargetUnit` set for the rest of the process.
 - Saving results, one way: `study.save(folder, name="fr")` / `res.save(folder, name="fr")` write
   `<folder>/results/<simulation>/<study>_<stamp>.h5` stamped with what made them (study, simulation, and the
   fingerprint of the folder's document when it holds the study); `lp.result_path(folder, name, study)` for a scene's

@@ -302,6 +302,11 @@ it is on the symmetry axis, a straight line or an arc), never from its name:
    # PML_front_z air|-       PML             an outer edge of the air: a layer grown outward from it
    # dtn_front   air|-       Radiation       an outer arc of the air: exact radiation on it
 
+A geometry without named curves (a STEP sketch of lines only: its regions are the closed areas of the sketch) gets
+rows for its unnamed pieces: ``"cone ↔ air_front"`` (the curves two regions share; ``s.selector`` is
+``lp.Interface(lp.Near(…), lp.Near(…))``, a point inside each region) and ``"cone · edge near (r, z)"`` (one outer
+curve, ``lp.Near`` its middle). Give such a selector as an item's ``on=`` (the interface's Physics tables do).
+
 Each item type declares what it is next to its class (``lp.Solid.facts``: what it selects — domain groups or curves
 —, the medium it fills, its physics, its role for the checklist — holding the structure, the drive, the coupling, the
 absorbing end of the air —, its key parameter and where it fits); ``lp.schema.block("Solid").facts`` and

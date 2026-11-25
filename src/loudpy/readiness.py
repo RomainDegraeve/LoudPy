@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -158,12 +159,13 @@ def _coupling(model, couplings, selection, kinds) -> Step:
     if not all(c.selector.by_groups for c in couplings):
         return Step("coupling", "Air ↔ structure", "done", ", ".join(c.name for c in couplings), "model/items")
     try:
-        wet = [s.group for s in suggest(model, selection) if s.place == "solid|air"]
+        wet = [s for s in suggest(model, selection) if s.place == "solid|air"]
     except Exception:                                                # noqa: BLE001  (no geometry to read: as it is)
         wet = []
     held = [it for it in list(model.regions) + list(model.boundaries) if _facts(it).role == "held"]
     covered = {g for c in couplings + held for g in selection.get(c.name, [])}       # (a held edge does not move)
-    loose = [g for g in wet if g not in covered]
+    holding = {c.name for c in couplings + held}
+    loose = [s.group for s in wet if (not set(s.items) & holding if s.selector is not None else s.group not in covered)]
     if loose:
         return Step("coupling", "Air ↔ structure", "warning",
                     f"{len(loose)} group(s) between the structure and the air not coupled (a rigid wall for the air): "
@@ -177,7 +179,10 @@ class Suggestion:
     """What a geometry group could be: kind "domain" or "boundary"; place (loudpy.model.facts.PLACES: what lies on
     each side of its curves, the same for all of them; "" when unknown or mixed) and shape ("straight": lines r or z
     = const, "arc": arcs centred on the axis, ""); types: the item types that fit it (usual ones first), usual: those
-    usual there; why: said to the user; params: {type: values it takes there}; items: the items selecting it now."""
+    usual there; why: said to the user; params: {type: values it takes there}; items: the items selecting it now.
+    A geometry without named curves (a STEP sketch) still gets boundary rows: its unnamed pieces — the curves two
+    domains share (group "a ↔ b", selector lp.Interface(a, b)) and each outer curve off the axis (group "a · edge
+    near (r, z)", selector lp.Near(its middle); the air's edges on the axis need nothing and are left out)."""
     group: str
     kind: str
     place: str = ""
@@ -187,6 +192,7 @@ class Suggestion:
     why: str = ""
     params: dict = field(default_factory=dict)
     items: list = field(default_factory=list)
+    selector: Any = None                     # an unnamed piece of the geometry: what selects it (named groups: None)
 
     @property
     def best(self) -> str | None:
@@ -197,7 +203,7 @@ class Suggestion:
         """As plain data."""
         return {"group": self.group, "kind": self.kind, "place": self.place, "shape": self.shape,
                 "types": list(self.types), "usual": list(self.usual), "why": self.why, "params": dict(self.params),
-                "items": list(self.items)}
+                "items": list(self.items), "selector": None if self.selector is None else repr(self.selector)}
 
 
 def _shape(xy: np.ndarray, tol: float) -> str:
@@ -240,9 +246,7 @@ def suggest(model, selection: dict | None = None) -> list[Suggestion]:
     pts = np.concatenate(list(index.curves.values())) if index.curves else np.zeros((1, 2))
     tol = 1e-9 * max(float(np.ptp(pts[:, 0])), float(np.ptp(pts[:, 1])), 1e-12)
     curve_types = {n: f for n, f in types.items() if f.selects == "curves"}
-    for g, tags in index.groups.items():
-        if g in index.domains:
-            continue
+    def classify(tags) -> tuple[str, str]:
         places, shapes = set(), set()
         for c in tags:
             sides = index.sides.get(c, [])
@@ -257,20 +261,107 @@ def suggest(model, selection: dict | None = None) -> list[Suggestion]:
                 a, b = sorted(m, key=lambda x: ("solid", "air").index(x))
                 places.add(f"{a}|{b}")
             shapes.add(_shape(xy, tol) if xy is not None else "")
-        place = places.pop() if len(places) == 1 else ""
-        shape = shapes.pop() if len(shapes) == 1 else ""
-        s = Suggestion(g, "boundary", place, shape, items=holders.get(g, []))
-        fits = [(n, f.fit(place, shape)) for n, f in curve_types.items()] if place else []
+        return (places.pop() if len(places) == 1 else ""), (shapes.pop() if len(shapes) == 1 else "")
+
+    def fitted(s: Suggestion) -> Suggestion:
+        fits = [(n, f.fit(s.place, s.shape)) for n, f in curve_types.items()] if s.place else []
         fits = [(n, x) for n, x in fits if x is not None]
         s.usual = [n for n, x in fits if x.usual]
         s.types = s.usual + [n for n, x in fits if not x.usual]
         s.params = {n: dict(x.params) for n, x in fits if x.params}
-        if place:
+        if s.place:
             first = next((x for n, x in fits if x.usual), None)
-            s.why = first.why if first is not None else PLACES[place] + (
+            s.why = first.why if first is not None else PLACES[s.place] + (
                 " — " + "; ".join(f"{n}: {x.why}" for n, x in fits) if fits else "")
-        out.append(s)
+        return s
+
+    for g, tags in index.groups.items():
+        if g in index.domains:
+            continue
+        place, shape = classify(tags)
+        out.append(fitted(Suggestion(g, "boundary", place, shape, items=holders.get(g, []))))
+    out += [fitted(s) for s in _pieces(model, index, selection, classify, tol)]
     return out
+
+
+def _pieces(model, index, selection: dict, classify, tol: float) -> list:
+    """The unnamed pieces of a geometry's curves (in no named curve group): the curves two domains share, together
+    (lp.Interface of a point inside each domain), and each outer curve (lp.Near its middle; a solid's edge on the axis
+    too — it is held radially there —, not the air's); the items selecting each one (evaluated on the curves)."""
+    import loudpy as lp
+    from loudpy.geometry.selectors import Curves
+    named = {int(t) for g, tags in index.groups.items() if g not in index.domains for t in tags}
+    pairs: dict = {}
+    outer: list = []
+    for c, sides in index.sides.items():
+        c = int(c)
+        if c in named or c not in index.curves:
+            continue
+        if len(sides) == 2:
+            pairs.setdefault(tuple(sorted(sides, key=list(index.domains).index)), []).append(c)
+        elif len(sides) == 1:
+            outer.append((sides[0], c))
+    if not pairs and not outer:
+        return []
+    shown = {g: r.name for r in model.regions if _facts(r).selects == "domains"
+             for g in selection.get(r.name, [])}                     # (labels: the regions' names when given)
+    found = []
+    for (a, b), tags in pairs.items():
+        inner = _inner_points(index, a, b, tags)
+        sel = lp.Interface(lp.Near(inner[0]), lp.Near(inner[1])) if inner is not None else lp.Interface(a, b)
+        found.append((f"{shown.get(a, a)} ↔ {shown.get(b, b)}", sel, tags))
+    for d, c in sorted(outer, key=lambda x: (list(index.domains).index(x[0]), x[1])):
+        xy = index.curves[c]
+        mid = xy[len(xy) // 2]
+        found.append((f"{shown.get(d, d)} · edge near ({mid[0]:.4g}, {mid[1]:.4g})",
+                      lp.Near((float(mid[0]), float(mid[1]))), [c]))
+    seen: dict = {}
+    for i, (label, sel, tags) in enumerate(found):                  # (two regions with the same name: kept apart)
+        seen[label] = seen.get(label, 0) + 1
+        if seen[label] > 1:
+            found[i] = (f"{label} ({seen[label]})", sel, tags)
+    regions = {r.name: list(selection.get(r.name, [])) for r in model.regions if r.name in selection}
+    try:
+        ctx = Curves(index, list(index.domains), regions)
+    except Exception:                                                # noqa: BLE001  (no holders: rows stay)
+        ctx = None
+    picked: dict = {}
+    for it in list(model.boundaries) + [r for r in model.regions if _facts(r).selects == "curves"]:
+        try:
+            picked[it.name] = {int(t) for t in it.selector.edges(ctx)} if ctx is not None else set()
+        except Exception:                                            # noqa: BLE001  (a label of no curve here)
+            picked[it.name] = set()
+    out = []
+    for label, sel, tags in found:
+        place, shape = classify(tags)
+        if place == "air|axis":
+            continue                                                 # (the air on the axis needs nothing)
+        holders = [n for n, got in picked.items() if set(tags) <= got]
+        out.append(Suggestion(label, "boundary", place, shape, items=holders, selector=sel))
+    return out
+
+
+def _inner_points(index, a: str, b: str, tags) -> tuple | None:
+    """A point just inside domain a and one just inside domain b, on either side of the middle of their longest shared
+    curve: lp.Interface(lp.Near(pa), lp.Near(pb)) selects their shared curves on the geometry and on the mesh alike
+    (an unnamed surface's mesh group takes its region's name) and survives renaming the regions. None when no such
+    points are found."""
+    from loudpy.geometry.selectors import inside_outline
+    length = {int(t): float(np.linalg.norm(np.diff(index.curves[int(t)], axis=0), axis=1).sum()) for t in tags}
+    c = max(length, key=length.get)
+    xy = index.curves[c]
+    i = len(xy) // 2
+    tangent = xy[min(i + 1, len(xy) - 1)] - xy[max(i - 1, 0)]
+    if not np.linalg.norm(tangent):
+        return None
+    normal = np.array([-tangent[1], tangent[0]]) / np.linalg.norm(tangent)
+    seg_a, seg_b = index.segments(index.outline[a]), index.segments(index.outline[b])
+    for f in (1e-2, 1e-3, 1e-4, 1e-5):
+        for sign in (1.0, -1.0):
+            pa, pb = xy[i] + sign * f * length[c] * normal, xy[i] - sign * f * length[c] * normal
+            if inside_outline(seg_a, pa) and inside_outline(seg_b, pb):
+                return tuple(round(float(v), 9) for v in pa), tuple(round(float(v), 9) for v in pb)
+    return None
 
 
 def of_scene(scene, studies=None, circuits=None) -> list[Step]:
