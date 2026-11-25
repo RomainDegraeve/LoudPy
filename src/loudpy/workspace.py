@@ -24,7 +24,6 @@ results in its folder with what made them. The interface works through it; a scr
 from __future__ import annotations
 
 import contextlib
-import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
