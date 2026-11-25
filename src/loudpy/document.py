@@ -453,7 +453,7 @@ def _study_code(s: dict, target: str, path) -> list[str]:
     if s["type"] == "FrequencyResponse" and target == "scene" and not any(a.startswith("store=") for a in solve):
         return [f"study = {study}",
                 f"study.solve({', '.join(solve + [f'store=lp.result_path(HERE, {name!r}, study)'])})"]
-    return [f"study = {study}", f"study.solve({', '.join(solve)})", f"study.save(HERE, name={name!r})"]
+    return [f"study = {study}", f"res = study.solve({', '.join(solve)})", f"res.save(HERE, name={name!r})"]
 
 
 def _relative(p: str, base: Path) -> str:
