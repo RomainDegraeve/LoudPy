@@ -292,7 +292,7 @@ def coupled_modes(parts, f_min=20.0, f_max=5000.0, n_per_shift=30, *, dedup_freq
                        cover_avoid_frac/β around each pile (0: off).
     cover_goal       : stop once the modal sum matches the exact forced pressure within tol_db at
                        given receivers: dict(receivers=[(r, z), …], freqs=…, tol_db=1.0, force=1.0)
-    checkpoint_path  : the modes found so far are written there (format 2, atomic) every
+    checkpoint_path  : the modes found so far are written there (result format 3, atomic) every
                        checkpoint_every shifts
 
     Normalisation x_kᵀ(2 s_k Ms + Cs) x_k = 1 on the symmetric u–ψ–φ form (p = −sψ), so that for a

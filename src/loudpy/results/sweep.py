@@ -15,7 +15,6 @@ parameter values attached; it plots and exports like any lp.Data (.export("x.nc"
 """
 from __future__ import annotations
 
-import json
 from typing import Any
 from pathlib import Path
 
@@ -131,24 +130,18 @@ class SweepResults:
         return Data(stacked, {"run": np.arange(len(self.runs)), **inner_coords}, q, meta=meta)
 
     # ── files ───────────────────────────────────────────────────────────────
-    def save(self, path, stem: str = "sweep"):
-        """
-        One result file with every run (path ending in .h5; format 3, read back by lp.load). A folder
-        (no .h5 suffix): one file per run, <folder>/<stem>_<name>_<value>….h5.
-        """
+    def save(self, path, name: str | None = None, simulation: str | None = None):
+        """One result file with every run (format 3, read back by lp.load as a SweepResults): the file `path`, or
+        with name= the study's name into the simulation folder `path` (Results.save). Returns the path."""
+        if name is not None:
+            from loudpy.results.files import save
+            return save(self, path, name, simulation)
         path = Path(path)
-        if path.suffix.lower() in (".h5", ".hdf5"):
-            from loudpy.results.schema import write
-            write(self, path)
-            return path
-        path.mkdir(parents=True, exist_ok=True)
-        out = []
-        for run, r in zip(self.runs, self.results):
-            p = path / (stem + "".join(f"_{k}_{v:g}" for k, v in run.items()) + ".h5")
-            r.meta.update(sweep=json.dumps(run))
-            r.save(p)
-            out.append(p)
-        return out
+        if path.suffix.lower() not in (".h5", ".hdf5"):
+            raise ValueError(f"a sweep is saved in one .h5 file (or a simulation folder with name=), got {path}")
+        from loudpy.results.schema import write
+        write(self, path)
+        return path
 
     def __repr__(self):
         span = ", ".join(f"{k} {min(r[k] for r in self.runs):g} … {max(r[k] for r in self.runs):g}" for k in self.names)

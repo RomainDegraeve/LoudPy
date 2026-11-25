@@ -21,16 +21,19 @@ through the bottom of the back wall. The channel depth shrinks from the drivers 
 Walls WALL_T thick (sides, top, back); front wall = the drivers' baffle (Z_B → Z_F); the floor of
 the line is the ground. Driver axes: +z through (X0, Y0S[j]).
 """
+import sys
 from pathlib import Path
 import numpy as np
 
 import loudpy as lp
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "shared"))
+from names import stored_path  # noqa: E402  (results where run.py writes them, or stored earlier)
 
 HERE = Path(__file__).resolve().parent               # this example's folder
 EXAMPLES = HERE.parent                               # examples/
 
 geo_path = str(EXAMPLES / "Geometries/Loudspeaker/HPNEW-Sketch.geo")
-eig_path = str(EXAMPLES / "02_azimuthal_modes/Results/Files/eigen_fourier.h5")
+eig_path = str(stored_path(EXAMPLES / "02_azimuthal_modes", "eigen_fourier"))
 
 # ── driver (HPNEW meridian geometry, curve ids) ────────────────────────────────
 Z_B, Z_F = 0.031, 0.032                       # rear baffle plane, front face of the cabinet [m]

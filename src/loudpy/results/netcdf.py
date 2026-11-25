@@ -128,3 +128,9 @@ def read_data(path):
         meta = json.loads(f.loudpy_meta.decode("utf-8")) if hasattr(f, "loudpy_meta") else {}
         label = f.loudpy_label.decode("utf-8") if hasattr(f, "loudpy_label") else ""
     return Data(values, coords, qname or base, label=label, meta=meta)
+
+
+def slug(text: str) -> str:
+    """A name usable as a variable or a column: letters, digits and _ only, lower case."""
+    import re
+    return re.sub(r"[^A-Za-z0-9]+", "_", str(text)).strip("_").lower()

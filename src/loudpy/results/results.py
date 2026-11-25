@@ -344,9 +344,14 @@ class Results:
         return out[0] if len(out) == 1 else out
 
     # ── files ──────────────────────────────────────────────────────────────
-    def save(self, path):
-        """Write these results in the loudpy result format 3 (loudpy.results.schema): fields, meshes, the
-        model description (res.model) and the study settings (res.study)."""
+    def save(self, path, name: str | None = None, simulation: str | None = None):
+        """Write these results (loudpy result format 3, loudpy.results.schema: fields, meshes, the model description
+        res.model, the study settings res.study): to the file `path`, or — with name= the study's name — into the
+        simulation folder `path` as results/<simulation>/<name>_<stamp>.h5, stamped with what made them
+        (loudpy.results.files: Results.provenance). Returns the path."""
+        if name is not None:
+            from loudpy.results.files import save
+            return save(self, path, name, simulation)
         from loudpy.results.schema import write
         write(self, path)
         return path
@@ -358,8 +363,8 @@ class Results:
         series: one .vtu per entry and mesh, the frequency / time / mode as the time step).
         fields: the fields to write (default: all).
         """
-        from loudpy.results.export import export_results
-        return export_results(self, path, fields)
+        from loudpy.results.exporters import export
+        return export(self, path) if fields is None else export(self, path, fields=fields)
 
 
 class FrequencyResults(Results):

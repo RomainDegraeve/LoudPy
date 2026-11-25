@@ -244,3 +244,6 @@ examples/1[0-5]_*/Results/
 # generated: Sphinx API stubs, example data files (results, meshes, exports)
 docs/api/generated/
 examples/**/Results/Files/
+examples/**/results/
+examples/**/meshes/
+examples/**/exports/

@@ -10,8 +10,9 @@ the walls are in vacuo (cavity configuration). Needs 02_azimuthal_modes (driver 
     python3 examples/13_box_elastic_walls/run.py            full band (~8 min)
     python3 examples/13_box_elastic_walls/run.py --smoke    four frequencies
 
-What this produces (Results/Files/)
-------------------------------------
+What this produces (the results <study>.h5 below: results/13_box_elastic_walls/<study>_<stamp>.h5,
+stamped — plot.py reads the newest; meshes and caches: Results/Files/)
+----------------------------------------------------------------------
   walls_modes.csv     the wall modes (frequency, damping ratio, volume displacement per unit modal amplitude)
   coupled_walls.h5    the response with elastic walls (driver and wall modal amplitudes)
 Then run plot.py (it compares with the rigid box of 10_box_cavity).
@@ -48,5 +49,6 @@ if __name__ == "__main__":
                                                            walls.extra("volume_disp")]),
                delimiter=",", header="f_Hz,zeta,volume_displacement_m3", comments="")
     print(f"{len(walls.frequencies)} wall modes, first {np.round(walls.frequencies[:6], 1)} Hz → walls_modes.csv")
-    res = lp.FrequencyResponse(scene, drive=lp.Force(1.0)).solve(FREQS, store=files / "coupled_walls.h5")
-    print(res, "→", files / "coupled_walls.h5")
+    study = lp.FrequencyResponse(scene, drive=lp.Force(1.0))
+    res = study.solve(FREQS, store=lp.result_path(HERE, 'coupled_walls', study))
+    print(res)

@@ -17,15 +17,14 @@ from pathlib import Path
 import loudpy as lp
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "shared"))
-from names import OLD_NAMES  # noqa: E402  (results stored before the 0.3 renaming)
-
+from names import stored  # noqa: E402  (results where run.py writes them, or stored earlier)
 HERE = Path(__file__).resolve().parent               # this example's folder
 EXAMPLES = HERE.parent                               # examples/
 
 lp.plot.style.use()                       # the loudpy figure style for this script
 
 here = HERE / "Results"
-res = lp.load(here / "Files/sweep.h5", rename=OLD_NAMES)
+res = stored(HERE, "sweep")
 print(res)
 
 # ── cone tip: u, v = jωu, a = −ω²u ─────────────────────────────────────────────

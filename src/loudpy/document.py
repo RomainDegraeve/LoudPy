@@ -8,7 +8,8 @@ lp.schema nodes — what the interface edits and saves, and what a script is gen
     model = doc.build()                          the lp.Model (or lp.Scene) again
     study, solve_kwargs = doc.study("modes", model)
     text = doc.to_script()                       a runnable script: builds the model; under __main__ it meshes and
-                                                 runs every study, results saved in results/<name>.h5
+                                                 runs every study, results saved in
+                                                 results/<simulation>/<study>_<stamp>.h5 (loudpy.results.files)
 
 The JSON:
 
@@ -336,10 +337,10 @@ class Document:
         return study, kwargs
 
     # ── a script ───────────────────────────────────────────────────────────────────────────────────────────────────
-    def to_script(self, folder=None, results: str = "results", meshes: str = "meshes") -> str:
+    def to_script(self, folder=None, meshes: str = "meshes") -> str:
         """A runnable script of the document, in `folder` (default: the document's; paths HERE / relative): it
         builds `model` (or `scene`); under __main__ it meshes in meshes/ and runs every study, its result saved
-        as results/<study name>.h5."""
+        where results go (results/<simulation>/<study>_<stamp>.h5, stamped: loudpy.results.files)."""
         base = Path(folder).resolve() if folder is not None else self.folder
 
         def path(p: str) -> str:
@@ -403,9 +404,9 @@ class Document:
             lines.append("")
             for cname, node in self.circuits.items():
                 lines.append(f"{cname} = {schema.code(node, None, path)}")
-        lines += ["", "", 'if __name__ == "__main__":', f"    (HERE / {results!r}).mkdir(exist_ok=True)", f"    {mesh}"]
+        lines += ["", "", 'if __name__ == "__main__":', f"    {mesh}"]
         for s in self.studies:
-            lines += [f"    # {s['name']}"] + [f"    {ln}" for ln in _study_code(s, target, path, results)]
+            lines += [f"    # {s['name']}"] + [f"    {ln}" for ln in _study_code(s, target, path)]
         if not self.studies:
             lines.append("    print('no study: add one')")
         from loudpy.codefmt import wrap_lines
@@ -434,7 +435,7 @@ def _check_study(s: dict):
         raise ModelError(f"study {s['name']!r}: {s['type']} is not a study")
 
 
-def _study_code(s: dict, target: str, path, results: str) -> list[str]:
+def _study_code(s: dict, target: str, path) -> list[str]:
     def make(node, ctx: str) -> tuple[str, list[str]]:
         b = schema.block(node["type"])
         init: list[str] = []
@@ -448,10 +449,11 @@ def _study_code(s: dict, target: str, path, results: str) -> list[str]:
         study = outer
     else:
         study, solve = make(_node(s), target)
-    out = f"HERE / {results!r} / {s['name'] + '.h5'!r}"
+    name = s["name"]
     if s["type"] == "FrequencyResponse" and target == "scene" and not any(a.startswith("store=") for a in solve):
-        return [f"study = {study}", f"study.solve({', '.join(solve + [f'store={out}'])})"]
-    return [f"study = {study}", f"res = study.solve({', '.join(solve)})", f"res.save({out})"]
+        return [f"study = {study}",
+                f"study.solve({', '.join(solve + [f'store=lp.result_path(HERE, {name!r}, study)'])})"]
+    return [f"study = {study}", f"study.solve({', '.join(solve)})", f"study.save(HERE, name={name!r})"]
 
 
 def _relative(p: str, base: Path) -> str:

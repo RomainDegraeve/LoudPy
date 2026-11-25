@@ -44,9 +44,11 @@ class Study:
         study settings (result format 3)."""
         return finish(self, results)
 
-    def save(self, path, **metadata):
-        """Write the last results (loudpy result format 2), with extra metadata (read back in .meta)."""
+    def save(self, path, name: str | None = None, **metadata):
+        """Write the last results (Results.save: the file `path`, or with name= the study's name into the simulation
+        folder `path`, results/<simulation>/<name>_<stamp>.h5, stamped with what made them), with extra metadata
+        (read back in .meta). Returns the path."""
         if self.results is None:
             raise StateError("nothing to save: call solve() first")
         self.results.meta.update(metadata)
-        return self.results.save(path)
+        return self.results.save(path, name=name)

@@ -8,7 +8,7 @@ DtN study (../FSI_DtN).
 
 What this produces
 ------------------
-    Results/Files/modes.h5   — frequencies, damping ratios, mode shapes (loudpy result format 3)
+    results/01_structure_modes/modes_<stamp>.h5   — frequencies, damping ratios, mode shapes (loudpy result format 3)
 
 Then run plot.py.
 
@@ -26,7 +26,6 @@ lp.set_verbosity("info")                 # progress messages (loudpy is silent b
 # ── Paths ──────────────────────────────────────────────────────────────────────
 geometry = str(EXAMPLES / "Geometries/Loudspeaker/HPNEW-Sketch.geo")
 mesh_path = str(HERE / "Results/Files/mesh.msh")      # reused on reruns
-out_path = str(HERE / "Results/Files/modes.h5")
 
 # ── Model ──────────────────────────────────────────────────────────────────────
 size = 0.0005                                   # structural element size [m]
@@ -50,5 +49,5 @@ if __name__ == "__main__":
     study = lp.Modes(model)
     modes = study.solve(f_min=20.0, f_max=40000.0, n_per_shift=30)
     print(modes)
-    study.save(out_path)
-    print(f"Saved → {out_path}")
+    path = study.save(HERE, name='modes')
+    print(f"Saved → {path}")

@@ -21,7 +21,8 @@ import numpy as np
 import loudpy as lp
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "shared"))   # the shared box
 from enclosure import X0, Y0, Z_F, sealed_scene  # noqa: E402
-
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "shared"))
+from names import stored  # noqa: E402  (results where run.py writes them, or stored earlier)
 HERE = Path(__file__).resolve().parent               # this example's folder
 EXAMPLES = HERE.parent                               # examples/
 
@@ -32,7 +33,7 @@ DIST = 1.0                                   # measurement distance from the dri
 H_ANGLES = [0, 30, 60, 90, 180]              # horizontal angles of spl_1m.pdf [°]
 POLAR_F = [100, 300, 1000, 2000, 3000]       # frequencies of the polar curves [Hz]
 
-res = lp.load(here / "Files/exterior.h5")
+res = stored(HERE, "exterior")
 hp = res.driver("main")
 src = np.array([X0, Y0, Z_F])
 # the same driver and enclosure with the front in vacuo (cavity modes only: fast)

@@ -9,8 +9,9 @@ run.py — HPNEW in the vented (bass-reflex) enclosure on a rigid ground, 1 N on
     python3 examples/Coupling_3D/Driver_in_cavity/run.py              full sweep (~40 min)
     python3 examples/Coupling_3D/Driver_in_cavity/run.py 50,500       quick test (a few frequencies)
 
-What this produces (Results/Files/)
-------------------------------------
+What this produces (the results <study>.h5 below: results/12_box_vented/<study>_<stamp>.h5,
+stamped — plot.py reads the newest; meshes and caches: Results/Files/)
+----------------------------------------------------------------------
   vented_merged.h5           (loudpy result format 3: driver modal amplitudes, DtN coefficients, the air field)
   vented_merged_<f>Hz.msh    one air mesh per band (built on the first run, reused afterwards)
 Then run plot.py and plot_3d.py. (A faster hybrid model of the same box — modal inside, 1D port —
@@ -30,6 +31,7 @@ lp.set_verbosity("info")                 # progress messages (loudpy is silent b
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "shared"))   # the shared box
 from enclosure import MESHES, vented_scene  # noqa: E402
 
+HERE = Path(__file__).resolve().parent
 files = Path(__file__).resolve().parent / "Results/Files"     # this example's results
 files.mkdir(parents=True, exist_ok=True)
 FREQS = np.unique(np.concatenate([np.arange(20.0, 300.0, 2.0), np.arange(300.0, 3000.0 + 1e-9, 10.0)]))
@@ -42,5 +44,6 @@ if __name__ == "__main__":
         tag = "vented_merged_test"
     scene.mesh(MESHES)
     print(scene)
-    res = lp.FrequencyResponse(scene, drive=lp.Force(1.0)).solve(FREQS, store=files / f"{tag}.h5")
-    print(res, "→", files / f"{tag}.h5")
+    study = lp.FrequencyResponse(scene, drive=lp.Force(1.0))
+    res = study.solve(FREQS, store=lp.result_path(HERE, tag, study))
+    print(res)

@@ -7,7 +7,7 @@ load on the cone is negligible, or handled separately.
 
 What this produces
 ------------------
-    Results/Files/sweep.h5   — one entry per frequency (loudpy result format 3)
+    results/04_response_structure/sweep_<stamp>.h5   — one entry per frequency (loudpy result format 3)
 
 Then run plot.py.
 
@@ -27,7 +27,6 @@ lp.set_verbosity("info")                 # progress messages (loudpy is silent b
 # ── Paths ──────────────────────────────────────────────────────────────────────
 geometry = str(EXAMPLES / "Geometries/Loudspeaker/HPNEW-Sketch.geo")
 mesh_path = str(HERE / "Results/Files/mesh.msh")   # reused on reruns
-out_path = str(HERE / "Results/Files/sweep.h5")
 
 # ── Sweep ──────────────────────────────────────────────────────────────────────
 freqs = np.logspace(np.log10(10), np.log10(20000), 3000)   # [Hz]
@@ -56,5 +55,5 @@ if __name__ == "__main__":
     study = lp.FrequencyResponse(model, drive=lp.Force(force))
     res = study.solve(freqs)
     print(res)
-    study.save(out_path)
-    print(f"Saved → {out_path}")
+    path = study.save(HERE, name='sweep')
+    print(f"Saved → {path}")

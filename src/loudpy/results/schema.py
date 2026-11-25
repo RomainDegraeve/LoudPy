@@ -271,6 +271,36 @@ def _read_results(g, path):
     return out
 
 
+def info(path) -> dict:
+    """What a result file is, read from its head only (no field, no mesh): {"format", "kind", "class", "count"
+    (entries; a sweep: runs), "values" (the first and last entry), "sweep" (bool), "study" (its settings), "provenance",
+    "model" (the description: kind, folder …) — {} for what an older file lacks. The one place besides read() that
+    knows the layout: lp.Workspace, the interface's catalog and its driver pages use it."""
+    import h5py
+    out: dict = {}
+    with h5py.File(path, "r") as f:
+        out["format"] = str(f.attrs.get("loudpy_format", "1.0"))
+        out["sweep"] = "runs" in f
+        g = f["runs"][sorted(f["runs"])[0]] if out["sweep"] and len(f["runs"]) else f
+        out["kind"] = str(g.attrs.get("kind", f.attrs.get("kind", "")))
+        out["class"] = str(g.attrs.get("results_class", ""))
+        values = []
+        for _, b in _ordered(g["blocks"]) if "blocks" in g else []:
+            if "values" in b:
+                v = b["values"][()]
+                values += [float(v[0]), float(v[-1])] if len(v) else []
+                out["count"] = out.get("count", 0) + len(v)
+        if out["sweep"]:
+            out["count"] = len(f["runs"])
+        out["values"] = [min(values), max(values)] if values else []
+        st = g.get("study")
+        out["study"] = json.loads(st.attrs["settings"]) if st is not None and "settings" in st.attrs else {}
+        out["provenance"] = dict((out["study"] or {}).get("provenance") or {})
+        mg = g.get("model")
+        out["model"] = json.loads(mg.attrs["description"]) if mg is not None and "description" in mg.attrs else {}
+    return out
+
+
 def read(path):
     """A result (or a sweep) from a format-2 or format-3 file."""
     with h5py.File(path, "r") as f:

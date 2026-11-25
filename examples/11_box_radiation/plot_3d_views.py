@@ -25,7 +25,8 @@ import loudpy as lp
 from loudpy.physics.modal import CavityModes
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "shared"))   # the shared box
 from enclosure import Z_F  # noqa: E402
-
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "shared"))
+from names import stored  # noqa: E402  (results where run.py writes them, or stored earlier)
 HERE = Path(__file__).resolve().parent               # this example's folder
 lp.plot.style.use()                                  # the loudpy figure style for this script
 
@@ -33,7 +34,7 @@ here = HERE / "Results"
 FREQS = [100, 470, 1000, 1680, 2400]          # [Hz] (nearest computed frequency)
 RANGE = 50.0
 
-res = lp.load(here / "Files/exterior.h5")
+res = stored(HERE, "exterior")
 cav = CavityModes.load(HERE.parent / "shared/meshes/cavity_modes.h5")
 front = lambda x: x[:, 2] > Z_F                      # the cut plane: inside the box, outside only in front of it
 with lp.plot.pdf_pages(here / "Figures/views_3d.pdf") as pdf:

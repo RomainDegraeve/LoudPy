@@ -24,7 +24,7 @@ import numpy as np
 import loudpy as lp
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "shared"))
-from names import OLD_NAMES  # noqa: E402  (results stored before the 0.3 renaming)
+from names import OLD_NAMES, stored, stored_path  # noqa: E402  (results stored before the 0.3 renaming)
 
 HERE = Path(__file__).resolve().parent               # this example's folder
 EXAMPLES = HERE.parent                               # examples/
@@ -32,12 +32,12 @@ EXAMPLES = HERE.parent                               # examples/
 lp.plot.style.use()                       # the loudpy figure style for this script
 
 here = HERE / "Results"
-vacuo_file = (EXAMPLES / "01_structure_modes/Results/Files/modes.h5")
+vacuo_file = stored_path(EXAMPLES / "01_structure_modes", "modes")
 MATCH_F_TOL, MATCH_ZETA_TOL = 0.05, 0.15   # structural ↔ in-vacuo: relative tolerances on f and ζ
 N_FIRST, PER_PAGE = 12, 6
 WINDOW = dict(xlim=(0.0, 0.21), ylim=(-0.24, 0.24))       # air shown around the driver [m]
 
-modes = lp.load(here / "Files/modes.h5", rename=OLD_NAMES).set("fsi")
+modes = stored(HERE, "modes").set("fsi")
 freq, zeta, s = modes.frequencies, modes.zeta, modes.extra("s")
 print(f"{modes}: {modes.mesh('solid').n_nodes} structural and {modes.mesh('air').n_nodes} air nodes")
 

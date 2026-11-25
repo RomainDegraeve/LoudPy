@@ -26,8 +26,7 @@ import numpy as np
 
 import loudpy as lp
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "shared"))
-from names import OLD_NAMES  # noqa: E402  (results stored before the 0.3 renaming)
-
+from names import stored  # noqa: E402  (results where run.py writes them, or stored earlier)
 HERE = Path(__file__).resolve().parent               # this example's folder
 EXAMPLES = HERE.parent                               # examples/
 
@@ -39,7 +38,7 @@ DEFORMATION = 0.10
 PER_PAGE = 3
 SIZE = (620, 500)                                          # rendered image [px]
 
-modes = lp.load(here / "Files/eigen_fourier.h5", rename=OLD_NAMES)
+modes = stored(HERE, "eigen_fourier")
 for m in [m for m in ORDERS if m in modes.orders]:
     om = modes.order(m)
     with lp.plot.pdf_pages(here / f"Figures/modes_3d_m{m}.pdf") as pdf:

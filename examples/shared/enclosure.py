@@ -11,13 +11,14 @@ on its rear baffle plane Z_B, the front face of the box is its front plane Z_F.
 from pathlib import Path
 
 import loudpy as lp
+from names import stored_path  # noqa: E402  (the modes file of example 02)
 
 HERE = Path(__file__).resolve().parent               # shared/
 EXAMPLES = HERE.parent                               # examples/
 MESHES = str(HERE / "meshes")                        # the box meshes and cavity modes, shared by examples 10–13
 
 geo_path = str(EXAMPLES / "Geometries/Loudspeaker/HPNEW-Sketch.geo")
-eig_path = str(EXAMPLES / "02_azimuthal_modes/Results/Files/eigen_fourier.h5")
+eig_path = str(stored_path(EXAMPLES / "02_azimuthal_modes", "eigen_fourier"))
 
 # ── the driver: its modes (m = 0 … 3) and its wet profiles, selected on the 2D geometry ─────────────────────────
 Z_B, Z_F = 0.031, 0.032                       # rear baffle plane, front face of the box [m] (the profiles' planes)

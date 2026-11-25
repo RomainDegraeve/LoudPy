@@ -13,14 +13,16 @@ What this produces (in Results/Figures/)
 -----------------------------------------
   - labyrinth_views_3d.pdf : one page per frequency of FREQS, six views
 """
+import sys
 from pathlib import Path
 
 import numpy as np
 import pyvista as pv
 
 import loudpy as lp
-from labyrinth import X0, Y0, Z_F, W_IN as W, H_IN as H, WALL_T, Z_BACK, quarter_wave
-
+from labyrinth import X0, Z_F, W_IN as W, H_IN as H, WALL_T, Z_BACK, quarter_wave
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "shared"))
+from names import stored  # noqa: E402  (results where run.py writes them, or stored earlier)
 HERE = Path(__file__).resolve().parent               # this example's folder
 EXAMPLES = HERE.parent                               # examples/
 
@@ -30,7 +32,7 @@ here = HERE / "Results"
 FREQS = [40, 70, 100, 150, 300, 1000]         # [Hz] (nearest computed frequency)
 RANGE = 60.0
 
-res = lp.load(here / "Files/labyrinth.h5")
+res = stored(HERE, "labyrinth")
 normal = np.array([-1.0, 0.0, 0.0])           # cut x = X0, cameras on the −x side
 ey, ez = np.array([0, 1.0, 0]), np.array([0, 0, 1.0])
 F0 = np.array([X0, 0.20, -0.12])

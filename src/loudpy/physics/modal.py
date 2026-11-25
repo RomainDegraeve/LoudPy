@@ -196,7 +196,7 @@ class DriverModes:
     @classmethod
     def from_eigen_h5(cls, path, orders, f_max=None):
         """
-        Modes of the azimuthal orders `orders` from an eigen result file: format 2 (lp.Modes,
+        Modes of the azimuthal orders `orders` from an eigen result file: format 3 or 2 (lp.Modes,
         or format 1, read with lp.load).
         """
         m_, fam, fr, ze, Us = [], [], [], [], []

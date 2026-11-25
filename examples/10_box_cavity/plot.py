@@ -26,7 +26,8 @@ import loudpy as lp
 from loudpy.physics.modal import CavityModes
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "shared"))   # the shared box
 from enclosure import X0, Z_B  # noqa: E402
-
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "shared"))
+from names import stored  # noqa: E402  (results where run.py writes them, or stored earlier)
 HERE = Path(__file__).resolve().parent               # this example's folder
 EXAMPLES = HERE.parent                               # examples/
 
@@ -38,7 +39,7 @@ RIM = (0.040, 0.0265)           # cone point of the rocking signature (r, z) [m]
 N_CAV_SHOWN = 8                 # enclosure modes shown
 MIC = (0.03, 0.04, Z_B - 0.08)  # pressure probe in the enclosure [m]
 
-res = lp.load(here / "Files/coupled.h5")
+res = stored(HERE, "coupled")
 hp = res.driver("main")
 vac = hp.in_vacuo()
 f_cav = res.cavity_frequencies
@@ -80,7 +81,7 @@ with lp.plot.pdf_pages(here / "Figures/response.pdf") as pdf:
     pdf.savefig(fig)
 
 # ── coupled_modes.pdf / .csv ───────────────────────────────────────────────────
-cm = lp.load(here / "Files/coupled_modes.h5")
+cm = stored(HERE, "coupled_modes")
 s, Xq, XP = cm.extra("s"), cm.extra("q").T, cm.extra("P").T
 fn, zeta = np.abs(s) / (2 * np.pi), -s.real / np.abs(s)
 orders = list(E.coords["order"])

@@ -3,9 +3,11 @@ lp.load: read results of any study, any format, one file or many.
 
     lp.load("sweep.h5")                        one file (format 3 or 2, or format 1 of the former studies);
                                                a parametric sweep file gives a SweepResults
-    lp.load("Results/Files")                   every .h5 of a folder (e.g. one file per mesh block)
-    lp.load("Results/Files/snap_*.h5")         a glob
+    lp.load("results/speaker")                 every .h5 of a folder (e.g. one file per mesh block)
+    lp.load("results/speaker/fr_*.h5")         a glob
     lp.load([path1, path2])                    an explicit list (kept in this order)
+    lp.load(HERE, study="fr")                  a simulation folder's newest result of study "fr"
+                                               (results/<simulation>/fr_<stamp>.h5: loudpy.results.files)
     lp.load(path, rename={"old": "new"})       group and item names renamed on read (files written before a
                                                geometry's groups were renamed); the file is not changed
 
@@ -75,9 +77,13 @@ def rename_groups(res, mapping: dict):
     return res
 
 
-def load(source, rename: dict | None = None):
-    """Results from a file, a folder, a glob or a list of files (see the module docstring); rename: {old: new}
-    group and item names (see rename_groups())."""
+def load(source, rename: dict | None = None, study: str | None = None):
+    """Results from a file, a folder, a glob or a list of files (see the module docstring); study: a simulation
+    folder's newest result of that study (results/<simulation>/<study>_<stamp>.h5, loudpy.results.files);
+    rename: {old: new} group and item names (see rename_groups())."""
+    if study is not None:
+        from loudpy.results.files import latest
+        return load(latest(source, study), rename)
     if rename:
         return rename_groups(load(source), rename)
     paths, sort = _paths(source)

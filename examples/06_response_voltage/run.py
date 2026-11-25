@@ -8,7 +8,7 @@ the wavelength at the first frequency of each band.
 
 What this produces
 ------------------
-    Results/Files/sweep.h5         — all frequencies, one block per mesh (loudpy result format 3),
+    results/06_response_voltage/sweep_<stamp>.h5         — all frequencies, one block per mesh (loudpy result format 3),
                                      with the coil current I_coil per frequency
     Results/Files/mesh_<f>Hz.msh   — the mesh of each band (reused on reruns)
 
@@ -30,7 +30,6 @@ lp.set_verbosity("info")                 # progress messages (loudpy is silent b
 # ── Paths ──────────────────────────────────────────────────────────────────────
 geometry = str(EXAMPLES / "Geometries/Loudspeaker/HPNEW-Sketch.geo")
 files = str(HERE / "Results/Files")
-out_path = f"{files}/sweep.h5"
 
 # ── Sweep and drive ────────────────────────────────────────────────────────────
 # integer-valued frequencies avoid duplicate FFT bins against time-domain results
@@ -74,5 +73,5 @@ if __name__ == "__main__":
     study = lp.FrequencyResponse(model, drive=drive)
     res = study.solve(freqs, remesh=remesh)
     print(res)
-    study.save(out_path)
-    print(f"Saved → {out_path}")
+    path = study.save(HERE, name='sweep')
+    print(f"Saved → {path}")

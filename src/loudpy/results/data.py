@@ -400,17 +400,9 @@ class Data:
         return write_data(self, path)
 
     def export(self, path):
-        """Write by extension: .nc (netCDF), .csv / .txt (text table), .mat (MATLAB), .npz (NumPy)."""
-        suffix = Path(path).suffix.lower()
-        if suffix in (".nc", ".cdf", ".netcdf"):
-            return self.to_netcdf(path)
-        if suffix in (".csv", ".txt", ".dat"):
-            return self.to_csv(path)
-        if suffix == ".mat":
-            return self.to_mat(path)
-        if suffix == ".npz":
-            return self.to_npz(path)
-        raise ValueError(f"unknown export format {suffix!r}: use .nc, .csv, .mat or .npz")
+        """Write by extension (lp.export): .nc (netCDF), .csv / .txt (text table), .mat (MATLAB), .npz (NumPy)."""
+        from loudpy.results.exporters import export
+        return export(self, path)
 
     # ── plot ───────────────────────────────────────────────────────────────
     def plot(self, ax=None, kind: str | None = None, **kwargs):
@@ -563,7 +555,9 @@ class Field:
         return field_view(self, show=show, cut=cut, camera=camera, **kwargs)
 
     # ── export ─────────────────────────────────────────────────────────────
-    def _arrays(self) -> dict:
+    def table(self) -> dict:
+        """The field as columns: the node coordinates, then its values (re / im for complex; one column per
+        component)."""
         names = ["r", "z"] if self.mesh.dim == 2 else ["x", "y", "z"]
         cols = {n: self.mesh.coords[:, i] for i, n in enumerate(names)}
         v = self.values
@@ -580,7 +574,7 @@ class Field:
     def to_pandas(self):
         """DataFrame: one row per node (node tag index), columns r, z (x, y, z) and the values."""
         import pandas as pd
-        return pd.DataFrame(self._arrays(), index=pd.Index(self.mesh.node_tags, name="node"))
+        return pd.DataFrame(self.table(), index=pd.Index(self.mesh.node_tags, name="node"))
 
     def to_pyvista(self):
         """pyvista mesh (linear sub-cells through the mid-side nodes) with the values as point data."""
@@ -593,45 +587,21 @@ class Field:
         else:
             from loudpy.plot.view3d import tet_grid
             grid = tet_grid(mesh)
-        for k, v in self._arrays().items():
+        for k, v in self.table().items():
             if k not in ("r", "z", "x", "y"):
                 grid.point_data[k] = v
         return grid
 
-    def _header(self):
+    def header(self) -> dict:
+        """What the field is, for a file's header: its name, quantity, unit, coordinate and metadata."""
         return {"field": self.name, "quantity": self.quantity.label, "unit": self.quantity.unit,
                 self.coord: self.coordinate, **{k: str(v) for k, v in self.meta.items()}}
 
     def export(self, path):
-        """
-        Write by extension: .vtu / .vtk (ParaView: mesh + values), .html (interactive viewer, lp.plot.html),
-        .csv (one row per node: coordinates,
-        values, re/im for complex), .mat (MATLAB: coordinates, triangles, values), .npz (NumPy).
-        """
-        path = Path(path)
-        suffix = path.suffix.lower()
-        if suffix in (".html", ".htm"):
-            from loudpy.plot.html import html
-            return html(self, path)
-        if suffix in (".vtu", ".vtk"):
-            return write_atomic(path, lambda tmp: self.to_pyvista().cast_to_unstructured_grid().save(tmp))
-        cols = self._arrays()
-        if suffix in (".csv", ".txt"):
-            head = "\n".join(f"{k}: {v}" for k, v in self._header().items())
-            return write_atomic(path, lambda tmp: np.savetxt(
-                tmp, np.column_stack(list(cols.values())), delimiter=",", fmt="%.10g",
-                header=head + "\n" + ",".join(cols), comments="# "))
-        tri = self.mesh.triangles(refine=True) if self.mesh.dim == 2 else np.zeros((0, 3), int)
-        if suffix == ".mat":
-            from scipy.io import savemat
-            d = {mat_name(k): v for k, v in cols.items()}
-            d.update(values=self.values, triangles=tri + 1, node_tags=self.mesh.node_tags, info=self._header())
-            return write_atomic(path, lambda tmp: savemat(tmp, d))
-        if suffix == ".npz":
-            return write_atomic(path, lambda tmp: np.savez(tmp, values=self.values, coords=self.mesh.coords,
-                                                            triangles=tri, node_tags=self.mesh.node_tags,
-                                                            header=np.array(json.dumps(self._header()))))
-        raise ValueError(f"unknown export format {suffix!r}: use .vtu, .html, .csv, .mat or .npz")
+        """Write by extension (lp.export: .vtu / .vtk ParaView, .html viewer, .csv node table, .mat, .npz, and an
+        animation .gif / .mp4 for a harmonic field)."""
+        from loudpy.results.exporters import export
+        return export(self, path)
 
     # ── plot ───────────────────────────────────────────────────────────────
     def plot(self, show: str | None = None, ax=None, **kwargs):

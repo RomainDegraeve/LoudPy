@@ -15,13 +15,15 @@ Results/Figures/column_response.pdf
 Results/Files/
   - spl_1m.csv, directivity_vertical.csv : the curves and the vertical map as tables
 """
+import sys
 from pathlib import Path
 
 import numpy as np
 
 import loudpy as lp
 from column import X0, Y0S, Z_F, Z_BACK, WALL_T, MOUTH_H, NAMES, quarter_wave
-
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "shared"))
+from names import stored  # noqa: E402  (results where run.py writes them, or stored earlier)
 HERE = Path(__file__).resolve().parent               # this example's folder
 EXAMPLES = HERE.parent                               # examples/
 
@@ -31,7 +33,7 @@ here = HERE / "Results"
 DIST = 1.0                                      # distance of the probes from the middle driver [m]
 POLAR_F = [50, 100, 200, 400, 700, 1000]        # [Hz] (nearest computed frequency)
 
-res = lp.load(here / "Files/column.h5")
+res = stored(HERE, "column")
 print(res)
 f_qw = quarter_wave()
 src = np.array([X0, Y0S[1], Z_F])                                       # middle driver, front face

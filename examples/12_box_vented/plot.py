@@ -20,7 +20,8 @@ import numpy as np
 import loudpy as lp
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "shared"))   # the shared box
 from enclosure import X0, Y0, Z_F, PORT_X, PORT_Y, port_tuning, vented_volume  # noqa: E402
-
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "shared"))
+from names import stored  # noqa: E402  (results where run.py writes them, or stored earlier)
 HERE = Path(__file__).resolve().parent               # this example's folder
 EXAMPLES = HERE.parent                               # examples/
 
@@ -30,7 +31,7 @@ here = HERE / "Results"
 DIST = 1.0
 POLAR_F = [50, 70, 100, 300, 1000, 2000, 3000]
 
-vented, sealed = lp.load(here / "Files/vented_merged.h5"), lp.load(EXAMPLES / "11_box_radiation/Results/Files/exterior.h5")
+vented, sealed = stored(HERE, "vented_merged"), stored(EXAMPLES / "11_box_radiation", "exterior")
 src = np.array([X0, Y0, Z_F])
 probes = lp.Points([src + [0, 0, DIST], [PORT_X, PORT_Y, Z_F + DIST],
                     src + DIST * np.array([np.sin(np.pi / 6), 0, np.cos(np.pi / 6)]), src + [DIST, 0, 0]],

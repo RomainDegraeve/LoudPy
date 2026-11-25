@@ -6,18 +6,20 @@ What this produces (Results/Figures/)
   walls_response.pdf   coil excursion with rigid / elastic walls, and the walls' volume velocity into the box
                        relative to the driver's rear volume velocity (the panel modes marked)
 """
+import sys
 from pathlib import Path
 
 import numpy as np
 
 import loudpy as lp
-
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "shared"))
+from names import stored  # noqa: E402  (results where run.py writes them, or stored earlier)
 HERE = Path(__file__).resolve().parent
 EXAMPLES = HERE.parent
 lp.plot.style.use()                                  # the loudpy figure style for this script
 
-elastic = lp.load(HERE / "Results/Files/coupled_walls.h5")
-rigid = lp.load(EXAMPLES / "10_box_cavity/Results/Files/coupled.h5")     # the same box with rigid walls
+elastic = stored(HERE, "coupled_walls")
+rigid = stored(EXAMPLES / "10_box_cavity", "coupled")     # the same box with rigid walls
 x_e = elastic.driver("main").coil_excursion().abs().rename(label="MDF walls, 12 mm")
 x_r = rigid.driver("main").coil_excursion().abs().rename(label="rigid walls")
 ratio = lp.Data(20 * np.log10(np.abs(elastic.wall_volume_velocity().values)

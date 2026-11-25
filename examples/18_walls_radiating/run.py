@@ -18,8 +18,9 @@ both faces, the panels inside and out. Needs 02_azimuthal_modes (driver modes).
     python3 examples/18_walls_radiating/run.py            the full band (not timed yet: about an hour)
     python3 examples/18_walls_radiating/run.py --smoke    three frequencies
 
-What this produces (Results/Files/)
-------------------------------------
+What this produces (the results <study>.h5 below: results/18_walls_radiating/<study>_<stamp>.h5,
+stamped — plot.py reads the newest; meshes and caches: Results/Files/)
+----------------------------------------------------------------------
   walls_modes.csv   the wall modes (frequency, damping ratio, volume displacement per unit modal amplitude)
   elastic.h5        driver and wall modal amplitudes, DtN coefficients, the pressure in the air everywhere
   rigid.h5          the same with rigid walls
@@ -75,9 +76,11 @@ if __name__ == "__main__":
                                                            walls.extra("volume_disp")]),
                delimiter=",", header="f_Hz,zeta,volume_displacement_m3", comments="")
     print(f"{len(walls.frequencies)} wall modes, first {np.round(walls.frequencies[:6], 1)} Hz → walls_modes.csv")
-    res = lp.FrequencyResponse(scene, drive=lp.Force(1.0)).solve(FREQS, store=files / "elastic.h5")
-    print(res, "→", files / "elastic.h5")
+    study = lp.FrequencyResponse(scene, drive=lp.Force(1.0))
+    res = study.solve(FREQS, store=lp.result_path(HERE, 'elastic', study))
+    print(res)
     rigid = make_scene(elastic=False)
     rigid.mesh(MESHES)                               # the same meshes (reused)
-    res = lp.FrequencyResponse(rigid, drive=lp.Force(1.0)).solve(FREQS, store=files / "rigid.h5")
-    print(res, "→", files / "rigid.h5")
+    study = lp.FrequencyResponse(rigid, drive=lp.Force(1.0))
+    res = study.solve(FREQS, store=lp.result_path(HERE, 'rigid', study))
+    print(res)

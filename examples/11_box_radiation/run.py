@@ -7,8 +7,9 @@ half-space: driver (Fourier modes m = 0 … 3) + enclosure (cavity modes, rear) 
           the exterior meshes (one per band, hemisphere minus the box and the driver front) are
           built on the first run and reused afterwards
 
-What this produces (Results/Files/)
-------------------------------------
+What this produces (the results <study>.h5 below: results/11_box_radiation/<study>_<stamp>.h5,
+stamped — plot.py reads the newest; meshes and caches: Results/Files/)
+----------------------------------------------------------------------
   - exterior_<f>Hz.msh : the exterior mesh of each band
   - exterior.h5        : driver modal amplitudes, cavity modal pressures, DtN coefficients and the
                          exterior pressure at every node (streamed during the sweep)
@@ -28,6 +29,7 @@ lp.set_verbosity("info")                 # progress messages (loudpy is silent b
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "shared"))   # the shared box
 from enclosure import MESHES, X0, Y0, exterior_scene  # noqa: E402
 
+HERE = Path(__file__).resolve().parent
 files = Path(__file__).resolve().parent / "Results/Files"     # this example's results
 files.mkdir(parents=True, exist_ok=True)
 FREQS = np.arange(20.0, 3000.0 + 1e-9, 10.0)   # [Hz]
@@ -39,7 +41,8 @@ if __name__ == "__main__":
         FREQS, TAG = np.array([float(x) for x in sys.argv[1].split(",")]), "exterior_test"
     scene.mesh(MESHES)
     print(scene, f"| hemisphere {np.round(scene.hemisphere['center'], 3)} m, radius {scene.hemisphere['radius']:.3f} m")
-    res = lp.FrequencyResponse(scene, drive=lp.Force(1.0)).solve(FREQS, store=files / f"{TAG}.h5")
+    study = lp.FrequencyResponse(scene, drive=lp.Force(1.0))
+    res = study.solve(FREQS, store=lp.result_path(HERE, TAG, study))
 
     # check at low frequency: compact source on a rigid ground, far field p·r → ρω²|V_front| / 2π
     i0 = int(np.argmin(np.abs(FREQS - 50.0)))
@@ -47,4 +50,4 @@ if __name__ == "__main__":
     pr = np.abs(res.far_field(far)[i0]) * 20.0
     print(f"Far field at {FREQS[i0]:.0f} Hz, 20 m, 0/90/180°: p·r = {np.round(pr, 5)} Pa·m (omnidirectional: "
           f"spread {100 * (pr.max() / pr.min() - 1):.1f} %)")
-    print(res, "→", files / f"{TAG}.h5")
+    print(res)

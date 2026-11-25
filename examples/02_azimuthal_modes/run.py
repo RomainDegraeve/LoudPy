@@ -20,7 +20,7 @@ condition ("_r_" on r = 0) is replaced automatically by the exact one of each m.
 
 What this produces
 ------------------
-    Results/Files/eigen_fourier.h5   — one mode set per order m (loudpy result format 3)
+    results/02_azimuthal_modes/eigen_fourier_<stamp>.h5   — one mode set per order m (loudpy result format 3)
 
 Then run plot.py and plot_3d.py.
 
@@ -38,7 +38,6 @@ lp.set_verbosity("info")                 # progress messages (loudpy is silent b
 # ── Paths ──────────────────────────────────────────────────────────────────────
 geometry = str(EXAMPLES / "Geometries/Loudspeaker/HPNEW-Sketch.geo")
 mesh_path = str(HERE / "Results/Files/mesh.msh")   # reused on reruns
-out_path = str(HERE / "Results/Files/eigen_fourier.h5")
 
 # ── Settings ───────────────────────────────────────────────────────────────────
 ORDERS = [0, 1, 2, 3, 4]       # azimuthal orders m
@@ -67,5 +66,5 @@ if __name__ == "__main__":
     study = lp.Modes(model)
     modes = study.solve(f_min=F_MIN, f_max=F_MAX, orders=ORDERS, n_per_shift=N_PER_SHIFT)
     print(modes, {m: len(modes.order(m)) for m in modes.orders})
-    study.save(out_path)
-    print(f"Saved → {out_path}")
+    path = study.save(HERE, name='eigen_fourier')
+    print(f"Saved → {path}")

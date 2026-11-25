@@ -7,8 +7,9 @@ of the same name replace them, so each run rebuilds and remeshes the geometry (a
   model    : lp.Model(geo, parameters=lp.Parameters(a=…, h=…)), mesh size h/2 (lp.P: follows the thickness)
   sweep    : lp.Sweep(lp.Modes(model), {"a": […], "h": […]}) — all combinations (4 × 3 = 12 runs)
 
-What this produces (Results/Files/)
-------------------------------------
+What this produces (the results <study>.h5 below: results/08_sweep_geometry/<study>_<stamp>.h5,
+stamped — plot.py reads the newest; meshes and caches: Results/Files/)
+----------------------------------------------------------------------
   plate_sweep.h5             every run in one file (lp.load gives the SweepResults back)
   plate_<a>_<h>.msh          the mesh of each run (reused on reruns)
 Then run plot.py.
@@ -43,5 +44,5 @@ if __name__ == "__main__":
     sweep = lp.Sweep(lp.Modes(model), {"a": RADII, "h": THICKNESSES}).solve(f_min=10.0, f_max=12000.0)
     print(sweep)
     print(sweep.table())
-    sweep.save(f"{files}/plate_sweep.h5")
+    sweep.save(HERE, name='plate_sweep')
     print(f"Saved → {files}/plate_sweep.h5")

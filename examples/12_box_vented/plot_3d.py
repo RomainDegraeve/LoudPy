@@ -21,7 +21,8 @@ import pyvista as pv
 import loudpy as lp
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "shared"))   # the shared box
 from enclosure import X0, Y0, Z_F, W, H, WALL_T, back_z, PORT_X, PORT_Y, port_tuning, vented_volume  # noqa: E402
-
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "shared"))
+from names import stored  # noqa: E402  (results where run.py writes them, or stored earlier)
 HERE = Path(__file__).resolve().parent               # this example's folder
 EXAMPLES = HERE.parent                               # examples/
 
@@ -31,7 +32,7 @@ here = HERE / "Results"
 FREQS = [50, 70, 100, 300, 1000, 1900]        # [Hz] (nearest computed frequency)
 RANGE = 60.0
 
-res = lp.load(here / "Files/vented_merged.h5")
+res = stored(HERE, "vented_merged")
 # cut plane through the driver axis and the port axis; cameras on the removed side (+normal)
 d = np.array([X0 - PORT_X, Y0 - PORT_Y, 0.0])
 d /= np.linalg.norm(d)

@@ -76,8 +76,10 @@ def test_the_generated_script_builds_the_model_and_runs_the_studies(tmp_path):
     assert runpy.run_path(str(script), run_name="imported")["model"].to_script() == model.to_script()
     run = subprocess.run([sys.executable, str(script)], cwd=tmp_path, capture_output=True, text=True, timeout=600)
     assert run.returncode == 0, run.stderr[-2000:]
-    res = lp.load(tmp_path / "results" / "modes.h5")
+    res = lp.load(tmp_path, study="modes")                             # results/plate/modes_<stamp>.h5, stamped
     assert res.kind == "modes" and len(res) > 0 and (tmp_path / "meshes" / "plate.msh").exists()
+    assert res.provenance["study"] == "modes" and res.provenance["simulation"] == "plate"
+    assert res.provenance["fingerprint"] == doc.fingerprint("study:modes")    # the document's: current
 
 
 def test_paths_problems_readiness_fingerprints_provenance(tmp_path, mesh_dir):

@@ -151,6 +151,24 @@ Modes
 Saving
 ------
 
-``study.save(path, **metadata)`` or ``res.save(path)`` write the
-:doc:`loudpy result format 3 <file_format>`; the metadata come back in ``res.meta``. Large 3D
+One convention for scripts and the interface: a simulation's results go to
+``<folder>/results/<simulation>/<study>_<stamp>.h5``, stamped with what made them.
+
+.. code-block:: python
+
+   study.save(HERE, name="voltage_sweep")          # results/<simulation>/voltage_sweep_20261125_101500.h5
+   res.save(HERE, name="voltage_sweep")            # the same for results in hand
+   res = lp.load(HERE, study="voltage_sweep")      # the newest result of that study
+   res.provenance                                  # {"study", "simulation", "fingerprint"}
+   study.solve(freqs, store=lp.result_path(HERE, "fr", study))   # a scene streams its result there, stamped
+
+The simulation is the folder's document name (``<name>.loudpy.json``), else the folder's name; when the document holds
+the study, the stamp carries its fingerprint and the interface (or ``lp.Workspace``) says whether the result is
+current. ``study.save(path, **metadata)`` / ``res.save(path)`` with a file path write that file. Both write the
+:doc:`loudpy result format 3 <file_format>` (formats 2 and 1 are still read); the metadata come back in ``res.meta``.
+
+Every export goes through one function, by the file's suffix: ``lp.export(obj, path)`` — Data (.csv .nc .mat
+.npz), several curves (a column each), a table, a Field (.vtu .html .csv .mat .npz, .gif / .mp4 for a harmonic field),
+results (.mat .npz .pvd .vtkhdf .h5), a 3D view, a matplotlib figure; ``lp.results.exporters.formats(obj)`` lists what
+an object offers, and a new format is one ``register`` entry. Large 3D
 fields are read lazily (only the rows asked for are read from disk).

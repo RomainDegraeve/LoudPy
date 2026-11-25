@@ -11,8 +11,9 @@ first). The front of the driver is in vacuo (only the enclosure loads it).
              surface + static correction of the truncated cavity modes
   modes    : lp.Modes — coupled driver–enclosure modes
 
-What this produces (Results/Files/)
-------------------------------------
+What this produces (the results <study>.h5 below: results/10_box_cavity/<study>_<stamp>.h5,
+stamped — plot.py reads the newest; meshes and caches: Results/Files/)
+----------------------------------------------------------------------
   - cavity.msh, cavity_modes.h5 : enclosure mesh and its modes (reused on reruns)
   - coupled.h5                  : forced response (driver modal amplitudes, modal pressures)
   - coupled_modes.h5            : coupled modes (complex s, driver and cavity components)
@@ -32,6 +33,7 @@ lp.set_verbosity("info")                 # progress messages (loudpy is silent b
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "shared"))   # the shared box
 from enclosure import MESHES, sealed_scene  # noqa: E402
 
+HERE = Path(__file__).resolve().parent
 files = Path(__file__).resolve().parent / "Results/Files"     # this example's results
 files.mkdir(parents=True, exist_ok=True)
 FREQS = np.geomspace(20.0, 3000.0, 700)        # forced response band [Hz]
@@ -41,8 +43,9 @@ scene = sealed_scene(mesh=False)               # enclosure.py: cabinet, driver, 
 if __name__ == "__main__":
     scene.mesh(MESHES)
     print(scene)
-    res = lp.FrequencyResponse(scene, drive=lp.Force(1.0)).solve(FREQS, store=files / "coupled.h5")
-    print(res, "→", files / "coupled.h5")
+    study = lp.FrequencyResponse(scene, drive=lp.Force(1.0))
+    res = study.solve(FREQS, store=lp.result_path(HERE, 'coupled', study))
+    print(res)
     modes = lp.Modes(scene).solve(f_max=FREQS[-1] * 1.5)
-    modes.save(files / "coupled_modes.h5")
-    print(f"{len(modes)} coupled modes ≤ {FREQS[-1] * 1.5:.0f} Hz → {files / 'coupled_modes.h5'}")
+    modes.save(HERE, name='coupled_modes')
+    print(f"{len(modes)} coupled modes ≤ {FREQS[-1] * 1.5:.0f} Hz")

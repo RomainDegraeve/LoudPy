@@ -7,12 +7,14 @@ What this produces
   Results/Figures/plate_f1.pdf   f1 against the radius, one colour per thickness (FE dots, Kirchhoff lines)
   Results/Files/plate_f.nc       f of the first two modes over (a, h, mode): netCDF (xarray, MATLAB ncread, …)
 """
+import sys
 from pathlib import Path
 
 import numpy as np
 
 import loudpy as lp
-
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "shared"))
+from names import stored  # noqa: E402  (results where run.py writes them, or stored earlier)
 HERE = Path(__file__).resolve().parent               # this example's folder
 EXAMPLES = HERE.parent                               # examples/
 
@@ -20,7 +22,7 @@ lp.plot.style.use()
 here = HERE / "Results"
 
 # ── plate: geometry sweep ──────────────────────────────────────────────────────
-plate = lp.load(here / "Files/plate_sweep.h5")
+plate = stored(HERE, "plate_sweep")
 f = plate.evaluate(lambda r: r.frequencies[:2], name="f")              # lp.Data over a × h × mode
 f.export(here / "Files/plate_f.nc")
 steel = dict(E=2.1e11, nu=0.3, rho=7850.0)

@@ -10,7 +10,7 @@ thickness, element size and tuning follow the wavelength at the first frequency 
 
 What this produces
 ------------------
-    Results/Files/sweep.h5         — all frequencies, one block per mesh (loudpy result format 3)
+    results/05_response_coupled/sweep_<stamp>.h5         — all frequencies, one block per mesh (loudpy result format 3)
     Results/Files/mesh_<f>Hz.msh   — the mesh of each band (reused on reruns)
 
 Then run plot.py.
@@ -31,7 +31,6 @@ lp.set_verbosity("info")                 # progress messages (loudpy is silent b
 # ── Paths ──────────────────────────────────────────────────────────────────────
 geometry = str(EXAMPLES / "Geometries/Loudspeaker/HPNEW-Sketch.geo")
 files = str(HERE / "Results/Files")
-out_path = f"{files}/sweep.h5"
 
 # ── Sweep ──────────────────────────────────────────────────────────────────────
 force = 0.1                                     # on the voice coil [N]
@@ -68,5 +67,5 @@ if __name__ == "__main__":
     study = lp.FrequencyResponse(model, drive=lp.Force(force))
     res = study.solve(freqs, remesh=remesh)
     print(res)
-    study.save(out_path)
-    print(f"Saved → {out_path}")
+    path = study.save(HERE, name='sweep')
+    print(f"Saved → {path}")

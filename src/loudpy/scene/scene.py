@@ -8,7 +8,7 @@ Scene: placed drivers in a 3D cabinet, with the air around them.
     scene.cavity(mesh_size=(0.003, 0.012), f_max=6000)        # A: cabinet air as cavity modes
     scene.exterior(ground="y", bands=[(20, 1000), (1000, 2000)])   # + B: outside air, FE + exact DtN
     #  or  scene.merged(ground="y", bands=[…])                 # C: one air domain inside + outside
-    scene.mesh("Results/Files")
+    scene.mesh("meshes")
 
 Configurations
   A  cavity()                 cabinet air as rigid-wall cavity modes; the driver fronts in vacuo

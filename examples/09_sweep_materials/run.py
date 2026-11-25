@@ -8,8 +8,9 @@ Rubber and PhenolicCloth; the geometry and the mesh do not change, so every run 
   sweep    : lp.Sweep(lp.FrequencyResponse(model, drive=lp.Force(1.0)), {…}) — all combinations (3 × 3 = 9 runs),
              20 Hz – 2 kHz, 1 N on the voice coil
 
-What this produces (Results/Files/)
-------------------------------------
+What this produces (the results <study>.h5 below: results/09_sweep_materials/<study>_<stamp>.h5,
+stamped — plot.py reads the newest; meshes and caches: Results/Files/)
+----------------------------------------------------------------------
   speaker_sweep.h5           every run in one file (lp.load gives the SweepResults back)
 Then run plot.py.
 
@@ -52,5 +53,5 @@ if __name__ == "__main__":
     sweep = lp.Sweep(study, {"E_surround": [k * E_RUBBER for k in FACTORS],
                              "E_spider": [k * E_PHENOLIC for k in FACTORS]}).solve(FREQS)
     print(sweep)
-    sweep.save(f"{files}/speaker_sweep.h5")
+    sweep.save(HERE, name='speaker_sweep')
     print(f"Saved → {files}/speaker_sweep.h5")

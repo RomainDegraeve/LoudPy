@@ -2,8 +2,15 @@
 names.py — the HPNEW geometry's group names before and after the readable renaming (loudpy 0.3).
 
 Results stored before it (the Results/Files of examples 01–09) still use the old names; the plot scripts read them
-with lp.load(path, rename=OLD_NAMES), which changes nothing for files written with the new names.
+with stored(), which renames them (OLD_NAMES) and changes nothing for files written with the new names.
+
+    res = stored(HERE, "sweep")      the newest result of study "sweep" of an example (results/<example>/sweep_<stamp>.h5,
+                                     what run.py writes now), else the file an earlier run wrote (Results/Files/sweep.h5)
+    stored_path(HERE, "sweep")       that file's path
 """
+from pathlib import Path
+
+import loudpy as lp
 OLD_NAMES = {
     # mesh groups (the geometry's physical groups)
     "submeca_membranne": "cone", "submeca_dustcap": "dustcap", "submeca_surround": "surround",
@@ -18,3 +25,16 @@ OLD_NAMES = {
     "membranne": "cone", "interface_constrained_rz": "rims", "interface_constrained_r": "axis",
     "interface_forced": "coil_drive", "subacou": "air",
 }
+
+
+def stored_path(folder, study: str) -> Path:
+    """The newest result of `study` of an example folder (loudpy's convention: results/<example>/<study>_<stamp>.h5),
+    else the file an earlier run of its run.py wrote (Results/Files/<study>.h5)."""
+    from loudpy.results.files import results_of
+    found = results_of(folder, study)
+    return found[-1] if found else Path(folder) / "Results" / "Files" / f"{study}.h5"
+
+
+def stored(folder, study: str):
+    """The results of stored_path(folder, study), read with today's group names."""
+    return lp.load(stored_path(folder, study), rename=OLD_NAMES)

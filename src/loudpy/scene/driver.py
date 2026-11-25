@@ -10,7 +10,7 @@ Driver: an axisymmetric loudspeaker described by its modes, ready to be placed i
     top = hp.place("top", at=(0.07, 0.58))                  # axis +z through (x, y)
     side = hp.place("side", at=(0.0, 0.2, 0.1), axis=(-1, 0, 0))
 
-The modes come from an eigen result file (lp.Modes with orders=…, format 2 or 1). The coil is the
+The modes come from an eigen result file (lp.Modes with orders=…, formats 3, 2 or 1). The coil is the
 boundary named `coil` in that file (where the force acts). The wet profiles are polylines in the
 meridian plane, sampled from the driver's 2D geometry (a path, a builder, or the lp.Model of the
 driver: then its region names can be used): they shape the cut-outs of the driver in the 3D air and

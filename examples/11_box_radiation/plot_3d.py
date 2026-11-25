@@ -23,7 +23,8 @@ from loudpy.physics.modal import CavityModes
 from loudpy.plot import view3d
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "shared"))   # the shared box
 from enclosure import X0, Y0, Z_F  # noqa: E402
-
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "shared"))
+from names import stored  # noqa: E402  (results where run.py writes them, or stored earlier)
 HERE = Path(__file__).resolve().parent               # this example's folder
 EXAMPLES = HERE.parent                               # examples/
 
@@ -39,7 +40,7 @@ CUTS = {"vertical": ((-1, 0, 0), (X0, 0, 0), dict(position=(-1.25, 0.45, 0.25), 
 BARS = [(lp.plot.style.DIVERGING, (-1, 1), r"Pressure $p/|p|_{max}$ (outside, inside)"),
         (lp.plot.style.CMAPS["displacement"], (0, 1), r"Driver $|u|/|u|_{max}$")]
 
-res = lp.load(here / "Files/exterior.h5")
+res = stored(HERE, "exterior")
 hp = res.driver("main")
 cav = CavityModes.load(EXAMPLES / "shared/meshes/cavity_modes.h5")
 E = hp.kinetic_energy(by_order=True)

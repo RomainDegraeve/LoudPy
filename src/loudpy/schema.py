@@ -675,6 +675,7 @@ NOT_BLOCKS = {
     "Document": "a whole simulation (model or scene, and studies) as nodes of these blocks",
     "docpath": "module: paths into a document's data", "readiness": "what a simulation still needs (a checklist)",
     "suggest": "what each geometry group could be (the item types that fit it)",
+    "export": "writes results, data, views and figures to files by suffix", "result_path": "where a result goes",
     "Workspace": "a simulation's folder and document, edited by commands",
     "circuit": "module: circuit.Source / Filter / Coil …, its filter stages and coil models are blocks",
 }

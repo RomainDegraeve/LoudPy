@@ -5,6 +5,19 @@ versions follow [Semantic Versioning](https://semver.org/) (0.x: the API may sti
 
 ## [Unreleased]
 
+- Saving results, one way: `study.save(folder, name="fr")` / `res.save(folder, name="fr")` write
+  `<folder>/results/<simulation>/<study>_<stamp>.h5` stamped with what made them (study, simulation, and the
+  fingerprint of the folder's document when it holds the study); `lp.result_path(folder, name, study)` for a scene's
+  `store=` (the study stamped); `lp.load(folder, study="fr")` reads the newest. Scripts generated from a document save
+  this way. `lp.results.schema.info(path)`: a result file's head (the one place besides read() that knows the
+  layout; lp.Workspace uses it). Format 3 stays (formats 2 and 1 still read; a format-2 sample in the tests).
+- `lp.export(obj, path)`: every export by suffix through one registry (`loudpy.results.exporters`: Data, curves, tables,
+  fields, results, 3D views, figures, animations); `Data.export`, `Field.export`, `Results.export` call it.
+  `Field.table()` / `Field.header()` public.
+
+### Changed (breaking)
+- `SweepResults.save(folder)` no longer writes one file per run (one file, or `name=` into a simulation folder);
+  `Document.to_script(results=…)` removed (results go where the convention puts them).
 - Wall views name their panels: `View3D.label(points, texts)`; `wall_view(…, labels=True | {panel: name} | False)`
   (a STEP solid "solid 4", a Box side "left"; `res.wall_view(f, labels={"4": "back"})`).
 - `lp.plot.PlotSpec`: a plot as plain data (quantity, where, axes, the values of the other dimensions, view,

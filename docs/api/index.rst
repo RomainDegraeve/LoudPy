@@ -136,6 +136,10 @@ Every building block with its parameters, for programs (the interface's forms): 
    Workspace
    readiness
    suggest
+   export
+   result_path
+   results.files.latest
+   results.exporters.formats
    schema.register
    docpath.get
    docpath.put

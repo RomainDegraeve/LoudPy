@@ -25,8 +25,8 @@ GOAL receivers. Two families of modes come out:
 
 What this produces
 ------------------
-    Results/Files/modes.h5               — frequencies, ζ, s, u and p mode shapes (loudpy result format 3)
-    Results/Files/fsi_dtn_checkpoint.h5  — the modes found so far, every CHECKPOINT_EVERY shifts
+    results/03_coupled_modes_radiation/modes_<stamp>.h5               — frequencies, ζ, s, u and p mode shapes (loudpy result format 3)
+    results/03_coupled_modes_radiation/fsi_dtn_checkpoint_<stamp>.h5  — the modes found so far, every CHECKPOINT_EVERY shifts
                                            (usable with lp.load if the run is stopped)
 Then run plot.py.
 
@@ -47,7 +47,6 @@ lp.set_verbosity("info")                 # progress messages (loudpy is silent b
 geometry = str(EXAMPLES / "Geometries/Loudspeaker/HPNEW-Sketch_front_rear_dtn.geo")
 files = str(HERE / "Results/Files")
 mesh_path = f"{files}/mesh.msh"                 # reused on reruns
-out_path = f"{files}/modes.h5"
 checkpoint_path = f"{files}/fsi_dtn_checkpoint.h5"
 
 # ── Settings ───────────────────────────────────────────────────────────────────
@@ -100,5 +99,5 @@ if __name__ == "__main__":
         checkpoint_path=checkpoint_path, checkpoint_every=CHECKPOINT_EVERY,
     )
     print(modes)
-    study.save(out_path)
-    print(f"Saved → {out_path}")
+    path = study.save(HERE, name='modes')
+    print(f"Saved → {path}")

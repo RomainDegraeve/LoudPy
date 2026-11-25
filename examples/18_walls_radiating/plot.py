@@ -22,12 +22,13 @@ sys.path.insert(0, str(HERE.parent / "shared"))
 sys.path.insert(0, str(HERE))
 from enclosure import X0, Z_F  # noqa: E402
 from cabinet import DRIVER_Y, PANEL_NAMES  # noqa: E402
-
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "shared"))
+from names import stored  # noqa: E402  (results where run.py writes them, or stored earlier)
 lp.plot.style.use()                                  # the loudpy figure style for this script
 
 files = HERE / "Results/Files"
-elastic = lp.load(files / "elastic.h5")
-rigid = lp.load(files / "rigid.h5")
+elastic = stored(HERE, "elastic")
+rigid = stored(HERE, "rigid")
 ahead = (X0, DRIVER_Y, Z_F + 1.0)                    # 1 m in front of the driver, on its axis [m]
 spl_e = elastic.far_field(ahead).spl().rename(label="elastic walls (MDF, plywood back)")
 spl_r = rigid.far_field(ahead).spl().rename(label="rigid walls")

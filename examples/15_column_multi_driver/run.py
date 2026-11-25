@@ -22,8 +22,9 @@ high-passed, the middle and bottom ones low-passed). python3 run.py circuit [40,
 circuit drawn in the interface — without solving again: res.redrive(two_way)); one force on the three coils at once
 (the default run) is one response.
 
-What this produces (Results/Files/)
-------------------------------------
+What this produces (the results <study>.h5 below: results/15_column_multi_driver/<study>_<stamp>.h5,
+stamped — plot.py reads the newest; meshes and caches: Results/Files/)
+----------------------------------------------------------------------
   - column.h5        : modal amplitudes, DtN coefficients and the pressure at every node, per
                        frequency (loudpy result format 3; the field is written as the sweep goes)
   - column_circuit.h5: the same driven by the circuit `parallel` (python3 run.py circuit)
@@ -78,5 +79,5 @@ if __name__ == "__main__":
     print(f"{hp} ×{len(NAMES)} | line {line_length():.3f} m, quarter-wave estimate {quarter_wave():.1f} Hz | "
           f"{len(FREQS)} frequencies ≤ {FREQS.max():.0f} Hz")
     study = lp.FrequencyResponse(scene, drive=DRIVE)
-    res = study.solve(FREQS, store=files / f"{TAG}.h5")
-    print(res, f"→ {files / (TAG + '.h5')}")
+    res = study.solve(FREQS, store=lp.result_path(HERE, TAG, study))
+    print(res)

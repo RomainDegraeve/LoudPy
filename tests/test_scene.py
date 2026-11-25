@@ -269,7 +269,7 @@ def test_scene_document_round_trip(driver, tmp_path):
     back = lp.Document.load(doc.save(tmp_path / "box.loudpy.json"))
     again = back.build()
     assert again.to_script() == scene.to_script()
-    assert "scene.cavity(" in back.to_script() and "store=HERE / 'results' / 'fr.h5'" in back.to_script()
+    assert "scene.cavity(" in back.to_script() and "store=lp.result_path(HERE, 'fr', study)" in back.to_script()
     built = lp.Document.of(lp.Scene(box_cabinet, [driver.place("main", at=(W / 2, H / 2))]).cavity())
     assert built.scene["params"]["cabinet"]["import"].endswith("test_scene.py:box_cabinet")
     with pytest.raises(lp.errors.ModelError, match="builder"):

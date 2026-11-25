@@ -12,25 +12,27 @@ Results/Figures/labyrinth_response.pdf
   3. polar curves at a few frequencies
 Results/Files/spl_1m.csv : the SPL curves as a table
 """
+import sys
 from pathlib import Path
 
 import numpy as np
 
 import loudpy as lp
 from labyrinth import X0, Y0, Z_F, mouth, quarter_wave
-
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "shared"))
+from names import stored, stored_path  # noqa: E402  (results where run.py writes them, or stored earlier)
 HERE = Path(__file__).resolve().parent               # this example's folder
 EXAMPLES = HERE.parent                               # examples/
 
 lp.plot.style.use()                       # the loudpy figure style for this script
 
 here = HERE / "Results"
-other = {"exterior.h5": EXAMPLES / "11_box_radiation/Results/Files/exterior.h5",
-         "vented_merged.h5": EXAMPLES / "12_box_vented/Results/Files/vented_merged.h5"}
+other = {"exterior.h5": stored_path(EXAMPLES / "11_box_radiation", "exterior"),
+         "vented_merged.h5": stored_path(EXAMPLES / "12_box_vented", "vented_merged")}
 DIST = 1.0
 POLAR_F = [50, 70, 100, 200, 500, 1000, 2000]
 
-res = lp.load(here / "Files/labyrinth.h5")
+res = stored(HERE, "labyrinth")
 f_qw = quarter_wave()
 boxes = {k: lp.load(other[n]) for k, n in (("sealed box", "exterior.h5"), ("vented box", "vented_merged.h5"))
          if other[n].exists()}

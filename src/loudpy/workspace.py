@@ -369,7 +369,6 @@ class Workspace:
 
     def result(self, path) -> dict:
         """One result file: {"name", "path", "study", "fingerprint", "state"} (results())."""
-        import h5py
         path = Path(path)
         try:
             stamp = path.stat().st_mtime_ns
@@ -377,14 +376,9 @@ class Workspace:
             stamp = -1
         cached = self._catalog.get(path)
         if cached is None or cached[0] != stamp:
-            prov: dict = {}
+            from loudpy.results.schema import info
             try:
-                with h5py.File(path, "r") as f:
-                    g = f.get("study")
-                    if g is None and "runs" in f and len(f["runs"]):   # a sweep: its first run's
-                        g = f["runs"][sorted(f["runs"])[0]].get("study")
-                    if g is not None and "settings" in g.attrs:
-                        prov = dict(json.loads(g.attrs["settings"]).get("provenance") or {})
+                prov = info(path)["provenance"]                          # (a sweep: its first run's)
             except (OSError, ValueError, KeyError):
                 prov = {}
             self._catalog[path] = cached = (stamp, prov)

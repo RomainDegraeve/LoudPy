@@ -7,8 +7,8 @@ loudpy.results — the outcome of a study, independent of how it was computed.
                     know their quantity and units, plot themselves and export (.csv, .mat, .npz, .vtu)
   Point … Line      where to evaluate (selection)
   quantities        names, labels, symbols and units of every quantity
-  load              lp.load(file | folder | glob | list): format 2, and format 1 of the former studies
-  schema / legacy   result format 3 (HDF5, written by Results.save; format 2 read) / reader of format 1
+  load              lp.load(file | folder | glob | list), lp.load(folder, study=…): formats 3, 2 and 1
+  schema / legacy   result format 3 (HDF5, written by Results.save; format 2 read; info(path): a file's head) / reader of format 1
   description       the model description and study settings stored with the results
   SweepResults      the results of a parametric sweep (one file, one run per value)
 """

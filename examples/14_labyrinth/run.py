@@ -14,8 +14,9 @@ Quick check of a few frequencies (separate labyrinth_test.h5):  python3 run.py 4
 Settings: F_MAX (default 2 kHz: the 3 kHz mesh needs more than 8 GB of RAM without swapping —
 set F_MAX = 3000 on a larger machine), frequency steps below.
 
-What this produces (Results/Files/)
-------------------------------------
+What this produces (the results <study>.h5 below: results/14_labyrinth/<study>_<stamp>.h5,
+stamped — plot.py reads the newest; meshes and caches: Results/Files/)
+----------------------------------------------------------------------
   - labyrinth.h5            : driver modal amplitudes, DtN coefficients and the pressure at every
                               node, per frequency (loudpy result format 3, streamed during the sweep)
   - air_<f>Hz.msh           : the air mesh of each band
@@ -66,5 +67,6 @@ if __name__ == "__main__":
     scene.mesh(files)
     print(f"{hp} | line {line_length():.3f} m, quarter-wave estimate {quarter_wave():.1f} Hz | "
           f"{len(FREQS)} frequencies ≤ {FREQS.max():.0f} Hz")
-    res = lp.FrequencyResponse(scene, drive=lp.Force(1.0)).solve(FREQS, store=files / f"{TAG}.h5")
-    print(res, f"→ {files / (TAG + '.h5')}")
+    study = lp.FrequencyResponse(scene, drive=lp.Force(1.0))
+    res = study.solve(FREQS, store=lp.result_path(HERE, TAG, study))
+    print(res)
