@@ -129,6 +129,11 @@ class SweepResults:
             return Data(stacked, {self.names[0]: values, **inner_coords}, q, meta=meta)
         return Data(stacked, {"run": np.arange(len(self.runs)), **inner_coords}, q, meta=meta)
 
+    @property
+    def provenance(self) -> dict:
+        """What made these results (Results.provenance of its runs: the study, the simulation, the fingerprint)."""
+        return self.results[0].provenance if self.results else {}
+
     # ── files ───────────────────────────────────────────────────────────────
     def save(self, path, name: str | None = None, simulation: str | None = None):
         """One result file with every run (format 3, read back by lp.load as a SweepResults): the file `path`, or

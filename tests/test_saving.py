@@ -82,7 +82,8 @@ def test_a_sweep_is_one_file(tmp_path, mesh_dir):
     with pytest.raises(ValueError, match="one .h5 file"):
         res.save(tmp_path / "runs")
     path = res.save(tmp_path, name="sweep")
-    assert lp.load(tmp_path, study="sweep").is_sweep and info(path)["sweep"]
+    back = lp.load(tmp_path, study="sweep")
+    assert back.is_sweep and info(path)["sweep"] and back.provenance["study"] == "sweep"
 
 
 def test_exports_by_suffix(tmp_path, mesh_dir):
