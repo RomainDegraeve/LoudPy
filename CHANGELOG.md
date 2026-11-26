@@ -5,6 +5,10 @@ versions follow [Semantic Versioning](https://semver.org/) (0.x: the API may sti
 
 ## [Unreleased]
 
+- Modes: `n_shifts` sets the number of multishift shifts (log-spaced over f_min … f_max; None: about one per octave,
+  as before), stored with the results (`block.meta["n_shifts"]`); `method="arpack"` with `orders` is refused (orders
+  are computed by multishift — it was silently ignored), and so is `n_shifts` outside structural multishift. Schema
+  parameters say when they apply (`Param.when` / `Param.applies`): the interface shows each method's settings only.
 - A geometry without named curves (a STEP sketch of lines only) gets its boundary suggestions all the same:
   `lp.suggest` adds its unnamed pieces — the curves two regions share (one row, selected by
   `lp.Interface(lp.Near(a point in each))`, valid before and after meshing and when regions are renamed) and each outer

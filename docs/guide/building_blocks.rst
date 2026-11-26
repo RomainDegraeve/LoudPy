@@ -920,22 +920,27 @@ Given by the context: model.
      - choice, in .solve()
      - 
      - ``'multishift'``
-     - multishift: shifts over the band · arpack: n_modes around f_target Choices: multishift, arpack.
+     - multishift: several shift-invert solves over the band · arpack: one solve, n_modes around f_target (without orders) Choices: multishift, arpack.
+   * - ``n_shifts``
+     - integer, in .solve()
+     - 
+     - ``None``
+     - number of shifts, log-spaced over f_min … f_max (empty: about one per octave) Range: > 0.
    * - ``n_per_shift``
      - integer, in .solve()
      - 
      - ``20``
-     - modes per shift (multishift) Range: > 0.
+     - modes computed around each shift Range: > 0.
    * - ``n_modes``
      - integer, in .solve()
      - 
      - ``30``
-     - modes around f_target (arpack) Range: > 0.
+     - modes computed around f_target Range: > 0.
    * - ``f_target``
      - number, in .solve()
      - Hz
      - ``100.0``
-     - centre of the arpack search Range: > 0.
+     - the frequency the modes are sought around Range: > 0.
    * - ``output``
      - block (study_options), in .solve()
      - 

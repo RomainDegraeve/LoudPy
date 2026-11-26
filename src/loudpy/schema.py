@@ -61,7 +61,8 @@ _TUPLE_KINDS = {"point", "pair", "range"}
 @dataclass(frozen=True)
 class Param:
     """One parameter of a block. kind: KINDS; unit: SI unit of the value; group: the form section it is shown in;
-    optional: None is allowed (an override: "the material's"); min / max: values must be > min (≥ with
+    optional: None is allowed (an override: "the material's"); when: the values of the block's other parameters
+    it applies with (Param.applies: a form shows it only then); min / max: values must be > min (≥ with
     min_inclusive) and < max (≤ with max_inclusive) — the block refuses the others too (a test checks it);
     of: for kind "block" / "blocks", the section of the nested nodes; stage: "solve" for an argument of a study's
     .solve(); key: the block's key parameter (an item type's, shown next to its type in a table: a solid's
@@ -81,6 +82,14 @@ class Param:
     stage: str = ""
     key: bool = False
     default: Any = REQUIRED
+    when: tuple = ()                    # when it applies: alternatives, each ((other param, allowed values), …)
+
+    def applies(self, values: dict) -> bool:
+        """Whether the parameter applies given the block's other values (`when`: any alternative whose every
+        (parameter, allowed values) holds; none: always). A form hides it otherwise; its value is kept."""
+        if not self.when:
+            return True
+        return any(all(values.get(k) in allowed for k, allowed in alt) for alt in self.when)
 
     @property
     def required(self) -> bool:
@@ -433,12 +442,20 @@ def _catalog() -> dict[str, Block]:
                stage="solve"),
             _p("orders", "integers", help="azimuthal orders m (empty: the axisymmetric modes, m = 0)",
                group="Frequencies", optional=True, stage="solve"),
-            _p("method", "choice", help="multishift: shifts over the band · arpack: n_modes around f_target",
-               group="Solver", choices=("multishift", "arpack"), stage="solve"),
-            _p("n_per_shift", "integer", help="modes per shift (multishift)", group="Solver", min=0,
-               stage="solve"),
-            _p("n_modes", "integer", help="modes around f_target (arpack)", group="Solver", min=0, stage="solve"),
-            _p("f_target", "number", "Hz", "centre of the arpack search", "Solver", min=0, stage="solve"),
+            _p("method", "choice", help="multishift: several shift-invert solves over the band · arpack: one solve, "
+               "n_modes around f_target (without orders)", group="Solver", choices=("multishift", "arpack"),
+               stage="solve", when=((("physics", ("structure",)),),)),
+            _p("n_shifts", "integer", help="number of shifts, log-spaced over f_min … f_max (empty: about one per "
+               "octave)", group="Solver", min=0, optional=True, stage="solve",
+               when=((("physics", ("structure",)), ("method", ("multishift",))),)),
+            _p("n_per_shift", "integer", help="modes computed around each shift", group="Solver", min=0,
+               stage="solve", when=((("physics", ("structure",)), ("method", ("multishift",))),
+                                    (("physics", ("coupled",)),))),
+            _p("n_modes", "integer", help="modes computed around f_target", group="Solver", min=0, stage="solve",
+               when=((("physics", ("structure",)), ("method", ("arpack",))), (("physics", ("acoustic",)),))),
+            _p("f_target", "number", "Hz", "the frequency the modes are sought around", "Solver", min=0,
+               stage="solve", when=((("physics", ("structure",)), ("method", ("arpack",))),
+                                    (("physics", ("acoustic",)),))),
             OUTPUT],
             context=("model",), solve=lp.Modes.solve,
             code_only={"options": "solver options (f_targets, mac_tol, coupled-mode covering …): see Modes.solve"}),

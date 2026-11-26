@@ -65,13 +65,15 @@ class Modes(Study):
         self.physics = physics
 
     def solve(self, f_max: float, f_min: float = 20.0, *, orders=None, method: str = "multishift",
-              n_per_shift: int = 20, n_modes: int = 30, f_target: float = 100.0, output=None,
+              n_shifts: int | None = None, n_per_shift: int = 20, n_modes: int = 30, f_target: float = 100.0,
+              output=None,
               **options) -> ModeResults:
         """
         f_min, f_max : band of the modes [Hz]
         output       : an lp.Output (fields kept, every n-th mode, probes over the modes); 2D models
         orders       : azimuthal orders m (structure only; None: the axisymmetric modes, m = 0)
-        method       : "multishift" (shifts over the band, n_per_shift modes each) or "arpack"
+        method       : "multishift" (n_shifts shifts over the band — None: about one per octave —, n_per_shift
+                       modes each) or "arpack"
                        (n_modes around f_target)
         options      : multishift: f_targets, dedup_freq_tol_hz, mac_tol;
                        coupled: dtn_center, dtn_half, dtn_order, mac_tol, cover_zeta_max, cover_overlap,
@@ -85,6 +87,16 @@ class Modes(Study):
         if int(n_per_shift) < 1 or int(n_modes) < 1 or not f_target > 0:
             raise ModelError(f"Modes.solve: n_per_shift ≥ 1, n_modes ≥ 1 and f_target > 0, got {n_per_shift!r}, "
                              f"{n_modes!r} and {f_target!r}")
+        if n_shifts is not None:
+            if int(n_shifts) < 1:
+                raise ModelError(f"Modes.solve: n_shifts ≥ 1 (or None: about one per octave), got {n_shifts!r}")
+            if self.physics != "structure" or method != "multishift":
+                raise ModelError("Modes.solve: n_shifts is for structural modes with method='multishift' (coupled "
+                                 "modes place their shifts themselves; arpack and acoustic modes use n_modes around "
+                                 "f_target)")
+            if "f_targets" in options:
+                raise ModelError("Modes.solve: n_shifts or f_targets (the shift frequencies themselves), not both")
+            options = {**options, "f_targets": eig.default_shifts(f_min, f_max, int(n_shifts))}
         if self.is_scene:                       # drivers + cavity modes (scene configuration "cavity")
             if output is not None:
                 raise ModelError("output= is for 2D models (scene results keep modal coordinates only)")
@@ -99,6 +111,9 @@ class Modes(Study):
         parts = self._parts()
         if self.physics == "structure":
             if orders is not None:
+                if method != "multishift":
+                    raise ModelError(f"Modes.solve: azimuthal orders are computed by method='multishift' (n_shifts, "
+                                     f"n_per_shift), not {method!r}")
                 blocks = [fourier_modes(parts, m, f_min, f_max, n_per_shift, **options) for m in orders]
             elif method == "multishift":
                 blocks = [structural_modes(parts, f_min, f_max, n_per_shift=n_per_shift, **options)]
@@ -156,7 +171,7 @@ def structural_modes(parts, f_min, f_max, *, n_per_shift=None, n_modes=None, f_t
         s_vals, phi = eig.multishift(K, M, C, f_targets, n_per_shift, hysteretic)
         s_vals, phi = eig.mac_deduplicate(s_vals, phi, freq_tol_rad=2.0 * np.pi * dedup_freq_tol_hz,
                                           mac_tol=mac_tol)
-        params = dict(n_modes_per_shift=n_per_shift, f_min=f_min, f_max=f_max)
+        params = dict(n_modes_per_shift=n_per_shift, n_shifts=len(f_targets), f_min=f_min, f_max=f_max)
     return _structural_block(s, parts, "m0", 0, s_vals, phi, K, M, C, hysteretic, viscous, f_min, f_max, params)
 
 
@@ -183,7 +198,7 @@ def fourier_modes(parts, m, f_min, f_max, n_per_shift=20, f_targets=None, dedup_
     f_targets = f_targets if f_targets is not None else eig.default_shifts(f_min, f_max)
     s_vals, phi = eig.multishift(K, M, C, f_targets, n_per_shift, hysteretic)
     s_vals, phi = eig.mac_deduplicate(s_vals, phi, freq_tol_rad=2.0 * np.pi * dedup_freq_tol_hz, mac_tol=mac_tol)
-    params = dict(azimuthal_order=m, n_modes_per_shift=n_per_shift, f_min=f_min, f_max=f_max)
+    params = dict(azimuthal_order=m, n_modes_per_shift=n_per_shift, n_shifts=len(f_targets), f_min=f_min, f_max=f_max)
     return _structural_block(s, parts, f"m{m}", m, s_vals, phi, K, M, C, hysteretic, viscous, f_min, f_max,
                              params)
 

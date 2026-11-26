@@ -270,10 +270,13 @@ def filter_modes(s_vals, phi, f_min, f_max, filter_halfplane,
     return (frequencies[idx], zeta[idx], loss_factors[idx],
             s_vals[idx], phi[:, idx])
 
-def default_shifts(f_min: float, f_max: float) -> list[float]:
-    """Log-spaced shifts, ~1 per octave, across [f_min, f_max]."""
-    n_shifts = max(2, int(np.ceil(np.log2(f_max / max(f_min, 1.0)))))
-    return np.geomspace(max(f_min, 20.0), f_max, n_shifts).tolist()
+def default_shifts(f_min: float, f_max: float, n_shifts: int | None = None) -> list[float]:
+    """Log-spaced shifts across [f_min, f_max]: n_shifts of them (None: ~1 per octave, at least 2)."""
+    if n_shifts is None:
+        n_shifts = max(2, int(np.ceil(np.log2(f_max / max(f_min, 1.0)))))
+    if int(n_shifts) == 1:
+        return [float(np.sqrt(max(f_min, 20.0) * f_max))]
+    return np.geomspace(max(f_min, 20.0), f_max, int(n_shifts)).tolist()
 
 def multishift(K, M, C, f_targets, n_modes_per_shift,
                hysteretic) -> tuple:
