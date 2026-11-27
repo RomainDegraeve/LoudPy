@@ -184,3 +184,20 @@ def test_set_verbosity_prints_progress(capsys):
     logging.getLogger("loudpy.test").info("hello from loudpy")
     lp.set_verbosity("warning")
     assert "hello from loudpy" in capsys.readouterr().err
+
+
+def test_rayleigh_damping_from_a_materials_loss_factor():
+    """A solid with Rayleigh damping (the default) on a material with a loss factor and no Rayleigh fit: the fit of
+    that loss factor (as the library's: eta at 100 Hz and 1 kHz); a material with neither: a clear refusal."""
+    import pytest
+
+    import loudpy as lp
+    from loudpy.model.materials import MaterialLibrary
+    from loudpy.physics.parts import region_parameters
+    m = lp.Material("membrane", kind="solid", rho=1000.0, E=2e9, nu=0.35, loss_factor=0.05)
+    p = region_parameters(lp.Solid("membrane", "membrane"), MaterialLibrary({"membrane": m}))
+    r = lp.Rayleigh.from_loss_factor(0.05)
+    assert (p["alpha_ray"], p["beta_ray"]) == (r.alpha, r.beta)
+    bare = MaterialLibrary({"membrane": lp.Material("membrane", kind="solid", rho=1000.0, E=2e9, nu=0.35)})
+    with pytest.raises(lp.errors.MaterialError, match="neither a Rayleigh fit"):
+        region_parameters(lp.Solid("membrane", "membrane"), bare)

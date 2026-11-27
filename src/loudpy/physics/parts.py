@@ -16,7 +16,7 @@ from __future__ import annotations
 import numpy as np
 
 from loudpy.geometry.naming import pml_layer
-from loudpy.errors import ModelError
+from loudpy.errors import MaterialError, ModelError
 
 
 class Part:
@@ -160,7 +160,16 @@ def region_parameters(region, lib) -> dict:
         elif isinstance(d, Rayleigh):
             alpha, beta = d.alpha, d.beta
             if alpha is None or beta is None:
-                fit = m.require("rayleigh")["rayleigh"]
+                if m.rayleigh is not None:
+                    fit = m.rayleigh
+                elif m.loss_factor is not None:                       # its loss factor, fitted as the library's are
+                    r = Rayleigh.from_loss_factor(float(m.loss_factor))
+                    fit = (r.alpha, r.beta)
+                else:
+                    raise MaterialError(
+                        f"{region.name}: Rayleigh damping, but material {m.name!r} has neither a Rayleigh fit "
+                        f"(rayleigh=) nor a loss factor (loss_factor=): give it one, or choose the region's damping "
+                        f"(Hysteretic with eta, Undamped)")
                 alpha, beta = (fit[0] if alpha is None else alpha), (fit[1] if beta is None else beta)
             p.update(alpha_ray=alpha, beta_ray=beta)
         else:

@@ -5,6 +5,10 @@ versions follow [Semantic Versioning](https://semver.org/) (0.x: the API may sti
 
 ## [Unreleased]
 
+- A solid with Rayleigh damping (the default) whose material has a loss factor but no Rayleigh fit takes the Rayleigh
+  fit of that loss factor (`Rayleigh.from_loss_factor`, η matched at 100 Hz and 1 kHz, as the library's fits) instead
+  of stopping; a material with neither says which region and the three ways out (a fit, a loss factor, the region's
+  damping: Hysteretic or Undamped).
 - Modes: `n_shifts` sets the number of multishift shifts (log-spaced over f_min … f_max; None: about one per octave,
   as before), stored with the results (`block.meta["n_shifts"]`); `method="arpack"` with `orders` is refused (orders
   are computed by multishift — it was silently ignored), and so is `n_shifts` outside structural multishift. Schema
