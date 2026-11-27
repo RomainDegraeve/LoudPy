@@ -66,3 +66,21 @@ def test_multishift_takes_its_number_of_shifts(mesh_dir):
     assert shown(physics="structure", method="arpack") == ["method", "n_modes", "f_target"]
     assert shown(physics="coupled", method="multishift") == ["n_per_shift"]
     assert shown(physics="acoustic", method="multishift") == ["n_modes", "f_target"]
+
+
+def test_modes_progress_counts_finished_shifts_over_all_orders(mesh_dir):
+    """A modes search over several orders reports one count: the shifts finished so far, over every order (orders 0
+    and 1 with 3 shifts each: 0/6 … 6/6), so a long first shift shows 0 % and an interface's estimate of the time left
+    starts after one shift is done."""
+    import loudpy as lp
+    from loudpy import progress
+    seen = []
+    progress.set_callback(lambda what, i, n: seen.append((what, i, n)))
+    try:
+        lp.Modes(api.plate_problem(mesh_dir)).solve(f_max=3000.0, orders=[0, 1], n_shifts=3, n_per_shift=10)
+    finally:
+        progress.set_callback(None)
+    counts = [(i, n) for _, i, n in seen]
+    assert counts[0] == (0, 6) and counts[-1] == (6, 6) and {n for _, n in counts} == {6}
+    assert [i for i, _ in counts] == sorted(i for i, _ in counts)
+    assert seen[0][0].startswith("order 0: ") and seen[-1][0].startswith("order 1: ")

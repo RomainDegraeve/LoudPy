@@ -291,7 +291,7 @@ def multishift(K, M, C, f_targets, n_modes_per_shift,
     s_all, phi_all = [], []
     from loudpy import progress
     for k_t, ft in enumerate(f_targets):
-        progress.step("modes: shift", k_t + 1, len(f_targets))
+        progress.step("modes: shifts done", k_t, len(f_targets))      # done so far (a shift can take long)
         try:
             if C is not None:
                 s_v, phi_v = solve_qep(K, M, C, n_modes_per_shift, ft)
@@ -303,6 +303,7 @@ def multishift(K, M, C, f_targets, n_modes_per_shift,
         except Exception as e:  # noqa: BLE001  (a shift that fails is said and skipped)
             log.info(f"    shift {ft:7.1f} Hz → FAILED ({type(e).__name__}: {e})")
 
+    progress.step("modes: shifts done", len(f_targets), len(f_targets))
     if not s_all:
         raise SolverError("All shifts failed — no modes collected.")
 

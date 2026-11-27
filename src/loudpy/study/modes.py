@@ -114,7 +114,11 @@ class Modes(Study):
                 if method != "multishift":
                     raise ModelError(f"Modes.solve: azimuthal orders are computed by method='multishift' (n_shifts, "
                                      f"n_per_shift), not {method!r}")
-                blocks = [fourier_modes(parts, m, f_min, f_max, n_per_shift, **options) for m in orders]
+                from loudpy import progress
+                blocks = []
+                for k, m in enumerate(orders):                       # one progress count over every order
+                    with progress.part(k, len(orders), f"order {m}: "):
+                        blocks.append(fourier_modes(parts, m, f_min, f_max, n_per_shift, **options))
             elif method == "multishift":
                 blocks = [structural_modes(parts, f_min, f_max, n_per_shift=n_per_shift, **options)]
             elif method == "arpack":
