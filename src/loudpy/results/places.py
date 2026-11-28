@@ -93,6 +93,11 @@ def _boundary_nodes(bd, mesh):
     return tags, r, np.asarray(s), w, np.asarray(which)
 
 
+def _cross(a, b):
+    """The z component of a × b for 2D vectors (np.cross refuses 2D vectors since NumPy 2)."""
+    return a[:, 0] * b[:, 1] - a[:, 1] * b[:, 0]
+
+
 _MID = {6: (3, 4, 5)}                     # quadratic triangles: the mid-edge rule (exact for quadratics)
 
 
@@ -104,10 +109,10 @@ def _region_nodes(names, mesh):
         cells = np.asarray(mesh.groups[n].cells)
         k = cells.shape[1]
         corners = xy[mesh.rows_of(cells[:, :3].ravel())].reshape(-1, 3, 2)
-        area = 0.5 * np.abs(np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0]))
+        area = 0.5 * np.abs(_cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0]))
         if k == 4 or k in (8, 9):                                    # quadrilaterals: two triangles
             c4 = xy[mesh.rows_of(cells[:, :4].ravel())].reshape(-1, 4, 2)
-            area = area + 0.5 * np.abs(np.cross(c4[:, 2] - c4[:, 0], c4[:, 3] - c4[:, 0]))
+            area = area + 0.5 * np.abs(_cross(c4[:, 2] - c4[:, 0], c4[:, 3] - c4[:, 0]))
         cols = _MID.get(k, tuple(range(3 if k in (3, 6, 10) else 4)))
         for j in cols:
             for t, a in zip(cells[:, j], area):
