@@ -5,9 +5,9 @@ versions follow [Semantic Versioning](https://semver.org/) (0.x: the API may sti
 
 ## [Unreleased]
 
-- Renamed (no COMSOL / Ansys names in loudpy): `lp.read_comsol` → `lp.read_reference`, `ComsolTable` →
-  `ReferenceTable`, module `loudpy.results.comsol` → `loudpy.results.reference` (the same reader of text exports
-  with `%` headers); the reference cases live in `tests/data/reference`.
+- Renamed, without vendor names: the reader of reference results is `lp.read_reference` (its table
+  `ReferenceTable`, module `loudpy.results.reference`): the same reader of text exports with `%` headers; the
+  reference cases live in `tests/data/reference`.
 - `lp.plot.spec.fields(res)`: the fields quantity "field" offers — the stored ones, and v and a (jω u, −ω² u) of a
   harmonic displacement. A deformed shape at one phase is scaled by the amplitude (meta "amplitude"), so it swings
   with the motion over the phases instead of being rescaled at each one.
