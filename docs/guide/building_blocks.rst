@@ -2617,6 +2617,7 @@ Public names of loudpy that a simulation is not made of:
 - ``Polar``: evaluation of results
 - ``Arc``: evaluation of results
 - ``Line``: evaluation of results
+- ``On``: evaluation of results
 - ``spl``: evaluation of results
 - ``load``: reads results
 - ``load_data``: reads results

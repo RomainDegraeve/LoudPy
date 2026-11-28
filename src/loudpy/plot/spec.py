@@ -17,7 +17,11 @@ generate its widgets, step through them or play them as an animation.
                                      controls entry (the solved axis) and phase (0…360°: play it to animate)
 
 QUANTITIES lists what can be plotted (each says when results offer it); WHERE the places a quantity is evaluated
-at (a point, a line, an arc); VIEWS the ways of showing it; quantities(res) what these results offer.
+at (a point, a line, an arc, a named boundary or region: {"kind": "on", "name": "coil1", "reduce": "mean"}); VIEWS
+the ways of showing it (curve, map, polar, table, field, view3d, bode, nyquist, balloon); quantities(res) what these
+results offer. spec.style: how it is shown — the options of loudpy.plot.options (show, normalize, axis scales and
+limits, line style, marker, colours, colormap and range, levels, contours, deformed shape …), checked here and
+applied by Resolved.plot (loudpy.plot.draw); Resolved.table() the rows of a table.
 """
 from __future__ import annotations
 
@@ -30,7 +34,7 @@ import numpy as np
 
 from loudpy.errors import ResultsError
 
-VIEWS = ("curve", "map", "polar", "table", "field", "view3d")
+VIEWS = ("curve", "map", "polar", "table", "field", "view3d", "bode", "nyquist", "balloon")
 PHASES = tuple(float(x) for x in range(0, 360, 15))                  # the phase control's values [°]
 
 
@@ -41,7 +45,7 @@ class Quantity:
     title: str
     offered: Callable
     evaluate: Callable
-    where: tuple = ("point", "line", "arc")
+    where: tuple = ("point", "line", "arc", "on")
     components: tuple = ()
 
 
@@ -61,7 +65,7 @@ QUANTITIES: dict[str, Quantity] = {
     "spl": Quantity("SPL", lambda r: getattr(r, "kind", "") == "frequency" and "p" in _names(r),
                     lambda r, at, s: r.spl(at=at)),
     "pressure": Quantity("Pressure", lambda r: _forced(r) and "p" in _names(r), lambda r, at, s: r.pressure(at=at)),
-    "displacement": Quantity("Displacement", lambda r: _forced(r) and "u" in _names(r),
+    "displacement": Quantity("Displacement", lambda r: "u" in _names(r),                 # modes too: their shapes
                              lambda r, at, s: r.displacement(at=at, component=_component(s)), components=("z", "r")),
     "velocity": Quantity("Velocity", lambda r: _forced(r) and "u" in _names(r),
                          lambda r, at, s: r.velocity(at=at, component=_component(s)), components=("z", "r")),
@@ -88,8 +92,9 @@ def quantities(res) -> list[str]:
 def where(spec_where: dict | None, dim: int):
     """The selection of a `where` (plain data) for results of dimension `dim` (2: r, z; 3: x, y, z):
     {"kind": "point", "point": [r, z]}, {"kind": "line", "start": […], "end": […], "n": 100},
-    {"kind": "arc", "radius": R, "from": 0, "to": 90, "step": 2, "center": […]}; None: no place."""
-    from loudpy.results.selection import Arc, Line, Point
+    {"kind": "arc", "radius": R, "from": 0, "to": 90, "step": 2, "center": […]}, {"kind": "on", "name": "coil1",
+    "reduce": None | "mean" | "integral" | "max"} (a named boundary or region: lp.On); None: no place."""
+    from loudpy.results.selection import Arc, Line, On, Point
     w = dict(spec_where or {})
     kind = w.get("kind")
     if kind is None:
@@ -98,11 +103,13 @@ def where(spec_where: dict | None, dim: int):
         return Point(*[float(x) for x in w["point"]])
     if kind == "line":
         return Line(np.asarray(w["start"], float), np.asarray(w["end"], float), int(w.get("n", 100)))
+    if kind == "on":
+        return On(w["name"], w.get("reduce") or None)
     if kind == "arc":
         lo, hi, step = float(w.get("from", 0.0)), float(w.get("to", 90.0)), float(w.get("step", 2.0))
         center = w.get("center") or [0.0] * dim
         return Arc(float(w["radius"]), np.arange(lo, hi + 1e-9, step), np.asarray(center, float))
-    raise ResultsError(f"where: kind point, line or arc, got {kind!r}")
+    raise ResultsError(f"where: kind point, line, arc or on, got {kind!r}")
 
 
 def _axis(res) -> tuple[str, str, np.ndarray]:
@@ -176,17 +183,28 @@ class Resolved:
     view: str
     controls: list
     title: str = ""
+    style: dict = dataclasses.field(default_factory=dict)
 
     def control(self, dim: str) -> Control | None:
         """The control of a dimension (None: it has none)."""
         return next((c for c in self.controls if c.dim == dim), None)
 
     def plot(self, ax=None, **kwargs):
-        """The same plot in matplotlib, loudpy's style (Data.plot / Field.plot); returns the axes."""
-        kind = {"curve": "line", "map": "map", "polar": "polar"}.get(self.view)
-        if hasattr(self.data, "mesh"):
-            return self.data.plot(ax=ax, **kwargs)
-        return self.data.plot(ax=ax, kind=kind, **kwargs)
+        """The same plot in matplotlib, loudpy's style, with the spec's style options (loudpy.plot.draw); returns
+        the axes (bode: the two axes)."""
+        from loudpy.plot.draw import draw
+        return draw(self, ax=ax, style=self.style, **kwargs)
+
+    def shown(self):
+        """The data as the style shows it (show, normalize, mirror: loudpy.plot.draw.prepare); a field as it is."""
+        from loudpy.plot.draw import prepare
+        return self.data if hasattr(self.data, "mesh") else prepare(self.data, self.style)
+
+    def table(self) -> tuple[list, list]:
+        """(header, rows) of the data as shown, as text (the table view)."""
+        from loudpy.plot.draw import table_rows
+        from loudpy.plot.options import get
+        return table_rows(self.shown(), int(get(self.style, "digits")))
 
 
 @dataclass
@@ -232,6 +250,11 @@ class PlotSpec:
     def resolve(self, res) -> Resolved:
         """The data this spec shows on `res` (a sweep: the run at["run"]) and the controls of every dimension not
         plotted."""
+        from loudpy.plot.options import check
+        try:
+            style = check(self.style, self.view)
+        except ValueError as e:
+            raise ResultsError(str(e)) from None
         controls: list = []
         if getattr(res, "is_sweep", False):
             runs = [", ".join(f"{k} = {v:g}" for k, v in r.items()) for r in res.runs]
@@ -247,7 +270,9 @@ class PlotSpec:
             raise ResultsError(f"these {getattr(res, 'kind', '')} results do not offer {self.quantity!r} "
                                f"(they offer {quantities(res)})")
         if self.quantity == "field":
-            return self._field(res, controls)
+            out = self._field(res, controls)
+            out.style = style
+            return out
         dim = _dim(res)
         sel = where(self.where, dim) if q.where else None
         if q.where and sel is None:
@@ -262,19 +287,19 @@ class PlotSpec:
             values = list(np.asarray(d.coords[name]).tolist())
             k = _index(values, self.at.get(name))
             unit = {"f": "Hz", "t": "s", "s": "m", "angle": "°"}.get(name, "")
-            controls.append(Control(name, {"f": "frequency", "t": "time", "s": "distance",
-                                           "angle": "angle"}.get(name, name), values, k, unit))
+            controls.append(Control(name, {"f": "frequency", "t": "time", "s": "distance", "angle": "angle",
+                                           "node": "node"}.get(name, name), values, k, unit))
             d = d.isel(**{name: k})
         view = view or {0: "table", 1: "polar" if axes == ["angle"] and self.view == "polar" else "curve",
                         2: "map"}.get(len(axes), "table")
         if view not in VIEWS:
             raise ResultsError(f"view: one of {VIEWS}, got {view!r}")
         title = f"{q.title}" + (f" at {sel.describe()}" if sel is not None else "")
-        return Resolved(d, view, controls, title)
+        return Resolved(d, view, controls, title, style)
 
     @staticmethod
     def _default_axes(dims, view) -> list:
-        if view == "polar" and "angle" in dims:
+        if view in ("polar", "balloon") and "angle" in dims:
             return ["angle"]
         if view == "map" and len(dims) >= 2:
             return list(dims[:2])

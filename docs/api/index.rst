@@ -111,6 +111,7 @@ Evaluated data and selections
    Polar
    Arc
    Line
+   On
    results.Quantity
 
 Describing a simulation (lp.schema)
@@ -171,6 +172,16 @@ Plotting
    plot.View3D
    plot.Camera
    plot.default_cameras
+   plot.bode
+   plot.nyquist
+   plot.balloon
+   plot.table
+
+.. automodule:: loudpy.plot.options
+   :members: Option, options, option, check, get
+
+.. automodule:: loudpy.plot.draw
+   :members: prepare, draw, table_rows
 
 .. automodule:: loudpy.plot.view3d
    :members: tet_grid, tri_surface, clip, isolines, edges, dashed, colorbars_for

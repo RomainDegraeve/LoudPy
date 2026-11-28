@@ -11,6 +11,7 @@ Results: the outcome of any study, with one interface.
     res.displacement(at=(0, 0.02), component="z")   Data: u_z over frequency (complex amplitude)
     res.velocity(...), res.acceleration(...)     jω u, −ω² u (harmonic) or the stored v, a (transient)
     res.probe("p", at=lp.Line((0, .05), (0, .5)))   any field along any selection
+    res.displacement(at=lp.On("coil1", reduce="mean"), component="z")   on a named boundary or region (lp.On)
     res.scalar("I_coil"), res.impedance()        per-entry quantities as Data
 
     res.far_field(lp.Arc(1, range(0, 91, 10)), radius=0.2, baffle=z_b)   pressure outside the mesh (Kirchhoff–Helmholtz)
@@ -188,6 +189,13 @@ class Results:
             raise ResultsError(f"no boundary {name!r} (boundaries: {list(self.boundaries)})")
         return np.unique(np.concatenate([np.asarray(b["node_tags"]) for b in sel]))
 
+    def nodes_on(self, on, field: str | None = None, block: int = 0) -> dict:
+        """The nodes of a named boundary or region in the order lp.On gives its values: {"node_tags", "r", "z",
+        "s" (distance along a boundary), "piece" (which separate piece of it; both None for a region), "part",
+        "on"} (loudpy.results.places)."""
+        from loudpy.results.places import nodes_on
+        return nodes_on(self, on, field, block)
+
     def __repr__(self):
         v = self.values
         rng = f"{v.min():.4g}–{v.max():.4g}" if len(v) else "empty"
@@ -272,6 +280,10 @@ class Results:
             name, at = at, name
         name = canonical(name)
         sel = as_selection(at)
+        from loudpy.results.selection import On
+        if isinstance(sel, On):                                          # a named boundary or region
+            from loudpy.results.places import evaluate
+            return evaluate(self, name, sel.name, sel.reduce, component)
         out = []
         for b in self.blocks:
             if name not in b.fields:

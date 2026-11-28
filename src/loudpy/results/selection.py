@@ -7,6 +7,7 @@ a point, several points or one of these selections.
     lp.Polar(0.3, 30)                   at 0.3 m from the origin, 30° from the axis (2D: r = R sin θ, z = R cos θ)
     lp.Arc(0.3, range(0, 91, 2))        the same for several angles: an "angle" dimension [°]
     lp.Line((0, 0.05), (0, 0.5), n=100) points along a segment: an "s" dimension (distance [m])
+    lp.On("coil1"), lp.On("cone", reduce="mean")   a named boundary or region (loudpy.results.places)
 
 3D: Polar / Arc take center=(x, y, z), the axis (direction of 0°) and the plane of the angles:
     lp.Arc(1.0, range(-180, 181, 5), center=(0.1, 0.3, 0.03), axis="z", toward="x")
@@ -148,6 +149,31 @@ class Line(Selection):
 
     def __repr__(self):
         return f"Line({tuple(self.start)} → {tuple(self.end)}, n={self.n})"
+
+
+class On(Selection):
+    """A named part of the model: a boundary ("coil1") or a region ("cone", or a selector of domains) — results there
+    for every entry (loudpy.results.places): along the boundary (an "s" dimension, the distance [m]) or over the
+    region's nodes (a "node" dimension), or reduced to one value per entry: reduce "mean" / "integral" (over the
+    surface or volume of revolution) or "max" (the largest modulus). For res.probe / pressure / spl / displacement
+    / velocity / acceleration (axisymmetric results)."""
+
+    def __init__(self, name, reduce: str | None = None):
+        from loudpy.results.places import REDUCE
+        if reduce not in REDUCE:
+            raise ValueError(f"lp.On: reduce is one of {REDUCE}, got {reduce!r}")
+        self.name, self.reduce = name, reduce
+        self.dim = None if reduce else "s"
+
+    def points(self, d):
+        raise ValueError(f"{self!r} is a named part, not points: it is for res.probe / pressure / displacement … "
+                         f"(not a field's .at or a far field)")
+
+    def describe(self):
+        return f"{self.name}" + (f" ({self.reduce})" if self.reduce else "")
+
+    def __repr__(self):
+        return f"On({self.name!r}" + (f", reduce={self.reduce!r})" if self.reduce else ")")
 
 
 def as_selection(at) -> Selection:

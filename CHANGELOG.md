@@ -5,6 +5,21 @@ versions follow [Semantic Versioning](https://semver.org/) (0.x: the API may sti
 
 ## [Unreleased]
 
+- Results on a named part of the model: `lp.On(name, reduce=None)` is a place for every `at=` (`res.probe`,
+  `pressure`, `spl`, `displacement`, `velocity`, `acceleration`, PlotSpec `where={"kind": "on", …}`) — a boundary
+  (the model's items, stored with the results) or a region (a name or a selector of domains): along the boundary in
+  order (an "s" dimension, the distance; separate pieces one after the other) or over the region's nodes, or reduced
+  per entry: `"mean"` / `"integral"` over the surface or volume of revolution (2πr dA), `"max"` (the largest modulus).
+  `res.nodes_on(name)`: node tags, r, z, s and piece in the same order. Mode results offer the displacement to
+  PlotSpec (their shapes).
+- How a plot is shown: `lp.plot.options` declares the style options of a PlotSpec (show, normalize, axis scales and
+  limits, grid, legend, line style, marker, width, colour, palette, colormap and reversed, colour range, symmetric, dB
+  range, log colours, bands, isolines, colour bar, deformed shape, mesh edges, outlines, polar zero and direction,
+  table digits) with their kind, choices, default and views; `spec.style` is checked against them (unknown or wrong
+  options refused) and `Resolved.plot` applies them (`loudpy.plot.draw`). New views: `bode` (modulus and phase over
+  f), `nyquist` (Im against Re), `balloon` (a directivity revolved around the axis); tables drawn and given as rows
+  (`Resolved.table()`); `lp.plot.bode / nyquist / balloon / table` for Data.
+
 - A solid with Rayleigh damping (the default) whose material has a loss factor but no Rayleigh fit takes the Rayleigh
   fit of that loss factor (`Rayleigh.from_loss_factor`, η matched at 100 Hz and 1 kHz, as the library's fits) instead
   of stopping; a material with neither says which region and the three ways out (a fit, a loss factor, the region's

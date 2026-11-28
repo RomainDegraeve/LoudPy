@@ -15,6 +15,9 @@ an image, an interactive HTML page or a 3D model, or to turn in a window. The fu
     lp.plot.line([d1, d2], ax=axes[0])                   several Data on one axes
     lp.plot.map(d), lp.plot.polar(d), lp.plot.field(f)   explicit kinds
     lp.plot.directivity(res, f=[500, 2000], radius=0.3)  polar SPL (2D or 3D results)
+    lp.plot.bode(z), lp.plot.nyquist(z)                  modulus + phase over f; Im against Re (an impedance)
+    lp.plot.balloon(d.sel(f=1000))                       a directivity over the angle revolved around the axis (3D)
+    lp.plot.table(d)                                     Data drawn as a table
     lp.plot.modes(modes.order(0))                        grid of mode shapes
     lp.plot.coupled_modes(modes.set("fsi"), [0, 3, 7])   coupled modes: air pressure + structure
     lp.plot.mode_chart(modes, y="zeta" | "order")        modes as points: f against ζ or the order m
@@ -32,7 +35,9 @@ an image, an interactive HTML page or a 3D model, or to turn in a window. The fu
     lp.plot.default_cameras(bounds, drivers)             the default cameras of a scene
     lp.plot.animate(trans, "u.mp4")                      animations
     lp.plot.PlotSpec(quantity=…, where=…, axes=…, at=…)  a plot as plain data: .resolve(res) → the data and a control
-                                                         per dimension not plotted (slider / player), .to_dict()
+                                                         per dimension not plotted (slider / player), .to_dict();
+                                                         style={…}: how it is shown (lp.plot.options: log / linear
+                                                         axes, line style, colours, colormap, range, contours …)
     lp.plot.save(fig, "Results/Figures/x.pdf")           folders created, safe on synced folders
 
 Every lp.plot function draws in the loudpy style (loudpy.plot.style: serif fonts, Okabe–Ito colours,
@@ -58,6 +63,8 @@ from loudpy.plot.selection import selection
 from loudpy.plot.html import html
 from loudpy.plot.view3d import View3D
 from loudpy.plot.spec import PlotSpec
+from loudpy.plot import options
+from loudpy.plot.draw import balloon, bode, nyquist, table
 
 figure = style.figure
 save = style.save
@@ -86,4 +93,4 @@ def directivity(res, f, radius: float | None = None, angles=None, center=None, a
 
 __all__ = ["selection", "html", "style", "figure", "save", "pdf_pages", "label_panels", "data", "line", "map",
            "polar", "field", "boundary", "modes", "coupled_modes", "mode_chart", "directivity", "View3D",
-           "Camera", "default_cameras", "animate", "PlotSpec"]
+           "Camera", "default_cameras", "animate", "PlotSpec", "options", "bode", "nyquist", "balloon", "table"]

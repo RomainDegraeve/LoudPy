@@ -127,7 +127,55 @@ them):
    spec.to_dict()                      # kept with a simulation: lp.Document(...).plots
 
 ``lp.plot.spec.quantities(res)`` lists what results offer (SPL, pressure, displacement, velocity, acceleration,
-impedance, a field at one entry); ``where`` is a point, a line (dimension ``s``) or an arc (dimension ``angle``).
+impedance, a field at one entry); ``where`` is a point, a line (dimension ``s``), an arc (dimension ``angle``)
+or a named boundary or region (``{"kind": "on", "name": "coil1", "reduce": "mean"}``: :doc:`results`).
+
+How a plot is shown
+-------------------
+
+``spec.style`` holds how a plot is shown: the options of :mod:`loudpy.plot.options`, declared once (kind, choices,
+default, the views they apply to, a hint) so a program builds its form from them; a spec with an unknown or wrong option
+is refused. They cover what COMSOL's plot settings, Ansys' result display and ParaView's display properties offer:
+
+.. list-table::
+   :widths: 18 82
+
+   * - data
+     - ``show`` (modulus, real or imaginary part, phase, level dB, SPL; fields: instant, a component), ``normalize``
+       (to the maximum, or to the first value — the axis of a directivity), ``unwrap``, ``mirror`` (both sides)
+   * - axes
+     - ``xscale`` / ``yscale`` (auto, linear, log), ``xmin`` … ``ymax``, ``grid`` (major, both, none), ``title``,
+       ``legend`` (positions, outside, none)
+   * - lines
+     - ``line`` (solid, dashed, dotted, dash-dot, none: points), ``marker``, ``linewidth``, ``color``, ``palette``
+       (loudpy's Okabe–Ito, tab10, Dark2, Set1, gray, viridis)
+   * - colours
+     - ``cmap`` (by quantity, or viridis, magma, inferno, plasma, cividis, turbo, jet, rainbow, coolwarm, RdBu_r …),
+       ``reverse``, ``vmin`` / ``vmax``, ``symmetric``, ``range_db``, ``scale`` (log colours), ``levels`` (bands),
+       ``contours`` (isolines), ``colorbar``
+   * - fields
+     - ``deform`` (+ ``deform_scale``), ``edges`` (the mesh), ``outline``
+   * - polar, table
+     - ``zero``, ``clockwise``; ``digits``
+
+The views: ``curve``, ``map``, ``polar``, ``table``, ``field``, ``view3d``, and ``bode`` (modulus and phase over f),
+``nyquist`` (imaginary against real part: an impedance), ``balloon`` (a directivity revolved around the axis, 3D):
+
+.. code-block:: python
+
+   arc = {"kind": "arc", "radius": 0.3, "to": 90, "center": [0, z_b]}
+   lp.plot.PlotSpec(quantity="spl", where=arc, view="map",
+                    style={"normalize": "first", "levels": 12, "contours": 3, "cmap": "jet", "mirror": True})
+   lp.plot.PlotSpec(quantity="spl", where=arc, view="balloon", at={"f": 3000}, style={"range_db": 30})
+   lp.plot.PlotSpec(quantity="impedance", view="bode", style={"yscale": "linear", "grid": "both"})
+   lp.plot.PlotSpec(quantity="displacement", component="z", view="table",
+                    where={"kind": "on", "name": "coil1", "reduce": "mean"})       # out.table(): header, rows
+   lp.plot.PlotSpec(quantity="displacement", component="z", where={"kind": "on", "name": "fluidstructure1"},
+                    axes=["s"], at={"mode": 3}, style={"show": "real", "line": "dashed", "marker": "."})
+
+``Resolved.plot()`` draws with the style (:mod:`loudpy.plot.draw`), ``Resolved.shown()`` gives the data as the style
+shows it and ``Resolved.table()`` the rows of a table; ``lp.plot.bode``, ``nyquist``, ``balloon`` and ``table`` draw
+Data directly.
 
 Selections
 ----------

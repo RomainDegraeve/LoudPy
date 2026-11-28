@@ -15,8 +15,8 @@ Evaluating results returns **labelled data**: the values with their coordinates,
 quantity and their unit. They plot themselves in the loudpy style and convert to NumPy, pandas
 and files (:doc:`postprocessing`).
 
-Where: points, arcs, lines
---------------------------
+Where: points, arcs, lines, named parts
+---------------------------------------
 
 Every ``at=`` argument takes a point or a *selection* (like COMSOL's cut points and cut lines):
 
@@ -59,6 +59,28 @@ Evaluations
    res.impedance()                              # U / I_coil over f (voltage drive) [Ω]
    res.scalar("I_coil")                         # any per-entry quantity as Data
    res.arrays()                                 # plain NumPy arrays (values, fields, meshes, per-entry)
+
+On a named boundary or region
+-----------------------------
+
+``lp.On(name)`` is a place too: a boundary of the model (its items: ``"coil1"``, ``"fluidstructure1"``, stored with
+the results) or a region (``"cone"``, or a selector of domains) — the values there for every entry, as Ansys scopes a
+result to a named selection and COMSOL averages or integrates over a boundary:
+
+.. code-block:: python
+
+   res.probe("u", at=lp.On("fluidstructure1"))          # u over (mode | f, s, component): s along the boundary [m]
+   res.displacement(at=lp.On("coil1", reduce="mean"), component="z")   # the coil's mean u_z per entry
+   res.pressure(at=lp.On("front", reduce="integral"))   # ∫ p dA over the surface of revolution [Pa·m²]
+   res.probe("u", at=lp.On("cone", reduce="max"))       # the largest |u| in the cone per entry
+   res.probe("u", at=lp.On("cone"))                     # over the region's nodes ("node" dimension)
+   res.nodes_on("fluidstructure1")                      # node_tags, r, z, s, piece: the same order
+
+Along a boundary the nodes follow its edges from one end (a boundary of several separate pieces: one after the other,
+``piece`` tells them apart); ``reduce`` is ``"mean"`` or ``"integral"`` over the surface (boundary) or volume (region)
+of revolution, weight ``2πr dA`` (quadratic edges by Simpson's rule, quadratic triangles by their mid-edge nodes), or
+``"max"`` (the largest modulus). Checked against the geometry: a boundary's surface ``2π∫r ds`` (0.2 %), a region's
+volume by Pappus (0.5 %), a region's maximum against the field restricted to it. Axisymmetric results.
 
 Derived fields
 --------------
