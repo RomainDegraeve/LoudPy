@@ -2622,7 +2622,7 @@ Public names of loudpy that a simulation is not made of:
 - ``load``: reads results
 - ``load_data``: reads results
 - ``compare``: compares results
-- ``read_comsol``: reads COMSOL tables
+- ``read_reference``: reads reference tables (text exports of commercial FE software)
 - ``set_verbosity``: logging
 - ``cabinets``: module: cabinets.Box / Step / Brace / Port are blocks
 - ``signals``: module: signals.* are blocks

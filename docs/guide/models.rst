@@ -220,7 +220,7 @@ Drives
 Overview and checks
 -------------------
 
-``print(model)`` shows the model as a tree, like COMSOL's model builder: geometry, materials, regions
+``print(model)`` shows the model as a tree, like the model builder of commercial FE software: geometry, materials, regions
 (material, damping, element size), boundaries, mesh controls and the mesh; ``model.tree(selections=True)``
 adds what each item selects in the geometry. ``model.check()`` checks everything that can be checked
 without meshing — every item selects something and no domain group twice, every material is complete and

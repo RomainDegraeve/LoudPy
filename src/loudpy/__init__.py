@@ -25,7 +25,7 @@ from .model import (
 )
 from .geometry import Frame, Mesh, Group, Box, Near, Interface, BoundaryOf
 from .geometry.mesh_files import mesh_info
-from .results import (load, load_data, spl, compare, read_comsol, Output, Results, FrequencyResults, ModeResults, TimeResults, Data, Field,
+from .results import (load, load_data, spl, compare, read_reference, Output, Results, FrequencyResults, ModeResults, TimeResults, Data, Field,
                       Point, Points, Polar, Arc, Line, On)
 from .study import (Modes, FrequencyResponse, PerWavelength, Transient, Sweep, SweepResults, Adaptive,
                     Convergence, convergence)
@@ -66,7 +66,7 @@ __all__ = [
     # the electrical side: amplifier, filters, coils
     "Circuit", "circuit",
     # results and evaluation
-    "load", "load_data", "spl", "compare", "read_comsol", "Output", "Results", "FrequencyResults", "ModeResults", "TimeResults", "Data", "Field",
+    "load", "load_data", "spl", "compare", "read_reference", "Output", "Results", "FrequencyResults", "ModeResults", "TimeResults", "Data", "Field",
     "Point", "Points", "Polar", "Arc", "Line", "On",
     # messages and errors, lazily imported plotting
     "set_verbosity", "errors", "progress", "schema", "signals", "plot",

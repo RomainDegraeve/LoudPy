@@ -687,7 +687,7 @@ NOT_BLOCKS = {
     "Arc": "evaluation of results", "Line": "evaluation of results", "On": "evaluation of results",
     "spl": "evaluation of results",
     "load": "reads results", "load_data": "reads results", "compare": "compares results",
-    "read_comsol": "reads COMSOL tables", "set_verbosity": "logging",
+    "read_reference": "reads reference tables (text exports of commercial FE software)", "set_verbosity": "logging",
     "cabinets": "module: cabinets.Box / Step / Brace / Port are blocks", "signals": "module: signals.* are blocks",
     "errors": "module", "progress": "module", "plot": "module", "schema": "module: this description",
     "Document": "a whole simulation (model or scene, and studies) as nodes of these blocks",

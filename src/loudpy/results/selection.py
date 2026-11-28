@@ -1,5 +1,5 @@
 """
-Where to evaluate a result (like COMSOL's cut points and cut lines): every `at=` argument takes
+Where to evaluate a result (like the cut points and cut lines of commercial FE software): every `at=` argument takes
 a point, several points or one of these selections.
 
     (0.0, 0.3)                          one point (r, z) in 2D, (x, y, z) in 3D

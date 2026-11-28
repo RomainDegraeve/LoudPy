@@ -7,7 +7,7 @@ against them (unknown or wrong options refused).
     check({"yscale": "log"}, "curve")      the style cleaned and checked (ValueError on a bad option)
     STYLE_OPTIONS                every option
 
-What they cover (COMSOL plot settings, Ansys result display, ParaView display properties):
+What they cover (plot settings of commercial FE software, ParaView display properties):
   data      show (modulus, real, imaginary, phase, dB, SPL), normalize (to the maximum or the first value),
             unwrap (phase), mirror (both sides of the axis)
   axes      xscale / yscale (linear, log), limits, grid, title, legend
@@ -86,7 +86,7 @@ STYLE_OPTIONS: tuple[Option, ...] = (
     # colours
     Option("cmap", "choice", "auto", CMAPS, COLOURED + ("view3d",),
            "auto: by quantity (SPL magma, signed values RdBu_r, displacement viridis, phase twilight); jet / "
-           "rainbow: COMSOL's look"),
+           "rainbow: the classic FE look"),
     Option("reverse", "bool", False, (), COLOURED + ("view3d",), "the colormap reversed"),
     Option("vmin", "number", None, (), COLOURED + ("view3d",), "bottom of the colour range (empty: automatic)"),
     Option("vmax", "number", None, (), COLOURED + ("view3d",), "top of the colour range (empty: automatic)"),

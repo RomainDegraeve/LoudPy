@@ -1,5 +1,5 @@
 """
-Parameters: named values a model refers to, for parametric studies (COMSOL's Global Parameters).
+Parameters: named values a model refers to, for parametric studies (the global parameters of commercial FE software).
 
     p = lp.Parameters(t_cone=0.3e-3, E_cone=3.5e9, h=1e-3)
     model = lp.Model("speaker.geo", parameters=p)

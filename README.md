@@ -116,7 +116,7 @@ If you want to contribute to this open-source project, feel free to reach out:
 
 ### Workflow
 
-geometry → selections → materials and physics → mesh → studies → results, as in COMSOL / ANSYS:
+geometry → selections → materials and physics → mesh → studies → results, as in commercial FE software:
 
 1. **Geometry** — a `.geo` file (curve loops or physical surfaces), a CAD file (STEP / IGES / BREP, a 2D
    sketch whose closed regions become domains) or a Python builder function; 3D cabinets are builder functions
@@ -173,7 +173,7 @@ geometry → selections → materials and physics → mesh → studies → resul
   `lp.plot.html(field, "x.html")`: interactive viewer in one HTML file
 - `.to_pandas()`, `np.asarray(…)`, `.export("x.csv" | "x.mat" | "x.npz" | "x.vtu" | "x.html")`, `res.export("x.pvd")`
   (ParaView series), `res.export("x.vtkhdf")` (one-file series), `data.export("x.nc")` (netCDF, read back with
-  `lp.load_data`), `lp.read_comsol` / `lp.compare` for comparisons with COMSOL exports
+  `lp.load_data`), `lp.read_reference` / `lp.compare` for comparisons with reference results (text exports of commercial FE software)
 
 ### Verification
 

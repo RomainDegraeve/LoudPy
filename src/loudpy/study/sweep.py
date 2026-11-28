@@ -1,6 +1,7 @@
 """
-Parametric sweeps: the study run on a copy of the model for every combination of parameter values (as COMSOL's
-Parametric Sweep: the parameters are those of the model, lp.Parameters; geometry and items rebuild per run).
+Parametric sweeps: the study run on a copy of the model for every combination of parameter values (as the
+parametric sweep of commercial FE software: the parameters are those of the model, lp.Parameters; geometry and
+items rebuild per run).
 
     model = lp.Model("plate.geo", parameters=lp.Parameters(E=2.1e11, h=0.002))   # h: a DefineConstant of the .geo
     model.add(lp.Solid("plate", steel, E=lp.P("E"), …), …)

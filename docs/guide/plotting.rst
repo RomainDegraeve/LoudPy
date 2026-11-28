@@ -3,7 +3,7 @@ Plotting
 
 Figures come from the results themselves: every :class:`Data <loudpy.Data>` and
 :class:`Field <loudpy.Field>` has a ``plot()`` method, and :mod:`lp.plot <loudpy.plot>` composes
-them. The structure follows COMSOL's results tree — *where* (a selection: point, arc, line, the
+them. The structure follows the results tree of commercial FE software — *where* (a selection: point, arc, line, the
 mesh), *what* (a quantity with its unit), *how* (a plot kind) — with the brevity of xarray / pandas.
 
 .. code-block:: python
@@ -135,7 +135,7 @@ How a plot is shown
 
 ``spec.style`` holds how a plot is shown: the options of :mod:`loudpy.plot.options`, declared once (kind, choices,
 default, the views they apply to, a hint) so a program builds its form from them; a spec with an unknown or wrong option
-is refused. They cover what COMSOL's plot settings, Ansys' result display and ParaView's display properties offer:
+is refused. They cover what the plot settings of commercial FE software and ParaView's display properties offer:
 
 .. list-table::
    :widths: 18 82

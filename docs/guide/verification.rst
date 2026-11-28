@@ -52,15 +52,15 @@ from the same run that gates the change:
 
 so a number in the report is always one that a passing test measured. Regenerate it for each release.
 
-Comparison with COMSOL
-----------------------
+Comparison with reference results
+---------------------------------
 
-``lp.read_comsol(path)`` reads COMSOL's text exports (tables, point graphs; ``%`` headers, columns with units,
+``lp.read_reference(path)`` reads the text exports of commercial FE software (tables, point graphs; ``%`` headers, columns with units,
 complex values written ``a+bi``) and ``lp.compare(ours, reference, rtol=…, metric=…)`` compares two 1D ``lp.Data``
 after interpolating the reference onto loudpy's points (log frequency; complex parts separately), returning the
-largest error and where it occurs. The reference cases are registered in ``tests/test_comsol.py`` with the export
-each one needs (``tests/data/comsol/README.md``); a case runs, and enters the report, as soon as its export is in
-``tests/data/comsol``.
+largest error and where it occurs. The reference cases are registered in ``tests/test_reference.py`` with the export
+each one needs (``tests/data/reference/README.md``); a case runs, and enters the report, as soon as its export is in
+``tests/data/reference``.
 
 What is not verified
 --------------------

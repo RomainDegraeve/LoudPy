@@ -405,7 +405,7 @@ All three `Coupling_3D` examples run on `lp.Scene`; the `Build_*.py` scripts are
 
 ### Phase 8 — evaluated data, plotting, exports
 
-The plotting was rebuilt around what is plotted, in the spirit of COMSOL's results tree (where →
+The plotting was rebuilt around what is plotted, in the spirit of the results tree of commercial FE software (where →
 what → how) with the brevity of xarray / pandas.
 
 - **Quantities** (`results.quantities`): one name, label, symbol, unit and colormap family per

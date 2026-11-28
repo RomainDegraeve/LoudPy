@@ -608,8 +608,8 @@ class Model:
 
     def tree(self, selections: bool = False) -> str:
         """
-        The model as a tree, like COMSOL's model builder: geometry, materials, regions, boundaries, mesh
-        controls, mesh. selections=True evaluates what each item selects (reads the geometry).
+        The model as a tree, like the model builder of commercial FE software: geometry, materials, regions,
+        boundaries, mesh controls, mesh. selections=True evaluates what each item selects (reads the geometry).
         """
         sel = self._selection or (self.selection() if selections else {})
 

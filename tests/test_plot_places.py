@@ -136,3 +136,21 @@ def test_every_view_draws_with_its_options(fsi):
         plt.close("all")
     shown = PlotSpec(quantity="spl", where=arc, view="map", style={"normalize": "first"}).resolve(fsi).shown()
     np.testing.assert_allclose(shown.isel(angle=0).values, 0.0, atol=1e-12)     # relative to the axis
+
+
+def test_fields_offered_and_a_kept_export_in_the_document(fsi):
+    """quantity "field" offers v and a of a harmonic displacement (jω u, −ω² u); a plot kept in a document may say
+    how it is exported."""
+    from loudpy.plot.spec import fields
+    names = fields(fsi)
+    assert {"u", "p", "v", "a"} <= set(names)
+    out = PlotSpec(quantity="field", field="a", view="field").resolve(fsi)
+    u = fsi.field("u", index=0)
+    np.testing.assert_allclose(out.data.values, -(2 * np.pi * u.coordinate) ** 2 * u.values)
+    plot = {"quantity": "field", "field": "v", "view": "field", "result": "fr",
+            "export": {"format": "VTU (ParaView)", "file": "fr_v", "entries": "this one"}}
+    doc = lp.Document.of(api.speaker_model(acoustic=True), [], name="doc")
+    doc.plots = [plot, {**plot, "nonsense": 1}]
+    problems = doc.check()
+    assert [m for m in problems if "plot" in m] == ["plot 1: PlotSpec: unknown keys ['nonsense'] (keys: "
+                                                    + str(sorted(PlotSpec.__dataclass_fields__)) + ")"]

@@ -87,8 +87,8 @@ n = 16 cells per side (curved: quarter annulus).
      - within
      - ``test_recovery_effectivity[curved-3]``
 
-COMSOL harness
---------------
+Reference harness
+-----------------
 
 Comparison on a synthetic export (1 % ripple, coarser grid)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

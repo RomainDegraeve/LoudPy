@@ -1,7 +1,7 @@
 # loudpy roadmap — towards a professional, verified FE library
 
 Approved on 2026-11-20, reviewed after phase C (same day, see "Review after phase C"). Goal: one
-consistent API across physics, studies, saving and plotting, ready to use, organised like COMSOL / ANSYS
+consistent API across physics, studies, saving and plotting, ready to use, organised like commercial FE software
 (geometry → selections → materials and physics → mesh → studies → results), with a test pipeline that
 checks accuracy (not only regressions). New physics (BEM, magnetics, thermal, thermoviscous losses, porous
 media, anisotropy, motor nonlinearities, PETSc/MPI) comes later; parameters and parametric sweeps were
@@ -12,8 +12,8 @@ axisymmetric), tetrahedra P1–P3 (3D), shells for cabinet walls coupled directl
 geometry workflows (gmsh curve loops and Physical Surfaces / STEP), names are labels only; SI units with
 plausibility checks; error estimator + adaptive remeshing loop + convergence tool; raster 3D panels in
 PDFs + interactive HTML viewer; material values marked "typical, unverified"; Python ≥ 3.13; full re-run
-of the examples at the end; COMSOL comparison harness now, reference results later.
-After phase C (user, 2026-11-20): **compact model items + a COMSOL-like tree** (keep `lp.Solid` / `lp.Air` …
+of the examples at the end; reference comparison harness now, reference results later.
+After phase C (user, 2026-11-20): **compact model items + a model tree like commercial FE software's** (keep `lp.Solid` / `lp.Air` …
 bundling domain, physics, material, damping; add the tree view, mesh controls by selection, study steps,
 derived values, the model description saved with the results); **parameters and sweeps in phase F**;
 **phase D next** (API phases after it, on the new core); the coupled 2D examples are re-run in phase M
@@ -29,12 +29,12 @@ Cost unit: one *session* ≈ one long working block (3–5 h). Status: ✅ done 
 | C | Selections and geometry: selection objects, three geometry sources, nothing read from names, PML by selection, driver profiles from selections | 3 | ✅ |
 | D | Own generic FE core: Lagrange P1–P3 on lines / triangles / quads / tetrahedra, quadrature, spaces, generic kernels and assembly, curved (isoparametric) elements; old kernels removed | 5 | ✅ |
 | E | Physics interfaces and couplings: one contribution protocol, generic system builder, electrical circuit as physics, 3D on the same protocol (the sign convention was fixed in C) | 4 | ✅ |
-| F | One model for 2D and 3D: `lp.Model(dim=…)`, COMSOL-like tree (print, `check()`, mesh controls by selection, study steps), parameters and parametric sweeps, selectors and geometry sources in 3D scenes, typed mesh and solver settings, one remeshing rule, immutable model during solves, deterministic meshing by default, examples rewritten | 4 | ✅ |
+| F | One model for 2D and 3D: `lp.Model(dim=…)`, model tree like commercial FE software's (print, `check()`, mesh controls by selection, study steps), parameters and parametric sweeps, selectors and geometry sources in 3D scenes, typed mesh and solver settings, one remeshing rule, immutable model during solves, deterministic meshing by default, examples rewritten | 4 | ✅ |
 | G | Results format 3: one results family, self-contained files (with the model description and parameters), public arrays, derived fields (stress, strain, velocity, intensity) and values (power, volume velocity, impedance, SPL, Thiele–Small parameters), interpolation in tetrahedra, ParaView series | 3 | ✅ |
 | H | Error estimation and adaptivity: recovery and residual indicators, `lp.Adaptive`, `lp.convergence` | 3 | ✅ |
 | I | Shells: MITC3/MITC4 Reissner–Mindlin, direct coupling to the 3D air, wall-mode study, elastic-wall enclosure example | 4 | ✅ |
 | J | Plotting: scoped style everywhere, selections in 3D views, interactive HTML viewer, image-comparison tests | 1.5 | ✅ |
-| K | Verification and validation pipeline: manufactured solutions, analytical benchmarks, COMSOL harness, generated verification report | 3 (spread) | ✅ (COMSOL reference numbers later) |
+| K | Verification and validation pipeline: manufactured solutions, analytical benchmarks, reference harness, generated verification report | 3 (spread) | ✅ (reference numbers later) |
 | L | Code quality and documentation: no private cross-imports, 100 % public docstrings, mypy, theory and verification manuals | 2 | ✅ |
 | M | Full re-run of every example (incl. the coupled 2D ones, whose stored results predate the C1 coupling fix and the damping refits), comparison table, version 0.2.0 | 2 + ~6 h compute | ✅ |
 
@@ -272,7 +272,7 @@ Gates (each phase is committed and pushed only when its gate passes):
 The plan holds; adjustments, decided with the user:
 
 - **API style.** loudpy keeps compact items (`lp.Solid("cone", "Paper", damping=…, mesh_size=…)`), shorter
-  than COMSOL's separate materials / physics / mesh nodes, and gets the COMSOL-like structure around
+  than the separate materials / physics / mesh nodes of commercial FE software, and gets their structure around
   them (phase F): `print(model)` as a model tree (geometry, selections, regions, boundaries, mesh,
   studies), `model.check()` (everything selected, materials complete, units plausible) before meshing,
   mesh controls by selection (`lp.MeshSize(on=…, size=…)` next to the per-item `mesh_size`), studies as
@@ -797,12 +797,12 @@ phase's notes). Phase K adds what turns them into a pipeline:
   report (reStructuredText, in the docs under "Verification report"): per area and case the reference, notes and
   a table value / bound / status / test, plus versions, machine and date. Committed from this phase's run:
   **66 measured quantities from 38 tests, all passed** (macOS arm64). Regenerate it at each release (phase M).
-- **COMSOL harness** (`loudpy.results.comsol`, `lp.read_comsol`, `lp.compare`): reads COMSOL text exports (`%`
+- **Reference harness** (`loudpy.results.reference`, `lp.read_reference`, `lp.compare`): reads text exports of commercial FE software (`%`
   headers with model / version / date, column names with units, complex `a+bi`, any separator; columns found by
-  name, name without unit, or unique word), `ComsolTable.data(x, y)` → `lp.Data`; `lp.compare(ours, reference,
+  name, name without unit, or unique word), `ReferenceTable.data(x, y)` → `lp.Data`; `lp.compare(ours, reference,
   rtol, metric="relative" | "pointwise" | "db")` interpolates the reference on loudpy's points (log f for
   frequencies, complex parts separately) and returns the maximum error, where, and the verdict. Reference cases:
-  `tests/test_comsol.py::CASES` with `tests/data/comsol/README.md` (what to export); a case whose export is
+  `tests/test_reference.py::CASES` with `tests/data/reference/README.md` (what to export); a case whose export is
   missing is skipped — the reference numbers are to come later, as decided in the plan.
 
 **Gate K report** (no gate was set in the plan; checked against the row's content):
@@ -811,7 +811,7 @@ phase's notes). Phase K adds what turns them into a pipeline:
 |---|---|
 | manufactured solutions | orders recorded for P1–P3, Q1–Q2 (Poisson, Helmholtz, axisymmetric) and P1–P3 tetrahedra, each against its bound |
 | analytical benchmarks | plates (3D elasticity, MITC3 / MITC4), cavity, hemisphere, air, monopole far field, plane-wave intensity, air spring, rigid-wall limit, energy balance, swept volume |
-| COMSOL harness | reader + comparison tested on synthetic exports; reference cases registered, skipped until the exports exist |
+| Reference harness | reader + comparison tested on synthetic exports; reference cases registered, skipped until the exports exist |
 | generated verification report | `docs/guide/verification_report.rst`, 66 quantities / 38 tests, built by the docs |
 
 ## Phase L — done (gate report at the end of this section)
@@ -842,7 +842,7 @@ phase's notes). Phase K adds what turns them into a pipeline:
   circuit, 2D DtN and far field, 3D half-space DtN, the modal scene coupling with its static correction, shells and
   their direct coupling, error estimation and adaptivity, the system builder) and `docs/guide/verification.rst`
   (verification manual: exact solutions, physical invariants, regression tolerances and the reference policy, plot
-  tests, how the report is generated, the COMSOL comparison, what is not verified), next to the generated report.
+  tests, how the report is generated, the comparison with reference results, what is not verified), next to the generated report.
   Writing it corrected two docstrings of the coupling assembler (Cam is air nodes × structure DOFs, with the
   outward normal of the air).
 

@@ -22,7 +22,8 @@ The JSON:
                "settings": [Scene.cavity / Scene.exterior / Scene.merged / Scene.walls nodes]},
      "circuits": {name: Circuit node, …}       (optional) the simulation's circuits: amplifier, filters, coils
      "plots": [PlotSpec dicts]                 (optional) plots kept with the simulation (lp.plot.PlotSpec.to_dict;
-                                               each may name its result: "result")
+                                               each may name its result: "result", and a kept export how it
+                                               is written: "export": {"format", "file", "entries"})
      "studies": [{"name": …, "type": "Modes", "params": {…}}, {"name": …, "type": "Sweep", "params": {…},
                   "study": the swept study's node}, …]}
 
@@ -168,7 +169,7 @@ class Document:
             from loudpy.plot.spec import PlotSpec
             where = f"plots/{spec.get('name') or i}" if isinstance(spec, dict) else f"plots/{i}"
             try:
-                PlotSpec.from_dict({k: v for k, v in spec.items() if k != "result"})
+                PlotSpec.from_dict({k: v for k, v in spec.items() if k not in ("result", "export")})
             except Exception as e:                                   # noqa: BLE001  (said with its path)
                 out.append((where, f"plot {i}: {e}"))
         names = [s.get("name") for s in self.studies]

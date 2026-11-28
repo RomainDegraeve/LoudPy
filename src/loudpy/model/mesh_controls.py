@@ -1,6 +1,6 @@
 """
-Mesh controls by selection (COMSOL's "Size" nodes): the element size of the domains a selector selects,
-next to the per-item mesh_size.
+Mesh controls by selection (the "Size" nodes of commercial FE software): the element size of the domains a
+selector selects, next to the per-item mesh_size.
 
     model.add(lp.MeshSize(on=lp.Group("surround", "spider"), size=0.3e-3))
     model.add(lp.MeshSize(on=lp.Box(r=(0.0, 0.02)), size=1e-3, name="near the axis"))

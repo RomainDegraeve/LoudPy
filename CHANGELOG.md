@@ -5,6 +5,19 @@ versions follow [Semantic Versioning](https://semver.org/) (0.x: the API may sti
 
 ## [Unreleased]
 
+- Renamed (no COMSOL / Ansys names in loudpy): `lp.read_comsol` → `lp.read_reference`, `ComsolTable` →
+  `ReferenceTable`, module `loudpy.results.comsol` → `loudpy.results.reference` (the same reader of text exports
+  with `%` headers); the reference cases live in `tests/data/reference`.
+- `lp.plot.spec.fields(res)`: the fields quantity "field" offers — the stored ones, and v and a (jω u, −ω² u) of a
+  harmonic displacement. A deformed shape at one phase is scaled by the amplitude (meta "amplitude"), so it swings
+  with the motion over the phases instead of being rescaled at each one.
+- `lp.Document`: a kept plot may carry how it is exported (`"export": {"format", "file", "entries"}`, the
+  interface's export nodes) besides its result.
+
+- `res.probe` (displacement, velocity … at a point, a line, an arc) on mode results with several azimuthal orders:
+  order 0 has no u_theta, the others do — the mode sets are put together with u_theta = 0 for m = 0 (it failed with
+  mismatched shapes).
+
 - Results on a named part of the model: `lp.On(name, reduce=None)` is a place for every `at=` (`res.probe`,
   `pressure`, `spl`, `displacement`, `velocity`, `acceleration`, PlotSpec `where={"kind": "on", …}`) — a boundary
   (the model's items, stored with the results) or a region (a name or a selector of domains): along the boundary in
@@ -115,7 +128,7 @@ versions follow [Semantic Versioning](https://semver.org/) (0.x: the API may sti
   with the results (`res.probe_signal(name, field, component)`, `res.probe_names`). The multitone example uses it
   (its result file: 8.7 GB → about 70 MB).
 - Multi-parameter sweeps: `lp.Sweep(study, {name: values, …}, combine="grid" | "zip")` (all combinations or pairs,
-  as COMSOL's Parametric Sweep); geometry parameters from `DefineConstant[…]` of a `.geo` file (besides builders);
+  as the parametric sweep of commercial FE software); geometry parameters from `DefineConstant[…]` of a `.geo` file (besides builders);
   `SweepResults.evaluate(fn)` → `lp.Data` over the parameters, `.table()`, `.at(**values)`, `.names`, `.runs`.
 - `Model.mesh_reusable(path)`; a sweep run that changes no mesh input (a material value…) uses the model's mesh.
 - Examples reorganised: one folder per example, numbered in reading order (`01_structure_modes` …
@@ -158,7 +171,7 @@ in the phase M section of the roadmap).
 
 ### Added
 - Type checking: `mypy` configuration in `pyproject.toml` and a CI job; the package passes it.
-- `lp.read_comsol(path)` (COMSOL text exports → `ComsolTable`, `.data(x, y)`) and `lp.compare(ours, reference,
+- `lp.read_reference(path)` (text exports of commercial FE software → `ReferenceTable`, `.data(x, y)`) and `lp.compare(ours, reference,
   rtol=…, metric=…)` (interpolated comparison, maximum error and where). Verification report generated from the
   tests' own measurements: `pytest --slow --verification-report docs/guide/verification_report.rst`.
 - `lp.plot.selection(model | scene | mesh, selector)`: what a selector selects, on the mesh (2D domains and

@@ -76,7 +76,7 @@ coordinates) and :class:`Field <loudpy.Field>` (values on a mesh) — that carry
 (:mod:`loudpy.results.quantities`: one name, label, symbol, unit and colormap per quantity). The
 plots read only those objects, so every figure gets the same labels, units and colormaps, and every
 evaluated quantity exports the same way (NumPy, pandas, CSV, MATLAB, VTU). Where to evaluate is a
-selection (point, points, arc, line), like COMSOL's datasets.
+selection (point, points, arc, line), like the datasets of commercial FE software.
 
 The 3D toolkit (:mod:`loudpy.physics.modal`, :mod:`loudpy.physics.exterior`) is importable from its
 modules but is not part of the top-level namespace.

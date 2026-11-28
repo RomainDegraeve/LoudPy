@@ -12,7 +12,7 @@ loudpy.results — the outcome of a study, independent of how it was computed.
   description       the model description and study settings stored with the results
   SweepResults      the results of a parametric sweep (one file, one run per value)
 """
-from loudpy.results.comsol import ComsolTable, Comparison, compare, read_comsol
+from loudpy.results.reference import ReferenceTable, Comparison, compare, read_reference
 from loudpy.results.data import Data, Field, load_data, spl
 from loudpy.results.output import Output
 from loudpy.results.io import load
@@ -21,5 +21,5 @@ from loudpy.results.results import Block, FrequencyResults, ModeResults, Results
 from loudpy.results.selection import Arc, Line, On, Point, Points, Polar
 from loudpy.results.sweep import SweepResults
 
-__all__ = ["load_data", "Output", "read_comsol", "compare", "ComsolTable", "Comparison", "load", "SweepResults", "Results", "FrequencyResults", "ModeResults", "TimeResults", "Block", "Data", "Field",
+__all__ = ["load_data", "Output", "read_reference", "compare", "ReferenceTable", "Comparison", "load", "SweepResults", "Results", "FrequencyResults", "ModeResults", "TimeResults", "Block", "Data", "Field",
            "Quantity", "quantity", "Point", "Points", "Polar", "Arc", "Line", "On", "spl"]

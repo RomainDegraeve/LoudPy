@@ -91,7 +91,7 @@ Studies on a 3D scene
 Parameters and sweeps
 ---------------------
 
-A model can carry named parameters (COMSOL's global parameters). ``lp.P(name)`` stands for a parameter
+A model can carry named parameters (the global parameters of commercial FE software). ``lp.P(name)`` stands for a parameter
 in any numeric field of an item — sizes, PML settings, material overrides, damping coefficients — and
 ``a * lp.P(name) + b`` is allowed. A geometry builder whose second argument is named ``p`` receives the
 parameters; their values then enter the mesh signature.
@@ -111,7 +111,7 @@ parameters; their values then enter the mesh signature.
     sweep.evaluate(lambda r: r.frequencies[:3], name="f")   # lp.Data over t (× mode)
     sweep.save("Results/sweep.h5")            # one result file; lp.load gives the sweep back
 
-Several parameters, as COMSOL's Parametric Sweep: **all combinations** (``combine="grid"``, the default) or
+Several parameters, as the parametric sweep of commercial FE software: **all combinations** (``combine="grid"``, the default) or
 **specified combinations** (``combine="zip"``, the lists taken pairwise):
 
 .. code-block:: python

@@ -84,3 +84,18 @@ def test_modes_progress_counts_finished_shifts_over_all_orders(mesh_dir):
     assert counts[0] == (0, 6) and counts[-1] == (6, 6) and {n for _, n in counts} == {6}
     assert [i for i, _ in counts] == sorted(i for i, _ in counts)
     assert seen[0][0].startswith("order 0: ") and seen[-1][0].startswith("order 1: ")
+
+
+def test_a_probe_over_mode_sets_with_and_without_u_theta(mesh_dir):
+    """Mode sets of orders 0 (u_r, u_z) and m ≥ 1 (u_r, u_z, u_theta) probed together: u_theta 0 for m = 0, one value
+    per mode at a point."""
+    import loudpy as lp
+    meca = api._meshed(api.speaker_model(), mesh_dir, api._speaker_tag(1e-3, False, False))
+    modes = lp.Modes(meca).solve(f_max=2500.0, f_min=20.0, orders=[0, 1], n_per_shift=10)
+    pt = tuple(np.asarray(modes.blocks[0].mesh_of("u").coords)[0, :2])
+    u = modes.displacement(at=pt)
+    assert u.dims == ("mode", "component") and u.shape == (len(modes), 3)
+    n0 = len(modes.blocks[0])
+    np.testing.assert_array_equal(u.values[:n0, 2], 0.0)
+    assert modes.displacement(at=pt, component="z").shape == (len(modes),)
+    assert isinstance(modes, lp.ModeResults)

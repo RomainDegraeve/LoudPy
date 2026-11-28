@@ -290,6 +290,10 @@ class Results:
                 raise ResultsError(f"no field {name!r} in block {b.label!r} (fields: {list(b.fields)})")
             mesh = b.mesh_of(name)
             out.append(_at_rows(b.fields[name], mesh.interpolation(sel.points(mesh.dim))))
+        width = max(o.shape[-1] for o in out) if out[0].ndim == 3 else 0
+        if width:                                                         # mode sets with and without u_theta
+            out = [np.concatenate([o, np.zeros(o.shape[:-1] + (width - o.shape[-1],), o.dtype)], axis=-1)
+                   if o.shape[-1] < width else o for o in out]
         v = np.concatenate(out, axis=0)                                   # (n, n_pts[, dpn])
         if self.real:
             v = np.real(v)

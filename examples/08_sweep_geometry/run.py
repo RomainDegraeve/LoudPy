@@ -2,7 +2,8 @@
 run.py — a GEOMETRY sweep: the first modes of a clamped steel plate for every radius a and thickness h.
 
 The dimensions are DefineConstant[…] entries of Geometries/Plate/clamped_plate_param.geo; the model's parameters
-of the same name replace them, so each run rebuilds and remeshes the geometry (as COMSOL's Parametric Sweep).
+of the same name replace them, so each run rebuilds and remeshes the geometry
+(as the parametric sweep of commercial FE software).
 
   model    : lp.Model(geo, parameters=lp.Parameters(a=…, h=…)), mesh size h/2 (lp.P: follows the thickness)
   sweep    : lp.Sweep(lp.Modes(model), {"a": […], "h": […]}) — all combinations (4 × 3 = 12 runs)

@@ -1,5 +1,5 @@
-"""COMSOL comparison harness (phase K): the reader and the comparison on synthetic exports, and the reference cases
-of tests/data/comsol (skipped until their COMSOL exports are there)."""
+"""reference comparison harness (phase K): the reader and the comparison on synthetic exports, and the reference cases
+of tests/data/reference (skipped until their reference exports are there)."""
 from pathlib import Path
 
 import numpy as np
@@ -8,10 +8,10 @@ import pytest
 import loudpy as lp
 from support import current_api as api
 
-COMSOL = Path(__file__).parent / "data" / "comsol"
+REFERENCE = Path(__file__).parent / "data" / "reference"
 
-EXPORT = """% Model:              speaker.mph
-% Version:            COMSOL 6.2.0.290
+EXPORT = """% Model:              speaker.model
+% Version:            6.2.0.290
 % Date:               Nov 21 2026, 10:12
 % Table:              Point Evaluation 1
 % freq (Hz)           Pressure (Pa)              abs(p) (Pa)
@@ -21,12 +21,12 @@ EXPORT = """% Model:              speaker.mph
 """
 
 
-def test_read_comsol_table(tmp_path):
+def test_read_reference_table(tmp_path):
     path = tmp_path / "export.txt"
     path.write_text(EXPORT)
-    t = lp.read_comsol(path)
+    t = lp.read_reference(path)
     assert t.columns == ["freq (Hz)", "Pressure (Pa)", "abs(p) (Pa)"]
-    assert t.units["abs(p) (Pa)"] == "Pa" and t.meta["version"].startswith("COMSOL 6.2")
+    assert t.units["abs(p) (Pa)"] == "Pa" and t.meta["version"].startswith("6.2")
     np.testing.assert_allclose(t.column("Pressure"), [0.010 + 0.002j, 0.020 - 0.001j, -0.004 + 0.03j])
     np.testing.assert_allclose(t.column("abs(p)"), np.abs(t.column("Pressure")), rtol=1e-8)
     assert np.isrealobj(t.column("freq")) and np.iscomplexobj(t.column("Pressure"))
@@ -44,13 +44,13 @@ def test_compare(tmp_path, verify):
     assert c.passed and 0.003 < c.max_error < 0.012 and "within" in str(c)
     assert lp.compare(exact, ref, metric="db").max_error < 0.1
     assert not lp.compare(exact, ref * 1.1, rtol=0.02).passed
-    verify("COMSOL harness", "Comparison on a synthetic export (1 % ripple, coarser grid)", "max relative error",
+    verify("reference harness", "Comparison on a synthetic export (1 % ripple, coarser grid)", "max relative error",
            c.max_error, bound=0.012, reference="the ripple put into the reference")
     with pytest.raises(lp.errors.ResultsError, match="coordinates differ"):
         lp.compare(exact, lp.Data(ref.values, {"t": f[::7]}, "p"))
 
 
-# ── reference cases: run when their COMSOL export is in tests/data/comsol ─────────────────────────
+# ── reference cases: run when their reference export is in tests/data/reference ─────────────────────────
 def _plate_modes(mesh_dir, table):
     model = api.plate_problem(mesh_dir)
     modes = lp.Modes(model).solve(f_min=10.0, f_max=2500.0)
@@ -64,11 +64,11 @@ CASES = {"clamped_plate_modes.txt": _plate_modes}
 
 
 @pytest.mark.parametrize("name", sorted(CASES))
-def test_comsol_case(name, mesh_dir, verify):
-    path = COMSOL / name
+def test_reference_case(name, mesh_dir, verify):
+    path = REFERENCE / name
     if not path.exists():
-        pytest.skip(f"no COMSOL export {name} yet (see tests/data/comsol/README.md)")
-    ours, ref, rtol = CASES[name](mesh_dir, lp.read_comsol(path))
+        pytest.skip(f"no reference export {name} yet (see tests/data/reference/README.md)")
+    ours, ref, rtol = CASES[name](mesh_dir, lp.read_reference(path))
     c = lp.compare(ours, ref, rtol=rtol, metric="pointwise", label=name)
-    verify("COMSOL comparison", name, "max relative difference", c.max_error, bound=rtol, reference="COMSOL export")
+    verify("reference comparison", name, "max relative difference", c.max_error, bound=rtol, reference="reference export")
     assert c.passed, str(c)

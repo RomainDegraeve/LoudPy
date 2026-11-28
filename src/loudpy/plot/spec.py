@@ -89,6 +89,15 @@ def quantities(res) -> list[str]:
     return out
 
 
+def fields(res) -> list[str]:
+    """The FE fields these results offer to quantity "field": the stored ones, and the velocity "v" and acceleration
+    "a" of a stored displacement of a harmonic result (jω u, −ω² u: Results.field)."""
+    out = _names(res)
+    if "u" in out and getattr(res, "kind", "") == "frequency" and not getattr(res, "real", False):
+        out += [n for n in ("v", "a") if n not in out]
+    return out
+
+
 def where(spec_where: dict | None, dim: int):
     """The selection of a `where` (plain data) for results of dimension `dim` (2: r, z; 3: x, y, z):
     {"kind": "point", "point": [r, z]}, {"kind": "line", "start": […], "end": […], "n": 100},
@@ -318,7 +327,9 @@ class PlotSpec:
         if show == "real" and np.iscomplexobj(f.values):              # one instant: the phase is a control
             j = _index(list(PHASES), self.at.get("phase", 0.0))
             controls.append(Control("phase", "phase", list(PHASES), j, "°"))
-            f = f.at_phase(np.deg2rad(PHASES[j]))
+            amplitude = float(np.abs(np.asarray(f.values)).max())      # (one scale for every phase: a deformed
+            f = f.at_phase(np.deg2rad(PHASES[j]))                      # shape swings with the motion)
+            f.meta["amplitude"] = amplitude
         what = f"{f.quantity.name} at {values[k]:.4g} {unit}" if dim != "mode" else f"mode {k} ({values[k]:.4g} Hz)"
         return Resolved(f, self.view or "field", controls, what)
 

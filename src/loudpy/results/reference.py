@@ -1,14 +1,15 @@
 """
-Comparison with COMSOL (or any reference table): read COMSOL's text exports and compare them with loudpy Data.
+Comparison with reference results: read the text exports of commercial FE software (or any table in that
+format) and compare them with loudpy Data.
 
-    ref = lp.read_comsol("comsol_spl.txt")                 # a table / point-graph export (text, % headers)
+    ref = lp.read_reference("reference_spl.txt")             # a table / point-graph export (text, % headers)
     ref.columns                                            # ['freq (Hz)', 'abs(p) (Pa)', …]
     d_ref = ref.data("freq", "p")                          # lp.Data of the column matching "p" over "freq"
     cmp = lp.compare(res.pressure(at=(0, 0.3)), d_ref, rtol=0.02)   # interpolated on the common range
     print(cmp)                                             # max error, where, within tolerance?
     cmp.passed, cmp.max_error, cmp.at, cmp.data            # relative error over the coordinate (lp.Data)
 
-COMSOL's text format: header lines start with "%" ("% Model:", "% Version:", "% Date:", … and, last, the column
+The text format: header lines start with "%" ("% Model:", "% Version:", "% Date:", … and, last, the column
 names, each with its unit in parentheses); values separated by spaces, tabs or commas; complex values written
 1.2+3.4i (or with j). A column is found by an exact name, by its name without the unit, or by a unique substring
 ("p" finds "abs(p) (Pa)" only when no other column contains "p" as a whole word).
@@ -40,7 +41,7 @@ def _number(tok: str):
 
 
 def _split_header(line: str, n: int) -> list[str]:
-    """Column names of a COMSOL header line: separated by two spaces or more (names may hold one space)."""
+    """Column names of a header line: separated by two spaces or more (names may hold one space)."""
     parts = [p for p in re.split(r"\s{2,}|\t|,", line.strip()) if p]
     if len(parts) == n:
         return parts
@@ -49,8 +50,8 @@ def _split_header(line: str, n: int) -> list[str]:
 
 
 @dataclass
-class ComsolTable:
-    """Columns of a COMSOL export: names (with units), units, values (one array per column), header fields."""
+class ReferenceTable:
+    """Columns of a reference export: names (with units), units, values (one array per column), header fields."""
     columns: list[str]
     values: dict[str, np.ndarray]
     meta: dict = field(default_factory=dict)
@@ -85,11 +86,11 @@ class ComsolTable:
         o = np.argsort(xv)
         if coordinate is None:
             coordinate = "f" if re.match(r"(freq|f\b)", x, re.I) else x
-        return Data(yv[o], {coordinate: xv[o]}, quantity or y, meta={"source": self.meta.get("path", "comsol")})
+        return Data(yv[o], {coordinate: xv[o]}, quantity or y, meta={"source": self.meta.get("path", "reference")})
 
 
-def read_comsol(path) -> ComsolTable:
-    """Read a COMSOL text export (table, point graph, or nodal data with coordinates) as a ComsolTable."""
+def read_reference(path) -> ReferenceTable:
+    """Read a text export (table, point graph, or nodal data with coordinates) as a ReferenceTable."""
     path = Path(path)
     header, rows = [], []
     for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
@@ -123,7 +124,7 @@ def read_comsol(path) -> ComsolTable:
     for k, c in enumerate(cols):                      # a column written without imaginary parts stays real
         v = arr[:, k]
         values[c] = v.real.copy() if np.iscomplexobj(v) and not np.any(v.imag) else v
-    return ComsolTable(cols, values, meta)
+    return ReferenceTable(cols, values, meta)
 
 
 def _looks_like_columns(h: str, n: int) -> bool:

@@ -18,7 +18,7 @@ and files (:doc:`postprocessing`).
 Where: points, arcs, lines, named parts
 ---------------------------------------
 
-Every ``at=`` argument takes a point or a *selection* (like COMSOL's cut points and cut lines):
+Every ``at=`` argument takes a point or a *selection* (like the cut points and cut lines of commercial FE software):
 
 .. list-table::
    :header-rows: 1
@@ -64,8 +64,8 @@ On a named boundary or region
 -----------------------------
 
 ``lp.On(name)`` is a place too: a boundary of the model (its items: ``"coil1"``, ``"fluidstructure1"``, stored with
-the results) or a region (``"cone"``, or a selector of domains) — the values there for every entry, as Ansys scopes a
-result to a named selection and COMSOL averages or integrates over a boundary:
+the results) or a region (``"cone"``, or a selector of domains) — the values there for every entry, as commercial FE software scopes a
+result to a named selection, averages or integrates over a boundary:
 
 .. code-block:: python
 

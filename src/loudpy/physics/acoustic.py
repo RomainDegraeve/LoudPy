@@ -15,7 +15,7 @@ from loudpy.physics.registry import select
 
 
 def _stretch(x, x0, t, sign, alpha, n, lambda0):
-    """PML complex stretching along one coordinate (COMSOL style): s(x) and the stretched x̃."""
+    """PML complex stretching along one coordinate (as in commercial FE software): s(x) and the stretched x̃."""
     xi = sign * (x - x0) / t
     inside = xi > 0.0
     xi = np.clip(xi, 0.0, 1.0)
