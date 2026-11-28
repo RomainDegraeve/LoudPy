@@ -71,7 +71,7 @@ def test_a_region_its_volume_and_maximum(fsi):
     *_, w, _ = places._place(fsi, fsi.blocks[0], region, mesh)
     cells = np.asarray(mesh.groups[region].cells)[:, :3]
     c = np.asarray(mesh.coords)[:, :2][mesh.rows_of(cells.ravel())].reshape(-1, 3, 2)
-    area = 0.5 * np.abs(np.cross(c[:, 1] - c[:, 0], c[:, 2] - c[:, 0]))
+    area = 0.5 * np.abs(places._cross(c[:, 1] - c[:, 0], c[:, 2] - c[:, 0]))
     volume = 2 * np.pi * np.sum(area * c[:, :, 0].mean(axis=1))          # Pappus on straight-sided triangles
     np.testing.assert_allclose(w.sum(), volume, rtol=5e-3)
 
